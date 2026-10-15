@@ -130,7 +130,7 @@ describe('command line', () => {
   test('migrate applies migrations once', async () => {
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
-    expect(lines).toEqual(['Applied: 0001_init', 'Database is up to date.']);
+    expect(lines).toEqual(['Applied: 0001_init, 0002_retention_indexes', 'Database is up to date.']);
   });
 
   test('admin reset-password prints a working password', async () => {
@@ -151,5 +151,30 @@ describe('command line', () => {
     expect(await main(['migrate'], { DATA_DIR: dir, PORT: 'eighty' }, out)).toBe(2);
     expect(lines.at(-1)).toContain('PORT');
     expect(await main(['--help'], {}, out)).toBe(0);
+  });
+
+  test('healthcheck exits 0 for a running server and 1 when nothing answers', async () => {
+    const server = await startServer(loadConfig({ DATA_DIR: dir, PORT: '0', DIFF_WORKERS: '1' }), silentLogger);
+    try {
+      const port = new URL(server.url).port;
+      expect(await main(['healthcheck'], { DATA_DIR: dir, PORT: port }, out)).toBe(0);
+      expect(lines.at(-1)).toBe('ok');
+    } finally {
+      await server.stop();
+    }
+    const unused = Bun.serve({ port: 0, fetch: () => new Response() });
+    const port = String(unused.port);
+    await unused.stop(true);
+    expect(await main(['healthcheck'], { DATA_DIR: dir, PORT: port }, out)).toBe(1);
+  });
+
+  test('a port that is already taken is a one-line error, not a crash', async () => {
+    const blocker = Bun.serve({ port: 0, fetch: () => new Response() });
+    try {
+      expect(await main(['serve'], { DATA_DIR: dir, PORT: String(blocker.port) }, out)).toBe(1);
+      expect(lines.at(-1)).toBe(`ERR Port ${blocker.port} is already in use. Stop the other process or set PORT.`);
+    } finally {
+      await blocker.stop(true);
+    }
   });
 });

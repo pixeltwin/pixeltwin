@@ -4,13 +4,14 @@ import { randomBase62 } from './domain/auth/random';
 import { setPasswordByEmail } from './domain/auth/users';
 import { AppError } from './errors';
 import { createLogger } from './log';
-import { startServer } from './server';
+import { type RunningServer, startServer } from './server';
 
 const USAGE = `Usage: pixeltwin <command>
 
 Commands:
   serve                          Start the server (default)
   migrate                        Apply database migrations and exit
+  healthcheck                    Exit 0 when the server on PORT answers /healthz (for Docker)
   admin reset-password <email>   Give a user a new random password and print it
 
 Configuration comes from environment variables; see the README.`;
@@ -50,7 +51,16 @@ export async function main(
   try {
     switch (command) {
       case 'serve': {
-        const server = await startServer(config, createLogger(config.logLevel));
+        let server: RunningServer;
+        try {
+          server = await startServer(config, createLogger(config.logLevel));
+        } catch (err) {
+          if ((err as { code?: unknown }).code === 'EADDRINUSE') {
+            out.error(`Port ${config.port} is already in use. Stop the other process or set PORT.`);
+            return 1;
+          }
+          throw err;
+        }
         const shutdown = async () => {
           await server.stop();
           process.exit(0);
@@ -58,6 +68,16 @@ export async function main(
         process.once('SIGINT', shutdown);
         process.once('SIGTERM', shutdown);
         return null;
+      }
+      case 'healthcheck': {
+        try {
+          const res = await fetch(`http://127.0.0.1:${config.port}/healthz`, { signal: AbortSignal.timeout(3000) });
+          out.log(res.ok ? 'ok' : `unhealthy: HTTP ${res.status}`);
+          return res.ok ? 0 : 1;
+        } catch (err) {
+          out.error(`unhealthy: ${err instanceof Error ? err.message : String(err)}`);
+          return 1;
+        }
       }
       case 'migrate': {
         const applied = await withDatabase(config, (h) => migrateToLatest(h.db));
@@ -86,6 +106,12 @@ export async function main(
 }
 
 if (import.meta.main) {
-  const code = await main(Bun.argv.slice(2));
-  if (code !== null) process.exit(code);
+  try {
+    const code = await main(Bun.argv.slice(2));
+    if (code !== null) process.exit(code);
+  } catch (err) {
+    // A short message, not a stack trace over minified source from the compiled binary.
+    console.error(`pixeltwin: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 }

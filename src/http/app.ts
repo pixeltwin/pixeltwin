@@ -38,7 +38,9 @@ function requestContext(services: Services): MiddlewareHandler<AppEnv> {
     await next();
     c.res.headers.set('x-request-id', requestId);
     c.res.headers.set('x-content-type-options', 'nosniff');
-    services.logger.info('request', {
+    // Health probes hit every few seconds; at info they would bury real traffic.
+    const log = c.req.path === '/healthz' ? services.logger.debug : services.logger.info;
+    log('request', {
       requestId,
       method: c.req.method,
       path: c.req.path,

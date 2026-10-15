@@ -7,6 +7,7 @@ on:
 
 jobs:
   check:
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +20,7 @@ jobs:
       - run: bun test
 
   test-postgres:
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -42,3 +44,37 @@ jobs:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
       - run: bun test
+
+  smoke:
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/build.ts linux-x64
+      - run: bun scripts/smoke.ts dist/pixeltwin-*-linux-x64
+
+  docker:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: docker build -t pixeltwin:ci .
+      - name: Start the container
+        run: |
+          docker run -d --name pixeltwin -e PUBLIC_URL=http://localhost:8080 -p 8080:8080 pixeltwin:ci
+          for _ in $(seq 1 30); do curl -fs localhost:8080/healthz && break; sleep 1; done
+      - name: Smoke test the container
+        run: |
+          token=$(docker logs pixeltwin 2>&1 | grep -o '"setupToken":"[^"]*"' | cut -d'"' -f4)
+          bun scripts/smoke.ts --url http://localhost:8080 --token "$token"
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs pixeltwin

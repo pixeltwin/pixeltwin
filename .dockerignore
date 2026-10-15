@@ -1,0 +1,10 @@
+node_modules
+data
+dist
+.git
+.github
+.superpowers
+docs
+test
+scripts
+*.md

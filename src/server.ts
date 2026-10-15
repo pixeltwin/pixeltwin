@@ -3,6 +3,7 @@ import { migrateToLatest, openDatabase } from './db/database';
 import { DiffPool } from './diff/pool';
 import { SetupState } from './domain/auth/setup';
 import type { Deps } from './domain/deps';
+import { startRetentionJob } from './domain/retention-job';
 import { createApp } from './http/app';
 import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
@@ -38,6 +39,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     // Upper bound before the app's own per-route limits apply.
     maxRequestBodySize: Math.ceil(config.maxImageBytes / 3) * 4 + 1024 * 1024,
   });
+  const retention = startRetentionJob({ deps, handle, logger });
   const url = server.url.href.replace(/\/$/, '');
   logger.info('listening', { url, publicUrl: config.publicUrl, database: handle.kind, dataDir: config.dataDir });
   if (token) {
@@ -53,6 +55,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     setupToken: token,
     async stop() {
       await server.stop(true);
+      await retention.stop();
       await pool.close();
       await handle.close();
     },
