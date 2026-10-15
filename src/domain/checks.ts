@@ -315,3 +315,16 @@ export async function checkNeighbors(
     nextPending: pendingAfter?.id ?? pendingFirst?.id ?? null,
   };
 }
+
+/** The build's first check waiting for review, in posting order; null when none waits. */
+export async function firstPendingCheckId(deps: Pick<Deps, 'db'>, buildId: string): Promise<string | null> {
+  const row = await deps.db
+    .selectFrom('checks')
+    .select('id')
+    .where('buildId', '=', buildId)
+    .where('review', '=', 'pending')
+    .orderBy('id')
+    .limit(1)
+    .executeTakeFirst();
+  return row?.id ?? null;
+}

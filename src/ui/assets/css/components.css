@@ -440,16 +440,29 @@ td select {
   table.stack-on-phone thead {
     display: none;
   }
+  /* Each row becomes a card whose cells flow like words; empty cells disappear. */
   table.stack-on-phone tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
     padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
   }
   table.stack-on-phone td {
-    padding: var(--space-1) 0;
+    padding: 0;
     border: 0;
+  }
+  table.stack-on-phone td.empty-on-phone {
+    display: none;
   }
   table:not(.stack-on-phone) {
     display: block;
     overflow-x: auto;
   }
+}
+.status {
+  display: inline-flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
 }

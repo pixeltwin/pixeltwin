@@ -1,0 +1,224 @@
+/* Projects, branch lanes, all builds, onboarding (UI spec §4.2, §4.5). */
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+.project-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  transition:
+    border-color var(--duration),
+    box-shadow var(--duration);
+}
+.project-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.04);
+  text-decoration: none;
+}
+.project-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.project-name {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+/* Branch lanes. */
+.lanes {
+  display: grid;
+  gap: var(--space-3);
+}
+.lane {
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.lane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.lane-branch {
+  color: var(--text);
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+.lane-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.lane-meta a {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.lane-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+.history {
+  display: flex;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.square {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--grey-dot);
+}
+.square.tone-green {
+  background: var(--green-dot);
+}
+.square.tone-amber {
+  background: var(--amber-dot);
+}
+.square.tone-blue {
+  background: var(--blue-dot);
+}
+.square.tone-red {
+  background: var(--red-dot);
+}
+.square:hover {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+/* All builds. */
+.filter-bar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.filter-bar select {
+  min-width: 220px;
+}
+.build-id {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Onboarding. */
+.onboarding h2 {
+  margin-top: 0;
+}
+.steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.step {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.step-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.step.done .step-mark {
+  background: var(--green-dot);
+  color: #fff;
+}
+.step-body {
+  flex: 1;
+  min-width: 0;
+}
+.step-body h3 {
+  margin-bottom: var(--space-2);
+}
+.step-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Snippet tabs: radio inputs, so they switch without JavaScript. */
+.snippet-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+}
+.snippet-tabs > label {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.snippet-tabs > input:checked + label {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.snippet-tabs > input:focus-visible + label {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.snippet {
+  display: none;
+  position: relative;
+  flex-basis: 100%;
+  margin-top: var(--space-2);
+}
+#snippet-tab-playwright:checked ~ .snippet-playwright,
+#snippet-tab-curl:checked ~ .snippet-curl,
+#snippet-tab-agent:checked ~ .snippet-agent {
+  display: block;
+}
+.snippet pre {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: #111111;
+  color: #e6e6e6;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+.snippet button {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
