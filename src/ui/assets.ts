@@ -10,8 +10,10 @@ export const APP_JS: string = js;
 
 const version = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);
 
+export const ASSET_VERSIONS = { css: version(APP_CSS), js: version(APP_JS) };
+
 /** Content-hashed URLs: a new release changes the URL, so assets can be cached forever. */
 export const ASSET_PATHS = {
-  css: `/ui/assets/app.css?v=${version(APP_CSS)}`,
-  js: `/ui/assets/app.js?v=${version(APP_JS)}`,
+  css: `/ui/assets/app.css?v=${ASSET_VERSIONS.css}`,
+  js: `/ui/assets/app.js?v=${ASSET_VERSIONS.js}`,
 };

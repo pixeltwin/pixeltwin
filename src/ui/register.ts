@@ -1,6 +1,7 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
+import type { Context } from 'hono';
 import type { AppEnv, Services } from '../http/env';
-import { APP_CSS, APP_JS } from './assets';
+import { APP_CSS, APP_JS, ASSET_VERSIONS } from './assets';
 import { registerAdminPages } from './pages/admin';
 import { registerAuthPages } from './pages/auth';
 import { registerBuildPages } from './pages/build';
@@ -16,14 +17,15 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
   app.use('/ui', uiSession(s));
   app.use('/ui/*', uiSession(s));
 
-  const asset = (body: string, type: string) => ({
-    body,
-    headers: { 'content-type': type, 'cache-control': 'public, max-age=31536000, immutable' },
-  });
-  const css = asset(APP_CSS, 'text/css; charset=utf-8');
-  const js = asset(APP_JS, 'text/javascript; charset=utf-8');
-  app.get('/ui/assets/app.css', (c) => c.body(css.body, 200, css.headers));
-  app.get('/ui/assets/app.js', (c) => c.body(js.body, 200, js.headers));
+  // Only the current content hash may be cached forever. Another `v` (an older or newer replica
+  // during a rolling upgrade) gets the current file uncached, so no cache keeps a mismatch.
+  const asset = (body: string, type: string, version: string) => (c: Context) =>
+    c.body(body, 200, {
+      'content-type': type,
+      'cache-control': c.req.query('v') === version ? 'public, max-age=31536000, immutable' : 'no-store',
+    });
+  app.get('/ui/assets/app.css', asset(APP_CSS, 'text/css; charset=utf-8', ASSET_VERSIONS.css));
+  app.get('/ui/assets/app.js', asset(APP_JS, 'text/javascript; charset=utf-8', ASSET_VERSIONS.js));
 
   registerAuthPages(app, s);
   registerProjectPages(app, s);

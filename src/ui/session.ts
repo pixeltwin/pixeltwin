@@ -19,6 +19,8 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
   const allowedOrigin = new URL(s.config.publicUrl).origin;
   const base = new URL(s.config.publicUrl).pathname.replace(/\/+$/, '');
   return async (c, next) => {
+    // Assets are public and cacheable: never resolve a session (or refresh its cookie) for them.
+    if (c.req.path.startsWith('/ui/assets/')) return next();
     c.set('principal', null);
     c.set('authVia', null);
     c.set('sessionToken', null);

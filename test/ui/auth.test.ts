@@ -117,6 +117,28 @@ describe('UI authentication', () => {
     expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
   });
 
+  test('asset responses never carry the session cookie, even when the session is due for refresh', async () => {
+    t = await createTestApp();
+    const admin = await t.userAs('admin');
+    await t.deps.db
+      .updateTable('sessions')
+      .set({ expiresAt: Date.now() + 13 * 24 * 60 * 60 * 1000 })
+      .execute();
+    const page = await html(await t.request('GET', '/ui/login'));
+    const css = /href="(\/ui\/assets\/app\.css\?v=[0-9a-f]{12})"/.exec(page)?.[1] ?? '';
+    const res = await t.request('GET', css, { as: admin });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
+  test('only the current asset version is cached as immutable', async () => {
+    t = await createTestApp();
+    for (const path of ['/ui/assets/app.css?v=deadbeef0000', '/ui/assets/app.css', '/ui/assets/app.js?v=0']) {
+      const res = await t.request('GET', path);
+      expect({ path, cache: res.headers.get('cache-control') }).toEqual({ path, cache: 'no-store' });
+    }
+  });
+
   test('project tokens do not open the UI', async () => {
     t = await createTestApp();
     await createProject(t.deps, { slug: 'web', name: 'Web' });
