@@ -94,7 +94,7 @@ export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void 
     responses: { 204: { description: 'Password changed' }, ...problems(401, 403, 422) },
   });
   app.openapi(password, async (c) => {
-    await changePassword(s.deps, principalOf(c).id, c.req.valid('json'));
+    await changePassword(s.deps, principalOf(c).id, c.req.valid('json'), c.get('sessionToken'));
     return c.body(null, 204);
   });
 }

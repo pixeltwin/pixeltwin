@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createSession, deleteSession, resolveSession, SESSION_TTL_MS } from '../../../src/domain/auth/sessions';
-import { createUser, deleteUser } from '../../../src/domain/auth/users';
+import { changePassword, createUser, deleteUser, setPasswordByEmail } from '../../../src/domain/auth/users';
 import { createTestDeps, type TestDeps } from '../../helpers/deps';
 
 describe('sessions', () => {
@@ -54,5 +54,24 @@ describe('sessions', () => {
     const { token } = await createSession(deps, userId);
     await deleteUser(deps, userId);
     expect(await resolveSession(deps, token)).toBeNull();
+  });
+
+  test('changing the password ends every other session of that user', async () => {
+    const current = await createSession(deps, userId);
+    const other = await createSession(deps, userId);
+    await changePassword(
+      deps,
+      userId,
+      { currentPassword: 'correct horse battery', newPassword: 'a brand new password' },
+      current.token,
+    );
+    expect(await resolveSession(deps, current.token)).not.toBeNull();
+    expect(await resolveSession(deps, other.token)).toBeNull();
+  });
+
+  test('an admin password reset ends all sessions of that user', async () => {
+    const stolen = await createSession(deps, userId);
+    await setPasswordByEmail(deps, 'ada@example.com', 'a brand new password');
+    expect(await resolveSession(deps, stolen.token)).toBeNull();
   });
 });

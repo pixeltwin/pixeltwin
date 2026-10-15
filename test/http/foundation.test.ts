@@ -148,6 +148,22 @@ describe('auth routes', () => {
     });
   });
 
+  test('changing the password logs out the other sessions but keeps this one', async () => {
+    t = await createTestApp();
+    const mine = await t.userAs('viewer', 'ada@example.com');
+    const login = await t.request('POST', '/api/v1/auth/login', {
+      json: { email: 'ada@example.com', password: PASSWORD },
+    });
+    const other = /pt_session=([^;]+)/.exec(login.headers.get('set-cookie') ?? '')?.[1] ?? '';
+    const res = await t.request('PUT', '/api/v1/me/password', {
+      as: mine,
+      json: { currentPassword: PASSWORD, newPassword: 'another long password' },
+    });
+    expect(res.status).toBe(204);
+    expect((await t.request('GET', '/api/v1/me', { as: mine })).status).toBe(200);
+    expect((await t.request('GET', '/api/v1/me', { as: { cookie: other } })).status).toBe(401);
+  });
+
   test('changing the password requires the current one', async () => {
     t = await createTestApp();
     const { cookie } = await t.userAs('viewer', 'ada@example.com');

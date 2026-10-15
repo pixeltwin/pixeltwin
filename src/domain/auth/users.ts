@@ -7,6 +7,7 @@ import { newId } from '../../ids';
 import type { Deps } from '../deps';
 import { parseInput } from '../schemas';
 import { DUMMY_HASH, hashPassword, verifyPassword } from './password';
+import { sha256 } from './random';
 
 type DbDeps = Pick<Deps, 'db'>;
 
@@ -141,28 +142,38 @@ export async function authenticate(deps: DbDeps, email: string, password: string
   return user && ok ? user : null;
 }
 
-export async function changePassword(deps: DbDeps, userId: string, input: unknown): Promise<void> {
+/**
+ * Changes the password and ends the user's other sessions, so a stolen cookie stops working.
+ * `keepSessionToken` is the caller's own session cookie, which stays valid.
+ */
+export async function changePassword(
+  deps: DbDeps,
+  userId: string,
+  input: unknown,
+  keepSessionToken?: string | null,
+): Promise<void> {
   const { currentPassword, newPassword } = parseInput(changePasswordSchema, input);
   const user = await getUserRow(deps, userId);
   if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     throw new AppError('invalid_current_password', 403, 'The current password is wrong.');
   }
-  await deps.db
-    .updateTable('users')
-    .set({ passwordHash: await hashPassword(newPassword) })
-    .where('id', '=', userId)
-    .execute();
+  const passwordHash = await hashPassword(newPassword);
+  await deps.db.transaction().execute(async (tx) => {
+    await tx.updateTable('users').set({ passwordHash }).where('id', '=', userId).execute();
+    let others = tx.deleteFrom('sessions').where('userId', '=', userId);
+    if (keepSessionToken) others = others.where('tokenHash', '!=', sha256(keepSessionToken));
+    await others.execute();
+  });
 }
 
-/** For the `admin reset-password` command. */
+/** For the `admin reset-password` command: a recovery tool, so it also ends all of the user's sessions. */
 export async function setPasswordByEmail(deps: DbDeps, email: string, password: string): Promise<void> {
   const parsed = parseInput(z.strictObject({ email: emailSchema, password: passwordSchema }), { email, password });
-  const result = await deps.db
-    .updateTable('users')
-    .set({ passwordHash: await hashPassword(parsed.password) })
-    .where('email', '=', parsed.email)
-    .executeTakeFirst();
-  if (Number(result.numUpdatedRows) === 0) {
-    throw new AppError('user_not_found', 404, `User ${parsed.email} not found.`);
-  }
+  const passwordHash = await hashPassword(parsed.password);
+  await deps.db.transaction().execute(async (tx) => {
+    const user = await tx.selectFrom('users').select('id').where('email', '=', parsed.email).executeTakeFirst();
+    if (!user) throw new AppError('user_not_found', 404, `User ${parsed.email} not found.`);
+    await tx.updateTable('users').set({ passwordHash }).where('id', '=', user.id).execute();
+    await tx.deleteFrom('sessions').where('userId', '=', user.id).execute();
+  });
 }
