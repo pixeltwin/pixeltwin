@@ -2,8 +2,8 @@
 
 Self-hosted visual regression testing with an API built for CI and AI agents.
 
-> Status: early development. The engine and the HTTP API work; the web UI and release builds
-> are in progress. See `docs/superpowers/specs/`.
+> Status: early development. The engine, the HTTP API and the review UI work; release builds
+> (binaries, Docker image) are in progress. See `docs/superpowers/specs/`.
 
 ## Run it
 
@@ -14,14 +14,15 @@ bun install
 bun src/main.ts serve        # http://localhost:8080, data in ./data (SQLite + images)
 ```
 
-On first start the log prints a setup token. Create the first admin with it:
+On first start the log prints a setup link (`setupUrl`). Open it to create the first admin in the
+browser; then review screenshots at http://localhost:8080/ui. Or use the API with the setup token:
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/setup -H 'content-type: application/json' \
   -d '{"token":"<setup token>","email":"you@example.com","password":"at least 10 characters"}'
 ```
 
-Then log in, create a project and a token for CI (or use the API reference at `/docs`):
+Admins create projects, users and CI tokens in the UI. Over the API it looks like this (reference at `/docs`):
 
 ```sh
 curl -c cookies -X POST http://localhost:8080/api/v1/auth/login -H 'content-type: application/json' \
