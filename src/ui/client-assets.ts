@@ -15,6 +15,8 @@ import keymap from './client/keymap.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import keys from './client/keys.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import queue from './client/queue.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import review from './client/review.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import theme from './client/theme.ts' with { type: 'text' };
@@ -32,6 +34,7 @@ const SOURCES: Record<string, string> = {
   dialog,
   keymap,
   keys,
+  queue,
   review,
   theme,
   toast,

@@ -265,6 +265,7 @@ function Filmstrip(props: {
                 href={ui.url(`/ui/checks/${c.id}?filter=${filter.key}`)}
                 aria-current={c.id === current ? 'true' : undefined}
                 data-frame={c.id}
+                data-review={c.review}
               >
                 <img
                   src={ui.url(`/api/v1/images/${sha}`)}
@@ -321,7 +322,15 @@ function CheckPage(props: {
         { label: check.name },
       ]}
     >
-      <div class="review" id="review" data-check={check.id} data-build={build.id} data-filter={filter.key}>
+      <div
+        class="review"
+        id="review"
+        data-check={check.id}
+        data-build={build.id}
+        data-build-number={String(build.number)}
+        data-project-href={ui.url(`/ui/p/${project.slug}`)}
+        data-filter={filter.key}
+      >
         <header class="review-head">
           <a class="button ghost small" href={buildHref} data-key="escape" data-key-label="Back to the build">
             {`← #${build.number}`}

@@ -45,6 +45,8 @@ describe('UI focus mode', () => {
     const { buildId, changed } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}?filter=pending`);
     expect(body).toContain('data-islands="review"');
+    expect(body).toContain('data-build-number="1"');
+    expect(body).toContain('data-project-href="/ui/p/web"');
     expect(body).toContain(`href="/ui/builds/${buildId}?filter=pending"`);
     expect(body).toContain('<a href="/ui/p/web">Web shop</a>');
     expect(body).toContain('>#1</a>');
@@ -58,6 +60,8 @@ describe('UI focus mode', () => {
     expect(body).toContain(`href="/ui/checks/${changed.id}?filter=pending" aria-current="true"`);
     expect(body).toContain(`href="/ui/checks/${fresh.id}?filter=pending"`);
     expect(body).not.toContain(`/ui/checks/${same.id}`);
+    // The review island reads each frame's state to find the next waiting check.
+    expect(body).toContain(`data-frame="${changed.id}" data-review="pending"`);
     // Without a filter the strip holds what waits for review.
     expect(await page(`/ui/checks/${changed.id}`)).toContain('<span class="review-position">1 / 2</span>');
     expect(await page(`/ui/checks/${changed.id}?filter=all`)).toContain('<span class="review-position">1 / 3</span>');

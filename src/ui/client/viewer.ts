@@ -81,6 +81,7 @@ export function mountViewer(root: HTMLElement): () => void {
     if (zoomLabel) zoomLabel.textContent = fit ? 'Fit' : `${Math.round(view.scale * 100)}%`;
     // Above 100 % every screenshot pixel becomes a crisp block, so single-pixel changes are visible.
     stage?.classList.toggle('magnified', view.scale > 1);
+    if (stage) stage.dataset.zoom = fit ? 'fit' : 'free';
     if (top) {
       top.style.clipPath = mode === 'slider' ? `inset(0 0 0 ${split * 100}%)` : 'none';
       top.style.opacity = mode === 'onion' ? String(Number(onion?.value ?? 50) / 100) : '1';
