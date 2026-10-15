@@ -60,3 +60,15 @@ export async function storeImage(
 export function loadImage(deps: Pick<Deps, 'storage'>, sha: string): Promise<Uint8Array | null> {
   return deps.storage.get(imageKey(sha));
 }
+
+/** Stored dimensions of the given images; unknown shas are absent from the map. */
+export async function imageSizes(deps: Pick<Deps, 'db'>, shas: string[]): Promise<Map<string, PngSize>> {
+  const wanted = [...new Set(shas)];
+  if (wanted.length === 0) return new Map();
+  const rows = await deps.db
+    .selectFrom('images')
+    .select(['sha', 'width', 'height'])
+    .where('sha', 'in', wanted)
+    .execute();
+  return new Map(rows.map((r) => [r.sha, { width: r.width, height: r.height }]));
+}

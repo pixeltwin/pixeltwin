@@ -284,3 +284,34 @@ export async function submitCheck(
     .executeTakeFirstOrThrow();
   return { check: toCheckView(row), created };
 }
+
+export interface CheckNeighbors {
+  previous: string | null;
+  next: string | null;
+  /** The next check awaiting review after this one, wrapping around; null when none is left. */
+  nextPending: string | null;
+}
+
+/** Navigation within a build, in the order `listChecks` uses (oldest first). */
+export async function checkNeighbors(
+  deps: Pick<Deps, 'db'>,
+  check: { id: string; buildId: string },
+): Promise<CheckNeighbors> {
+  const inBuild = deps.db.selectFrom('checks').select('id').where('buildId', '=', check.buildId);
+  const [previous, next, pendingAfter, pendingFirst] = await Promise.all([
+    inBuild.where('id', '<', check.id).orderBy('id', 'desc').limit(1).executeTakeFirst(),
+    inBuild.where('id', '>', check.id).orderBy('id', 'asc').limit(1).executeTakeFirst(),
+    inBuild.where('id', '>', check.id).where('review', '=', 'pending').orderBy('id', 'asc').limit(1).executeTakeFirst(),
+    inBuild
+      .where('id', '!=', check.id)
+      .where('review', '=', 'pending')
+      .orderBy('id', 'asc')
+      .limit(1)
+      .executeTakeFirst(),
+  ]);
+  return {
+    previous: previous?.id ?? null,
+    next: next?.id ?? null,
+    nextPending: pendingAfter?.id ?? pendingFirst?.id ?? null,
+  };
+}
