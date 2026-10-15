@@ -57,6 +57,24 @@ describe('review, baseline, promotion and image routes', () => {
     expect(await problemOf(again)).toMatchObject({ status: 409, code: 'check_not_reviewable' });
   });
 
+  test('reset undoes a review; it needs the review permission', async () => {
+    const reviewerToken = await t.tokenAs('web', ['read', 'review']);
+    const { check: first } = await check('main', white);
+    await t.request('POST', `/api/v1/checks/${first.id}/approve`, { as: reviewerToken });
+    const reset = await t.request('POST', `/api/v1/checks/${first.id}/reset`, { as: reviewerToken });
+    expect(reset.status).toBe(200);
+    expect(await reset.json()).toMatchObject({ id: first.id, review: 'pending', reviewedBy: null });
+    expect(
+      await problemOf(await t.request('POST', `/api/v1/checks/${first.id}/reset`, { as: reviewerToken })),
+    ).toMatchObject({
+      status: 409,
+      code: 'check_not_reviewable',
+    });
+    expect((await t.request('POST', `/api/v1/checks/${first.id}/reset`, { as: ci })).status).toBe(403);
+    const doc = (await (await t.request('GET', '/openapi.json')).json()) as { paths: Record<string, unknown> };
+    expect(doc.paths['/api/v1/checks/{id}/reset']).toBeDefined();
+  });
+
   test('a write-only token cannot review', async () => {
     const { check: c } = await check('main', white);
     expect(await problemOf(await t.request('POST', `/api/v1/checks/${c.id}/approve`, { as: ci }))).toMatchObject({

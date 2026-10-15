@@ -5,7 +5,7 @@ import { hasPermission } from '../../domain/auth/policy';
 import { type CheckNeighbors, type CheckView, checkNeighbors, getCheck } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
-import { approveCheck, rejectCheck } from '../../domain/reviews';
+import { approveCheck, rejectCheck, resetReview } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { Badge, Variant, When } from '../components';
@@ -243,4 +243,13 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       );
     });
   }
+
+  app.post('/ui/checks/:id/reset', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
+    }
+    const check = await resetReview(s.deps, c.req.param('id'));
+    return c.redirect(ui.url(`/ui/checks/${check.id}?done=reset`), 303);
+  });
 }

@@ -1,7 +1,7 @@
 import type { Db } from '../db/database';
 import type { CheckReview } from '../db/schema';
 import { AppError } from '../errors';
-import { appendBaseline } from './baselines';
+import { appendBaseline, findCurrentBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import { type CheckView, getCheck } from './checks';
 import type { Deps } from './deps';
@@ -91,6 +91,47 @@ export async function rejectCheck(
     .where('review', '=', 'pending')
     .executeTakeFirst();
   if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(deps.db, checkId, ['pending']);
+  return getCheck(deps, checkId);
+}
+
+const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
+
+/**
+ * UI spec §3.5, undo: returns an approved or rejected check to pending. Undoing an approval also
+ * deletes the baseline it appended, but only while that baseline is still the current one for
+ * its snapshot and branch; otherwise a later approval or a promotion builds on it, and the call
+ * fails with 409 review_not_resettable. Allowed on finalized builds, like approve.
+ */
+export async function resetReview(deps: DbDeps, checkId: string): Promise<CheckView> {
+  await deps.db.transaction().execute(async (tx) => {
+    const check = await tx
+      .selectFrom('checks')
+      .innerJoin('builds', 'builds.id', 'checks.buildId')
+      .select(['checks.review', 'checks.projectId', 'checks.snapshotKey', 'builds.branch'])
+      .where('checks.id', '=', checkId)
+      .executeTakeFirst();
+    if (!check || !RESETTABLE.includes(check.review)) throw await notReviewable(tx, checkId, RESETTABLE);
+
+    if (check.review === 'approved') {
+      const current = await findCurrentBaseline(tx, check.projectId, check.snapshotKey, check.branch);
+      if (current?.sourceCheckId !== checkId) {
+        throw new AppError(
+          'review_not_resettable',
+          409,
+          `A newer baseline replaced the one check ${checkId} approved, so the approval cannot be undone.`,
+        );
+      }
+      await tx.deleteFrom('baselines').where('id', '=', current.id).execute();
+    }
+    const updated = await tx
+      .updateTable('checks')
+      .set({ review: 'pending', reviewedBy: null, reviewedAt: null, reviewComment: null, updatedAt: Date.now() })
+      .where('id', '=', checkId)
+      .where('review', '=', check.review)
+      .executeTakeFirst();
+    // A concurrent reset or review changed the state since the read above; the transaction rolls back.
+    if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, RESETTABLE);
+  });
   return getCheck(deps, checkId);
 }
 

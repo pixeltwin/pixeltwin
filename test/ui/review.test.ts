@@ -84,6 +84,17 @@ describe('UI review flow', () => {
     expect((await getCheck(t.deps, changed.id)).review).toBe('pending');
   });
 
+  test('a review can be undone from the check page without JavaScript', async () => {
+    const { changed } = await seedBuild();
+    await postForm(t, `/ui/checks/${changed.id}/approve`, {}, reviewer);
+    const res = await postForm(t, `/ui/checks/${changed.id}/reset`, {}, reviewer);
+    expect(res.status).toBe(303);
+    expect(location(res)).toBe(`/ui/checks/${changed.id}?done=reset`);
+    expect((await getCheck(t.deps, changed.id)).review).toBe('pending');
+    expect(await html(await t.request('GET', location(res), { as: reviewer }))).toContain('Review undone.');
+    expect((await postForm(t, `/ui/checks/${changed.id}/reset`, {}, viewer)).status).toBe(403);
+  });
+
   test('reviewing an already reviewed check shows a clear error page', async () => {
     const { same } = await seedBuild();
     const res = await postForm(t, `/ui/checks/${same.id}/approve`, {}, reviewer);

@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
 import { getBuildRow } from '../../domain/builds';
 import { type CheckView, getCheck, listChecks, submitCheck } from '../../domain/checks';
-import { approveCheck, rejectCheck } from '../../domain/reviews';
+import { approveCheck, rejectCheck, resetReview } from '../../domain/reviews';
 import { checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
@@ -174,4 +174,19 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       return c.json(withLinks(await review(s.deps, id, principalOf(c).id, input)), 200);
     });
   }
+
+  const reset = defineRoute('check.review', {
+    method: 'post',
+    path: `${API}/checks/{id}/reset`,
+    tags: ['reviews'],
+    summary:
+      'Undo a review: back to pending. Undoing an approval removes the baseline it created, unless a newer one replaced it (409 review_not_resettable)',
+    request: { params: idParam },
+    responses: { 200: json(CheckSchema, 'The check, pending again'), ...problems(401, 403, 404, 409) },
+  });
+  app.openapi(reset, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    return c.json(withLinks(await resetReview(s.deps, id)), 200);
+  });
 }

@@ -68,6 +68,7 @@ export const NOTICES: Record<string, string> = {
   welcome: 'Welcome! Your admin account is ready. Create a project to start.',
   approved: 'Approved.',
   rejected: 'Rejected.',
+  reset: 'Review undone.',
   'approved-all': 'All pending checks approved.',
   'project-created': 'Project created.',
   'project-saved': 'Settings saved.',

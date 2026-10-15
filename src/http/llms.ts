@@ -42,7 +42,7 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
    curl -X POST ${api}/builds/<buildId>/finalize -H "Authorization: Bearer $PIXELTWIN_TOKEN"
 
 5. Act on \`verdict\`. Only \`passed\` is success. Changes wait for a human (or a token with the
-   \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject.
+   \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject. /reset undoes either.
 
 ## Values
 
