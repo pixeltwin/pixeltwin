@@ -5,12 +5,13 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   binaries:
     timeout-minutes: 30
+    permissions:
+      contents: write # create the GitHub release
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +41,9 @@ jobs:
   image:
     needs: binaries
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write # push to GHCR
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

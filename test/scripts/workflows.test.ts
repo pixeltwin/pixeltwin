@@ -23,3 +23,16 @@ describe.each(['ci.yml', 'release.yml'])('%s', (name) => {
     }
   });
 });
+
+describe('release.yml permissions', () => {
+  const release = workflow('release.yml');
+
+  test('the workflow default is read-only', () => {
+    expect(release.permissions).toEqual({ contents: 'read' });
+  });
+
+  test('each job gets only the write access it uses', () => {
+    expect(release.jobs.binaries?.permissions).toEqual({ contents: 'write' });
+    expect(release.jobs.image?.permissions).toEqual({ contents: 'read', packages: 'write' });
+  });
+});
