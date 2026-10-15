@@ -16,7 +16,8 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 
 ## Workflow (five calls)
 
-1. Open a build. Reuse \`externalId\` on retries; the same build comes back.
+1. Open a build. Reuse \`externalId\` on retries; the same build comes back. Its \`number\`
+   counts builds per project (#1, #2, …), as the web UI shows them.
 
    curl -X POST ${api}/projects/<slug>/builds \\
      -H "Authorization: Bearer $PIXELTWIN_TOKEN" -H "Content-Type: application/json" \\

@@ -64,6 +64,7 @@ describe('projects', () => {
       .values({
         id: newId('bld'),
         projectId: project.id,
+        number: 1,
         branch: 'main',
         baseBranch: 'main',
         externalId: null,

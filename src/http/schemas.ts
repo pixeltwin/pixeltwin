@@ -57,6 +57,7 @@ export const BuildSchema = z
   .object({
     id: z.string(),
     projectId: z.string(),
+    number: z.number().int().openapi({ description: 'Sequential per project: #1, #2, …' }),
     branch: z.string(),
     baseBranch: z.string(),
     externalId: z.string().nullable(),

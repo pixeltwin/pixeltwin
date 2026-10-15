@@ -77,19 +77,32 @@ export async function createBuild(
     if (existing) return { build: await getBuild(deps, existing.id), created: false };
   }
 
-  const build: Build = {
-    id: newId('bld'),
-    projectId: project.id,
-    branch: data.branch ?? project.mainBranch,
-    baseBranch: data.baseBranch ?? project.mainBranch,
-    externalId: data.externalId ?? null,
-    commitSha: data.commitSha ?? null,
-    state: 'open',
-    createdAt: Date.now(),
-    finalizedAt: null,
-  };
+  let build: Build;
   try {
-    await deps.db.insertInto('builds').values(build).execute();
+    // Taking the next number locks the project row, so concurrent creates get distinct numbers;
+    // a create that loses an externalId race rolls back and leaves no gap.
+    build = await deps.db.transaction().execute(async (tx) => {
+      const { buildSeq } = await tx
+        .updateTable('projects')
+        .set((eb) => ({ buildSeq: eb('buildSeq', '+', 1) }))
+        .where('id', '=', project.id)
+        .returning('buildSeq')
+        .executeTakeFirstOrThrow();
+      const row: Build = {
+        id: newId('bld'),
+        projectId: project.id,
+        number: buildSeq,
+        branch: data.branch ?? project.mainBranch,
+        baseBranch: data.baseBranch ?? project.mainBranch,
+        externalId: data.externalId ?? null,
+        commitSha: data.commitSha ?? null,
+        state: 'open',
+        createdAt: Date.now(),
+        finalizedAt: null,
+      };
+      await tx.insertInto('builds').values(row).execute();
+      return row;
+    });
   } catch (err) {
     // A concurrent request with the same externalId won the race.
     if (data.externalId && isUniqueViolation(err)) {

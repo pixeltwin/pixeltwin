@@ -278,6 +278,10 @@
           "projectId": {
             "type": "string"
           },
+          "number": {
+            "type": "integer",
+            "description": "Sequential per project: #1, #2, …"
+          },
           "branch": {
             "type": "string"
           },
@@ -385,6 +389,7 @@
         "required": [
           "id",
           "projectId",
+          "number",
           "branch",
           "baseBranch",
           "externalId",

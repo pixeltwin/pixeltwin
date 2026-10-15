@@ -19,9 +19,11 @@ const project = (id: string, slug: string) => ({
   updatedAt: now,
 });
 
+// `bld_3` gets number 3: numbers are unique per project.
 const build = (id: string, projectId: string, externalId: string | null = null) => ({
   id,
   projectId,
+  number: Number(id.slice('bld_'.length)),
   branch: 'main',
   baseBranch: 'main',
   externalId,
@@ -49,7 +51,7 @@ describe('database', () => {
   test('round-trips camelCase columns, numbers and epoch-ms timestamps', async () => {
     await handle.db.insertInto('projects').values(project('prj_1', 'web')).execute();
     const row = await handle.db.selectFrom('projects').selectAll().executeTakeFirstOrThrow();
-    expect(row).toEqual(project('prj_1', 'web'));
+    expect(row).toEqual({ ...project('prj_1', 'web'), buildSeq: 0 });
     expect(typeof row.createdAt).toBe('number');
   });
 
@@ -103,7 +105,7 @@ describe('openDatabase', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pixeltwin-'));
     try {
       const handle = openDatabase(`sqlite:${join(dir, 'nested', 'pixeltwin.db')}`);
-      expect(await migrateToLatest(handle.db)).toEqual(['0001_init', '0002_retention_indexes']);
+      expect(await migrateToLatest(handle.db)).toEqual(['0001_init', '0002_retention_indexes', '0003_build_numbers']);
       await handle.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

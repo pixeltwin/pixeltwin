@@ -1,4 +1,4 @@
-import type { Selectable } from 'kysely';
+import type { Generated, Selectable } from 'kysely';
 
 export const BUILD_STATES = ['open', 'finalized'] as const;
 export const CHECK_RESULTS = ['unchanged', 'changed', 'new', 'error'] as const;
@@ -20,6 +20,8 @@ export interface ProjectsTable {
   colorThreshold: number;
   tolerancePercent: number;
   retentionDays: number;
+  /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
+  buildSeq: Generated<number>;
   createdAt: number;
   updatedAt: number;
 }
@@ -35,6 +37,8 @@ export interface ImagesTable {
 export interface BuildsTable {
   id: string;
   projectId: string;
+  /** Sequential per project: #1, #2, … */
+  number: number;
   branch: string;
   baseBranch: string;
   externalId: string | null;
@@ -118,7 +122,7 @@ export interface DB {
   sessions: SessionsTable;
 }
 
-export type Project = Selectable<ProjectsTable>;
+export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq'>;
 export type Build = Selectable<BuildsTable>;
 export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;
