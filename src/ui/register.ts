@@ -2,6 +2,7 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { AppEnv, Services } from '../http/env';
 import { APP_CSS, APP_JS } from './assets';
 import { registerAuthPages } from './pages/auth';
+import { registerProjectPages } from './pages/projects';
 import { uiSession } from './session';
 
 /** Spec §8: the server-rendered UI under /ui. Errors on these paths render HTML (see app.ts). */
@@ -22,4 +23,5 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
   app.get('/ui/assets/app.js', (c) => c.body(js.body, 200, js.headers));
 
   registerAuthPages(app, s);
+  registerProjectPages(app, s);
 }
