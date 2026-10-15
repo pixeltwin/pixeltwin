@@ -93,13 +93,29 @@ describe('UI focus mode', () => {
     expect(body).not.toContain('style=');
   });
 
-  test('the info strip explains the change, lists regions and names the baseline branch', async () => {
-    const { changed } = await seedBuild();
+  test('the info strip lists regions and names the baseline branch, without the summary sentence', async () => {
+    const { changed, fresh } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}`);
-    expect(body).toContain('1 changed region; largest 10×10 at (10,10) in top-left');
+    expect(body).not.toContain('1 changed region; largest 10×10 at (10,10) in top-left');
+    expect(body).not.toContain('class="summary"');
     expect(body).toContain('1% changed');
     expect(body).toContain('data-region="10,10,10,10"');
     expect(body).toContain('(fallback: feature/cart has none yet)');
+    expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('New snapshot.</p>');
+  });
+
+  test('an error check still says what went wrong', async () => {
+    const { changed } = await seedBuild();
+    await t.deps.db
+      .updateTable('checks')
+      .set({
+        result: 'error',
+        diff: JSON.stringify({ error: { code: 'diff_timeout', message: 'The diff took too long.' } }),
+      })
+      .where('id', '=', changed.id)
+      .execute();
+    const body = await page(`/ui/checks/${changed.id}`);
+    expect(body).toContain('<p class="diff-error">The diff took too long.</p>');
   });
 
   test('reviewers get Approve, Reject and Skip, without a comment field; viewers get none of them', async () => {

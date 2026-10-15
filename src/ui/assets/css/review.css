@@ -289,8 +289,9 @@ body.focus main {
   background: var(--surface);
   font-size: var(--text-sm);
 }
-.review-info .summary {
-  font-size: var(--text-md);
+.review-info .diff-error {
+  margin-top: 0;
+  color: var(--red);
   font-weight: 500;
 }
 .facts {

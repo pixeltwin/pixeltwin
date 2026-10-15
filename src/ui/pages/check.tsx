@@ -177,7 +177,7 @@ function Info({ check, branch, reviewer }: { check: CheckView; branch: string; r
   const dims = diff?.dimensions;
   return (
     <aside class="review-info" aria-label="About this check">
-      <p class="summary">{diff?.summary ?? diffError?.message ?? (check.baseline ? 'No changes.' : 'New snapshot.')}</p>
+      {diffError && <p class="diff-error">{diffError.message}</p>}
       <div class="facts">
         {diff && <span>{`${diff.percent}% changed`}</span>}
         {check.baseline && (
