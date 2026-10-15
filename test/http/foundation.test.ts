@@ -48,6 +48,17 @@ describe('HTTP foundation', () => {
     expect(await problemOf(res)).toMatchObject({ status: 401, code: 'invalid_token' });
   });
 
+  test('other Authorization schemes (e.g. Basic from a proxy) are ignored, so the session cookie still works', async () => {
+    const { cookie } = await t.userAs('viewer');
+    const res = await t.request('GET', '/api/v1/me', {
+      as: { cookie },
+      headers: { authorization: 'Basic dXNlcjpwYXNz' },
+    });
+    expect(res.status).toBe(200);
+    const anonymous = await t.request('GET', '/api/v1/me', { headers: { authorization: 'Basic dXNlcjpwYXNz' } });
+    expect(await problemOf(anonymous)).toMatchObject({ status: 401, code: 'unauthenticated' });
+  });
+
   test('protected routes need credentials', async () => {
     expect(await problemOf(await t.request('GET', '/api/v1/me'))).toMatchObject({
       status: 401,

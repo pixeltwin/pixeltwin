@@ -10,7 +10,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
  * Resolves the caller: `Authorization: Bearer pt_…` (project token) or the session cookie.
- * A malformed or unknown bearer token is a 401 even on public routes, so typos surface early.
+ * A malformed or unknown Bearer token is a 401 even on public routes, so typos surface early.
  * Cookie-authenticated writes must come from PUBLIC_URL's origin (CSRF, spec §7.1).
  */
 export function authenticate(services: Services): MiddlewareHandler<AppEnv> {
@@ -20,12 +20,14 @@ export function authenticate(services: Services): MiddlewareHandler<AppEnv> {
     c.set('authVia', null);
     c.set('sessionToken', null);
 
+    // Only the Bearer scheme is a token attempt. Other schemes (e.g. Basic added by a reverse
+    // proxy) are ignored so the session cookie still works behind such a proxy.
     const header = c.req.header('authorization');
-    if (header) {
-      const raw = /^Bearer\s+(\S+)$/i.exec(header)?.[1];
+    const bearer = header && /^Bearer(\s|$)/i.test(header) ? header : null;
+    if (bearer) {
+      const raw = /^Bearer\s+(\S+)$/i.exec(bearer)?.[1];
       const token = raw ? await resolveProjectToken(services.deps, raw) : null;
-      if (!token)
-        throw new AppError('invalid_token', 401, 'The Authorization header does not hold a valid project token.');
+      if (!token) throw new AppError('invalid_token', 401, 'The Bearer token is not a valid project token.');
       c.set('principal', { kind: 'token', ...token });
       c.set('authVia', 'token');
     } else {
