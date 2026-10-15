@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
+import { compareImages } from '../../src/diff/compare';
 import type { DiffData } from '../../src/diff/types';
 import { finalizeBuild, getBuild } from '../../src/domain/builds';
 import { getCheck, listChecks } from '../../src/domain/checks';
@@ -162,5 +163,31 @@ describe('submitCheck', () => {
     expect((await listChecks(deps, buildId, { review: 'none' })).items.map((c) => c.name)).toEqual(['home']);
     expect(await getCheck(deps, changed.check.id)).toEqual(changed.check);
     expect((await appError(getCheck(deps, 'chk_missing'))).code).toBe('check_not_found');
+  });
+});
+
+describe('submitCheck racing finalize', () => {
+  test('a check whose diff is still running when the build is finalized is rejected', async () => {
+    const slow = await createTestDeps(async (job) => {
+      await Bun.sleep(100);
+      return compareImages(job);
+    });
+    try {
+      const project = await seedProject(slow);
+      await seedBaseline(slow, project, white);
+      const buildId = await openBuild(slow);
+      const submission = submit(slow, buildId, withSquare);
+      await Bun.sleep(20);
+      const finalized = await finalizeBuild(slow, buildId);
+      expect(finalized.verdict).toBe('empty');
+
+      const err = await appError(submission);
+      expect(err.code).toBe('build_finalized');
+      const build = await getBuild(slow, buildId);
+      expect(build.verdict).toBe('empty');
+      expect(build.counts.total).toBe(0);
+    } finally {
+      await slow.handle.close();
+    }
   });
 });

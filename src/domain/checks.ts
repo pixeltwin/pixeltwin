@@ -1,4 +1,4 @@
-import type { Baseline, CheckResult, CheckReview, CheckRow } from '../db/schema';
+import type { Baseline, Build, CheckResult, CheckReview, CheckRow } from '../db/schema';
 import { IDENTICAL_SUMMARY } from '../diff/summary';
 import type { DiffData, DiffErrorData, DiffJobResult, Rect, Size } from '../diff/types';
 import { AppError } from '../errors';
@@ -61,6 +61,11 @@ function initialReview(result: CheckResult): CheckReview {
 
 function errorOutcome(code: 'diff_timeout' | 'diff_failed', message: string): Outcome {
   return { result: 'error', diff: { error: { code, message } }, diffPng: null, diffSize: null };
+}
+
+function buildFinalized(build: Build): AppError {
+  const at = new Date(build.finalizedAt ?? 0).toISOString();
+  return new AppError('build_finalized', 409, `Build ${build.id} was finalized at ${at}.`);
 }
 
 function invalidImage(message: string): AppError {
@@ -198,10 +203,7 @@ export async function submitCheck(
   input: SubmitCheckInput,
 ): Promise<{ check: CheckView; created: boolean }> {
   const build = await getBuildRow(deps, buildId);
-  if (build.state === 'finalized') {
-    const at = new Date(build.finalizedAt ?? 0).toISOString();
-    throw new AppError('build_finalized', 409, `Build ${build.id} was finalized at ${at}.`);
-  }
+  if (build.state === 'finalized') throw buildFinalized(build);
   const meta = parseInput(checkMetaSchema, input.meta);
   const header = readPngHeader(input.image, deps.limits);
   const project = await getProjectById(deps, build.projectId);
@@ -247,20 +249,32 @@ export async function submitCheck(
     reviewComment: null,
     updatedAt: now,
   };
-  const existing = await deps.db
-    .selectFrom('checks')
-    .select('id')
-    .where('buildId', '=', buildId)
-    .where('snapshotKey', '=', key)
-    .executeTakeFirst();
-  await deps.db
-    .insertInto('checks')
-    .values({ id: newId('chk'), createdAt: now, ...values })
-    .onConflict((oc) => oc.columns(['buildId', 'snapshotKey']).doUpdateSet(values))
-    .execute();
+  // The diff above can take seconds; the build may have been finalized meanwhile. Locking the
+  // open build row (a no-op update) makes a concurrent finalize wait until this check commits.
+  const created = await deps.db.transaction().execute(async (tx) => {
+    const stillOpen = await tx
+      .updateTable('builds')
+      .set((eb) => ({ state: eb.ref('state') }))
+      .where('id', '=', buildId)
+      .where('state', '=', 'open')
+      .executeTakeFirst();
+    if (Number(stillOpen.numUpdatedRows) === 0) throw buildFinalized(await getBuildRow({ db: tx }, buildId));
+    const existing = await tx
+      .selectFrom('checks')
+      .select('id')
+      .where('buildId', '=', buildId)
+      .where('snapshotKey', '=', key)
+      .executeTakeFirst();
+    await tx
+      .insertInto('checks')
+      .values({ id: newId('chk'), createdAt: now, ...values })
+      .onConflict((oc) => oc.columns(['buildId', 'snapshotKey']).doUpdateSet(values))
+      .execute();
+    return !existing;
+  });
   const row = await checksWithJoins(deps)
     .where('checks.buildId', '=', buildId)
     .where('checks.snapshotKey', '=', key)
     .executeTakeFirstOrThrow();
-  return { check: toCheckView(row), created: !existing };
+  return { check: toCheckView(row), created };
 }
