@@ -79,6 +79,9 @@ describe('UI review flow', () => {
     expect(location(second)).toBe(`/ui/builds/${buildId}?done=rejected`);
     const rejected = await getCheck(t.deps, fresh.id);
     expect(rejected).toMatchObject({ review: 'rejected', reviewComment: 'cart icon missing', reviewedBy: reviewer.id });
+    const again = await html(await t.request('GET', `/ui/checks/${fresh.id}`, { as: reviewer }));
+    expect(again).toContain('data-key="a"');
+    expect(again).not.toContain('data-key="r"');
     expect(await html(await t.request('GET', `/ui/builds/${buildId}?done=rejected`, { as: reviewer }))).toContain(
       'Rejected.',
     );

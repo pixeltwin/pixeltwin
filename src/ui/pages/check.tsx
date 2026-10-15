@@ -171,12 +171,15 @@ function CheckPage(props: {
                   Approve <kbd>a</kbd>
                 </button>
               </form>
-              <form class="stack" method="post" action={ui.url(`/ui/checks/${check.id}/reject`)} data-key="r">
-                <textarea name="comment" rows={2} maxlength={1000} placeholder="Optional comment" />
-                <button class="reject" type="submit">
-                  Reject <kbd>r</kbd>
-                </button>
-              </form>
+              {check.review === 'pending' && (
+                // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
+                <form class="stack" method="post" action={ui.url(`/ui/checks/${check.id}/reject`)} data-key="r">
+                  <textarea name="comment" rows={2} maxlength={1000} placeholder="Optional comment" />
+                  <button class="reject" type="submit">
+                    Reject <kbd>r</kbd>
+                  </button>
+                </form>
+              )}
             </div>
           )}
           {nav.nextPending && (
