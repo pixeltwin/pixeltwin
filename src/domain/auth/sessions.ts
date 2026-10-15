@@ -21,8 +21,15 @@ export async function createSession(deps: DbDeps, userId: string): Promise<{ tok
   return { token, expiresAt };
 }
 
-/** The session's user, or null when the token is unknown or expired. Extends the expiry on use. */
-export async function resolveSession(deps: DbDeps, token: string): Promise<UsersTable | null> {
+export interface ResolvedSession {
+  user: UsersTable;
+  expiresAt: number;
+  /** True when this call extended the session; the cookie must then be sent again with `expiresAt`. */
+  refreshed: boolean;
+}
+
+/** The session and its user, or null when the token is unknown or expired. Extends the expiry on use. */
+export async function resolveSession(deps: DbDeps, token: string): Promise<ResolvedSession | null> {
   const row = await deps.db
     .selectFrom('sessions')
     .innerJoin('users', 'users.id', 'sessions.userId')
@@ -31,20 +38,18 @@ export async function resolveSession(deps: DbDeps, token: string): Promise<Users
     .where('sessions.tokenHash', '=', sha256(token))
     .executeTakeFirst();
   if (!row) return null;
+  const { sessionId, expiresAt, ...user } = row;
   const now = Date.now();
-  if (row.expiresAt <= now) {
-    await deps.db.deleteFrom('sessions').where('id', '=', row.sessionId).execute();
+  if (expiresAt <= now) {
+    await deps.db.deleteFrom('sessions').where('id', '=', sessionId).execute();
     return null;
   }
-  if (row.expiresAt - now < SESSION_TTL_MS - REFRESH_AFTER_MS) {
-    await deps.db
-      .updateTable('sessions')
-      .set({ expiresAt: now + SESSION_TTL_MS })
-      .where('id', '=', row.sessionId)
-      .execute();
+  if (expiresAt - now < SESSION_TTL_MS - REFRESH_AFTER_MS) {
+    const extended = now + SESSION_TTL_MS;
+    await deps.db.updateTable('sessions').set({ expiresAt: extended }).where('id', '=', sessionId).execute();
+    return { user, expiresAt: extended, refreshed: true };
   }
-  const { sessionId: _sessionId, expiresAt: _expiresAt, ...user } = row;
-  return user;
+  return { user, expiresAt, refreshed: false };
 }
 
 export async function deleteSession(deps: DbDeps, token: string): Promise<void> {

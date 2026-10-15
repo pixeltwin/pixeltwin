@@ -21,7 +21,7 @@ describe('sessions', () => {
     const { token, expiresAt } = await createSession(deps, userId);
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(expiresAt).toBeGreaterThan(Date.now() + SESSION_TTL_MS - 5000);
-    expect((await resolveSession(deps, token))?.email).toBe('ada@example.com');
+    expect((await resolveSession(deps, token))?.user.email).toBe('ada@example.com');
     const row = await deps.db.selectFrom('sessions').selectAll().executeTakeFirstOrThrow();
     expect(row.tokenHash).not.toContain(token);
   });
@@ -45,9 +45,11 @@ describe('sessions', () => {
     const { token } = await createSession(deps, userId);
     const old = Date.now() + SESSION_TTL_MS - 2 * 60 * 60 * 1000;
     await deps.db.updateTable('sessions').set({ expiresAt: old }).execute();
-    await resolveSession(deps, token);
+    const resolved = await resolveSession(deps, token);
     const row = await deps.db.selectFrom('sessions').selectAll().executeTakeFirstOrThrow();
     expect(row.expiresAt).toBeGreaterThan(old + 60 * 60 * 1000);
+    expect(resolved).toMatchObject({ refreshed: true, expiresAt: row.expiresAt });
+    expect((await resolveSession(deps, token))?.refreshed).toBe(false);
   });
 
   test('deleting a user ends their sessions', async () => {

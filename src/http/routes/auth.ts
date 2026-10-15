@@ -1,13 +1,13 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { getConnInfo } from 'hono/bun';
-import { deleteCookie, setCookie } from 'hono/cookie';
 import { createSession, deleteSession } from '../../domain/auth/sessions';
 import { completeSetup, setupInputSchema } from '../../domain/auth/setup';
 import { changePassword, authenticate as checkPassword, getUserRow, toUserView } from '../../domain/auth/users';
 import { AppError } from '../../errors';
 import { principalOf } from '../auth';
-import { API, type AppEnv, SESSION_COOKIE, type Services } from '../env';
+import { clearSessionCookie, setSessionCookie } from '../cookies';
+import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { json, problems, UserSchema } from '../schemas';
 
@@ -24,8 +24,6 @@ function clientIp(c: Context<AppEnv>): string {
 }
 
 export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void {
-  const secure = s.config.publicUrl.startsWith('https:');
-
   const setup = defineRoute('public', {
     method: 'post',
     path: `${API}/setup`,
@@ -51,14 +49,7 @@ export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void 
     }
     const user = await checkPassword(s.deps, email, password);
     if (!user) throw new AppError('invalid_credentials', 401, 'The email or password is wrong.');
-    const session = await createSession(s.deps, user.id);
-    setCookie(c, SESSION_COOKIE, session.token, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      path: '/',
-      secure,
-      expires: new Date(session.expiresAt),
-    });
+    setSessionCookie(c, s.config.publicUrl, await createSession(s.deps, user.id));
     return c.json(toUserView(user), 200);
   });
 
@@ -72,7 +63,7 @@ export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void 
   app.openapi(logout, async (c) => {
     const token = c.get('sessionToken');
     if (token) await deleteSession(s.deps, token);
-    deleteCookie(c, SESSION_COOKIE, { path: '/', secure });
+    clearSessionCookie(c, s.config.publicUrl);
     return c.body(null, 204);
   });
 

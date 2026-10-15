@@ -127,6 +127,24 @@ describe('auth routes', () => {
     expect((await t.request('GET', '/api/v1/me', { as: { cookie } })).status).toBe(401);
   });
 
+  test('an extended session is sent back to the browser with the new expiry', async () => {
+    t = await createTestApp();
+    const { cookie } = await t.userAs('viewer');
+    const fresh = await t.request('GET', '/api/v1/me', { as: { cookie } });
+    expect(fresh.headers.get('set-cookie')).toBeNull();
+
+    await t.deps.db
+      .updateTable('sessions')
+      .set({ expiresAt: Date.now() + 13 * 24 * 60 * 60 * 1000 })
+      .execute();
+    const res = await t.request('GET', '/api/v1/me', { as: { cookie } });
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain(`pt_session=${cookie}`);
+    expect(setCookie).toContain('HttpOnly');
+    const expires = Date.parse(/Expires=([^;]+)/.exec(setCookie)?.[1] ?? '');
+    expect(expires).toBeGreaterThan(Date.now() + 13.9 * 24 * 60 * 60 * 1000);
+  });
+
   test('wrong credentials are 401 and the 11th attempt in a minute is 429', async () => {
     t = await createTestApp();
     await t.userAs('viewer', 'ada@example.com');

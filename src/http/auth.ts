@@ -4,6 +4,7 @@ import { assertProjectAccess, hasPermission, type RoutePermission } from '../dom
 import { resolveSession } from '../domain/auth/sessions';
 import { resolveProjectToken } from '../domain/auth/tokens';
 import { AppError } from '../errors';
+import { setSessionCookie } from './cookies';
 import { type AppEnv, SESSION_COOKIE, type Services } from './env';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -32,8 +33,11 @@ export function authenticate(services: Services): MiddlewareHandler<AppEnv> {
       c.set('authVia', 'token');
     } else {
       const cookie = getCookie(c, SESSION_COOKIE);
-      const user = cookie ? await resolveSession(services.deps, cookie) : null;
-      if (cookie && user) {
+      const session = cookie ? await resolveSession(services.deps, cookie) : null;
+      if (cookie && session) {
+        const { user } = session;
+        if (session.refreshed)
+          setSessionCookie(c, services.config.publicUrl, { token: cookie, expiresAt: session.expiresAt });
         c.set('principal', { kind: 'user', id: user.id, email: user.email, role: user.role });
         c.set('authVia', 'cookie');
         c.set('sessionToken', cookie);
