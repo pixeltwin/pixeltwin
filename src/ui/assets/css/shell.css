@@ -1,0 +1,190 @@
+/* Top bar: wordmark, breadcrumb, user menu (UI spec §4.1). */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--topbar-height);
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  letter-spacing: -0.02em;
+}
+.brand:hover {
+  text-decoration: none;
+}
+.brand-mark {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+.crumbs ol {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.crumbs li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 0;
+}
+.crumbs li + li::before {
+  content: "/";
+  color: var(--border-strong);
+}
+.crumbs a {
+  color: var(--text-muted);
+}
+.crumbs a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.crumbs [aria-current="page"] {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* User menu: a <details> element, so it works without JavaScript. */
+.menu {
+  position: relative;
+}
+.menu summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-muted);
+}
+.menu summary::-webkit-details-marker {
+  display: none;
+}
+.menu summary:hover,
+.menu[open] summary {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  width: 240px;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+  display: grid;
+  gap: 2px;
+}
+.menu-panel form {
+  margin: 0;
+}
+.menu-label {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.theme-switch {
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+.theme-switch .segmented {
+  display: flex;
+  margin: 0 var(--space-2);
+}
+.theme-switch .segmented button {
+  flex: 1;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+/* Flash messages: the no-JS fallback for toasts. */
+.flash {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  margin-bottom: var(--space-4);
+}
+.flash.notice {
+  background: var(--green-bg);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+.flash.error {
+  background: var(--red-bg);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+  .brand span,
+  .menu-email {
+    display: none;
+  }
+  /* Only the current page is shown in the breadcrumb on phones. */
+  .crumbs li:not(:last-child) {
+    display: none;
+  }
+  .crumbs li + li::before {
+    content: none;
+  }
+}

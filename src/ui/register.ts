@@ -8,6 +8,7 @@ import { registerBuildPages } from './pages/build';
 import { registerCheckPages } from './pages/check';
 import { registerProjectPages } from './pages/projects';
 import { uiSession } from './session';
+import { registerThemeRoute } from './theme';
 
 /** Spec §8: the server-rendered UI under /ui. Errors on these paths render HTML (see app.ts). */
 export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
@@ -28,6 +29,7 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
   app.get('/ui/assets/app.js', asset(APP_JS, 'text/javascript; charset=utf-8', ASSET_VERSIONS.js));
 
   registerAuthPages(app, s);
+  registerThemeRoute(app, s);
   registerProjectPages(app, s);
   registerBuildPages(app, s);
   registerCheckPages(app, s);

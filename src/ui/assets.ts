@@ -1,11 +1,16 @@
 // The UI's stylesheet and script, embedded as text (and into the compiled binary).
 
 import { createHash } from 'node:crypto';
-import css from './assets/app.css' with { type: 'text' };
 // @ts-expect-error -- a `type: 'text'` import of a .js file is a string at runtime; TypeScript cannot know that.
 import js from './assets/app.js' with { type: 'text' };
+import base from './assets/css/base.css' with { type: 'text' };
+import components from './assets/css/components.css' with { type: 'text' };
+import legacy from './assets/css/legacy.css' with { type: 'text' };
+import shell from './assets/css/shell.css' with { type: 'text' };
+import tokens from './assets/css/tokens.css' with { type: 'text' };
 
-export const APP_CSS: string = css;
+/** One stylesheet, concatenated in cascade order: tokens first, page rules last. */
+export const APP_CSS: string = [tokens, base, shell, components, legacy].join('\n');
 export const APP_JS: string = js;
 
 const version = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12);

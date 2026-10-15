@@ -99,7 +99,7 @@ describe('UI authentication', () => {
     expect((await html(page)).startsWith('<!doctype html>')).toBe(true);
     const css = await t.request('GET', '/ui/assets/app.css');
     expect(css.headers.get('content-type')).toStartWith('text/css');
-    expect(await css.text()).toContain('--accent');
+    expect(await css.text()).toContain('--primary');
     expect((await t.request('GET', '/ui/assets/app.js')).headers.get('content-type')).toStartWith('text/javascript');
     const missing = await t.request('GET', '/ui/nowhere', { as: admin });
     expect(missing.status).toBe(404);
