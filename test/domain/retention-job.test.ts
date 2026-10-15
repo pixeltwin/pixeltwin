@@ -60,8 +60,8 @@ describe('retention job', () => {
     expect(lines.find((l) => l.msg === 'retention failed')).toMatchObject({ error: 'storage unavailable' });
 
     fail = false;
-    await deps.db.insertInto('images').values({ sha, width: 5, height: 5, bytes: 1, createdAt: 1 }).execute();
     expect(await job.runNow()).toEqual({ buildsDeleted: 0, imagesDeleted: 1 });
+    expect(await deps.storage.exists(imageKey(sha))).toBe(false);
   });
 
   test('overlapping calls share one pass', async () => {

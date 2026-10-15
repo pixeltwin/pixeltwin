@@ -112,4 +112,37 @@ describe('retention', () => {
     expect((await runRetention(deps, NOW)).imagesDeleted).toBe(520);
     expect(await deps.db.selectFrom('images').selectAll().execute()).toEqual([]);
   });
+
+  test('an image stored again while clean-up deletes it keeps its bytes', async () => {
+    const png = makePng(9, 9);
+    const sha = await storeImage(deps, png, readPngHeader(png, deps.limits));
+    await age('images', IMAGE_GRACE_MS + 1000);
+    const original = deps.storage.delete.bind(deps.storage);
+    let reuse: Promise<string> | undefined;
+    deps.storage.delete = async (key: string) => {
+      // A concurrent upload of the same screenshot, given time to get as far as it can.
+      reuse ??= storeImage(deps, png, readPngHeader(png, deps.limits));
+      await Bun.sleep(50);
+      return original(key);
+    };
+    await runRetention(deps, NOW);
+    await reuse;
+    expect(await deps.db.selectFrom('images').select('sha').where('sha', '=', sha).executeTakeFirst()).toBeDefined();
+    expect(await deps.storage.exists(imageKey(sha))).toBe(true);
+  });
+
+  test('a failed storage delete keeps the image row, so the file is collected next time', async () => {
+    const png = makePng(9, 9);
+    const sha = await storeImage(deps, png, readPngHeader(png, deps.limits));
+    await age('images', IMAGE_GRACE_MS + 1000);
+    const original = deps.storage.delete.bind(deps.storage);
+    deps.storage.delete = async () => {
+      throw new Error('storage unavailable');
+    };
+    await expect(runRetention(deps, NOW)).rejects.toThrow('storage unavailable');
+    expect(await deps.db.selectFrom('images').select('sha').where('sha', '=', sha).executeTakeFirst()).toBeDefined();
+    deps.storage.delete = original;
+    expect((await runRetention(deps, NOW)).imagesDeleted).toBe(1);
+    expect(await deps.storage.exists(imageKey(sha))).toBe(false);
+  });
 });
