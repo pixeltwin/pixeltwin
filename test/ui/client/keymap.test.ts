@@ -10,6 +10,7 @@ const key = (k: string, extra: Partial<KeyInput> = {}): KeyInput => ({
   ctrlKey: false,
   metaKey: false,
   altKey: false,
+  shiftKey: false,
   editing: false,
   ...extra,
 });
@@ -39,6 +40,13 @@ describe('shortcutOf', () => {
     expect(shortcutOf(key('a', { ctrlKey: true }))).toBeNull();
     expect(shortcutOf(key('c', { metaKey: true }))).toBeNull();
     expect(shortcutOf(key('a', { altKey: true }))).toBeNull();
+  });
+
+  test('Shift with an arrow is its own shortcut; Shift with other keys is just the character', () => {
+    expect(shortcutOf(key('ArrowRight', { shiftKey: true }))).toBe('shift+arrowright');
+    expect(shortcutOf(key('ArrowRight'))).toBe('arrowright');
+    expect(shortcutOf(key('?', { shiftKey: true }))).toBe('?');
+    expect(shortcutOf(key('A', { shiftKey: true }))).toBe('a');
   });
 
   test('bare modifier presses are ignored', () => {

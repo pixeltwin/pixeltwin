@@ -317,6 +317,17 @@ export function init(): void {
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
   onKey({ key: 'u', label: 'Undo the last review', run: () => void undo() });
+  // ← and → do what K and J do: the header's previous and next links (UI spec §5.1).
+  onKey({
+    key: 'arrowleft',
+    label: 'Previous check',
+    run: () => root.querySelector<HTMLElement>('[data-key="k"]')?.click(),
+  });
+  onKey({
+    key: 'arrowright',
+    label: 'Next check',
+    run: () => root.querySelector<HTMLElement>('[data-key="j"]')?.click(),
+  });
   onKey({
     key: 'c',
     label: 'Write a comment',

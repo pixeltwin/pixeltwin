@@ -44,6 +44,8 @@ const KEY_NAMES: Record<string, string> = {
   escape: 'Esc',
   arrowleft: '←',
   arrowright: '→',
+  'shift+arrowleft': 'Shift ←',
+  'shift+arrowright': 'Shift →',
 };
 
 /** The `?` sheet: every labelled shortcut that works on this page right now. */
@@ -94,6 +96,7 @@ export function initKeys(): void {
       ctrlKey: event.ctrlKey,
       metaKey: event.metaKey,
       altKey: event.altKey,
+      shiftKey: event.shiftKey,
       editing: isEditing(event.target),
     });
     if (!key) return;

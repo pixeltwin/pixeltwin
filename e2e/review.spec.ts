@@ -67,6 +67,22 @@ test('a comment goes with the review: C to write, Esc to leave the field, R to r
   });
 });
 
+test('arrow keys move between checks; Shift+arrows move the slider', async ({ reviewerPage: page, seeded }) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
+  await page.keyboard.press('ArrowRight');
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+  await page.keyboard.press('ArrowLeft');
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
+
+  await page.keyboard.press('2');
+  const divider = page.locator('.divider');
+  await expect(divider).toHaveCSS('left', /px/);
+  const before = await divider.evaluate((el) => (el as HTMLElement).style.left);
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect(divider).not.toHaveAttribute('style', new RegExp(`left: ${before}`));
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
+});
+
 test('the slider follows the pointer and onion mode fades the new screenshot', async ({
   reviewerPage: page,
   seeded,

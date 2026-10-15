@@ -124,13 +124,15 @@ export function mountViewer(root: HTMLElement): () => void {
     );
   });
   cleanups.push(onKey({ key: 'z', label: 'Fit / 100%', run: toggleZoom }));
-  for (const [key, step] of [
-    ['arrowleft', -0.05],
-    ['arrowright', 0.05],
+  // Plain arrows move between checks (review island); with Shift they move the divider.
+  for (const [key, step, label] of [
+    ['shift+arrowleft', -0.05, 'Slider divider left'],
+    ['shift+arrowright', 0.05, 'Slider divider right'],
   ] as const) {
     cleanups.push(
       onKey({
         key,
+        label,
         run: () => {
           if (mode !== 'slider') return;
           split = Math.min(1, Math.max(0, split + step));

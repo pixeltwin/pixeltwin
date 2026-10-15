@@ -7,7 +7,8 @@ Self-hosted visual regression testing with an API built for CI and AI agents.
 ![Branches of a project: main passed, a feature branch waiting for review](docs/screenshots/branches-light.png)
 
 Review a build with the keyboard: Side, Slider, Onion and Diff views, zoom to a changed region,
-<kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>U</kbd> undo, <kbd>J</kbd>/<kbd>K</kbd> next and previous.
+<kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>U</kbd> undo, <kbd>→</kbd>/<kbd>←</kbd> (or <kbd>J</kbd>/<kbd>K</kbd>)
+next and previous, <kbd>?</kbd> for every shortcut.
 
 ![Reviewing a changed check in the slider view, dark theme](docs/screenshots/review-slider-dark.png)
 
