@@ -1,0 +1,78 @@
+import { z } from 'zod';
+import { validationError } from '../errors';
+
+// Input schemas shared by the domain and (in Plan 2) the HTTP layer. Objects are strict:
+// unknown keys are rejected so a typo surfaces as a 422 instead of being silently ignored.
+
+export const slugSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{1,62}$/, 'Use 2-63 lowercase letters, digits or hyphens, starting with a letter or digit');
+
+export const branchSchema = z.string().trim().min(1).max(255);
+
+export const rectSchema = z.strictObject({
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+  width: z.number().int().min(1),
+  height: z.number().int().min(1),
+});
+
+export const variantSchema = z
+  .record(z.string().min(1).max(64), z.string().max(64))
+  .refine((variant) => Object.keys(variant).length <= 10, 'At most 10 variant keys');
+
+const colorThreshold = z.number().min(0).max(1);
+const tolerancePercent = z.number().min(0).max(100);
+
+const projectSettings = {
+  name: z.string().trim().min(1).max(200),
+  mainBranch: branchSchema,
+  colorThreshold,
+  tolerancePercent,
+  retentionDays: z.number().int().min(1).max(3650),
+};
+
+export const createProjectSchema = z.strictObject({
+  slug: slugSchema,
+  name: projectSettings.name,
+  mainBranch: projectSettings.mainBranch.default('main'),
+  colorThreshold: projectSettings.colorThreshold.default(0.1),
+  tolerancePercent: projectSettings.tolerancePercent.default(0),
+  retentionDays: projectSettings.retentionDays.default(90),
+});
+
+export const updateProjectSchema = z.strictObject(projectSettings).partial();
+
+export const createBuildSchema = z.strictObject({
+  branch: branchSchema.optional(),
+  baseBranch: branchSchema.optional(),
+  externalId: z.string().trim().min(1).max(200).optional(),
+  commitSha: z.string().trim().min(1).max(64).optional(),
+});
+
+export const checkMetaSchema = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  variant: variantSchema.default({}),
+  ignoreRegions: z.array(rectSchema).max(100).default([]),
+  colorThreshold: colorThreshold.optional(),
+  tolerancePercent: tolerancePercent.optional(),
+});
+
+export const reviewInputSchema = z.strictObject({
+  comment: z.string().trim().max(1000).optional(),
+});
+
+export const pageInputSchema = z.strictObject({
+  cursor: z.string().min(1).optional(),
+  limit: z.number().int().min(1).max(200).default(50),
+});
+
+export type CheckMeta = z.output<typeof checkMetaSchema>;
+export type PageInput = z.input<typeof pageInputSchema>;
+
+/** Parses input or throws a 422 `validation_failed` AppError. */
+export function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
+  const result = schema.safeParse(input);
+  if (!result.success) throw validationError(result.error);
+  return result.data;
+}
