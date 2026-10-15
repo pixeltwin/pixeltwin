@@ -69,6 +69,16 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
 
   app.use('*', requestContext(services));
   app.use(`${API}/*`, bodyLimits(services.config.maxImageBytes));
+  // UI forms are small; refuse big bodies before parsing (spec §7.4), including the public login form.
+  app.use(
+    '/ui/*',
+    bodyLimit({
+      maxSize: DEFAULT_BODY_LIMIT,
+      onError: () => {
+        throw new AppError('payload_too_large', 413, 'The form is too large.');
+      },
+    }),
+  );
   app.use(`${API}/*`, authenticate(services));
 
   app.onError((err, c) => {

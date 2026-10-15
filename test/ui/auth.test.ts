@@ -139,6 +139,13 @@ describe('UI authentication', () => {
     }
   });
 
+  test('oversized form posts are refused before they are parsed', async () => {
+    t = await createTestApp();
+    const res = await postForm(t, '/ui/login', { email: 'a@example.com', password: 'x'.repeat(2 * 1024 * 1024) });
+    expect(res.status).toBe(413);
+    expect(await html(res)).toContain('Payload too large');
+  });
+
   test('project tokens do not open the UI', async () => {
     t = await createTestApp();
     await createProject(t.deps, { slug: 'web', name: 'Web' });
