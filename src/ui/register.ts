@@ -2,6 +2,8 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { AppEnv, Services } from '../http/env';
 import { APP_CSS, APP_JS } from './assets';
 import { registerAuthPages } from './pages/auth';
+import { registerBuildPages } from './pages/build';
+import { registerCheckPages } from './pages/check';
 import { registerProjectPages } from './pages/projects';
 import { uiSession } from './session';
 
@@ -24,4 +26,6 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
 
   registerAuthPages(app, s);
   registerProjectPages(app, s);
+  registerBuildPages(app, s);
+  registerCheckPages(app, s);
 }
