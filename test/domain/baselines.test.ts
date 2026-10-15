@@ -93,4 +93,12 @@ describe('baselines', () => {
     const mainOnly = await baselineHistory(deps, 'web', 'k1', { branch: 'main' });
     expect(mainOnly.items.map((b) => b.id)).toEqual([third.id, first.id]);
   });
+
+  test('concurrent promotions promote each snapshot once', async () => {
+    for (let i = 0; i < 10; i++) await add(`k${i}`, 'feature/x', SHA_B);
+    const results = await Promise.all([1, 2, 3, 4].map(() => promoteBranch(deps, 'web', 'feature/x', 'usr_1')));
+    expect(results.reduce((n, r) => n + r.promoted, 0)).toBe(10);
+    const onMain = await deps.db.selectFrom('baselines').selectAll().where('branch', '=', 'main').execute();
+    expect(onMain).toHaveLength(10);
+  });
 });

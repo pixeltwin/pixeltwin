@@ -19,20 +19,23 @@ async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): P
   );
 }
 
+const APPROVABLE: CheckReview[] = ['pending', 'rejected'];
+
 /**
  * Marks the check approved and appends its image as the new baseline on the build's branch.
- * The conditional update makes concurrent approvals of one check produce one baseline.
+ * Returns false, changing nothing, when the check is not approvable (missing, or already
+ * approved by a concurrent request). The conditional update makes concurrent approvals of
+ * one check produce one baseline.
  */
-async function approveInTransaction(tx: Db, checkId: string, actor: string, comment: string | null): Promise<void> {
-  const allowed: CheckReview[] = ['pending', 'rejected'];
+async function tryApprove(tx: Db, checkId: string, actor: string, comment: string | null): Promise<boolean> {
   const now = Date.now();
   const updated = await tx
     .updateTable('checks')
     .set({ review: 'approved', reviewedBy: actor, reviewedAt: now, reviewComment: comment, updatedAt: now })
     .where('id', '=', checkId)
-    .where('review', 'in', allowed)
+    .where('review', 'in', APPROVABLE)
     .executeTakeFirst();
-  if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, allowed);
+  if (Number(updated.numUpdatedRows) === 0) return false;
 
   const check = await tx
     .selectFrom('checks')
@@ -57,6 +60,7 @@ async function approveInTransaction(tx: Db, checkId: string, actor: string, comm
     sourceCheckId: checkId,
     approvedBy: actor,
   });
+  return true;
 }
 
 export async function approveCheck(
@@ -66,7 +70,9 @@ export async function approveCheck(
   input: unknown = {},
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
-  await deps.db.transaction().execute((tx) => approveInTransaction(tx, checkId, actor, comment ?? null));
+  await deps.db.transaction().execute(async (tx) => {
+    if (!(await tryApprove(tx, checkId, actor, comment ?? null))) throw await notReviewable(tx, checkId, APPROVABLE);
+  });
   return getCheck(deps, checkId);
 }
 
@@ -88,7 +94,10 @@ export async function rejectCheck(
   return getCheck(deps, checkId);
 }
 
-/** Approves every pending check in the build in one transaction. */
+/**
+ * Approves every pending check in the build in one transaction. Checks approved meanwhile by a
+ * concurrent request are skipped; `approved` counts only the checks this call approved.
+ */
 export async function approveBuild(deps: DbDeps, buildId: string, actor: string): Promise<{ approved: number }> {
   await getBuildRow(deps, buildId);
   return deps.db.transaction().execute(async (tx) => {
@@ -99,7 +108,8 @@ export async function approveBuild(deps: DbDeps, buildId: string, actor: string)
       .where('review', '=', 'pending')
       .orderBy('id')
       .execute();
-    for (const { id } of pending) await approveInTransaction(tx, id, actor, null);
-    return { approved: pending.length };
+    let approved = 0;
+    for (const { id } of pending) if (await tryApprove(tx, id, actor, null)) approved += 1;
+    return { approved };
   });
 }

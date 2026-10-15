@@ -4,6 +4,7 @@ import { findCurrentBaseline } from '../../src/domain/baselines';
 import { finalizeBuild, getBuild } from '../../src/domain/builds';
 import { approveBuild, approveCheck, rejectCheck } from '../../src/domain/reviews';
 import { snapshotKey } from '../../src/domain/snapshot-key';
+import type { AppError } from '../../src/errors';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
 import { appError } from '../helpers/errors';
 import { BLACK, makePng, WHITE } from '../helpers/png';
@@ -94,5 +95,33 @@ describe('reviews', () => {
     expect(build.verdict).toBe('passed');
     expect(build.counts.review).toMatchObject({ approved: 2, none: 1, pending: 0 });
     expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 0 });
+  });
+
+  test('concurrent approve-all calls approve each pending check once', async () => {
+    const buildId = await openBuild(deps);
+    for (let i = 0; i < 10; i++) await submit(deps, buildId, white, { name: `s${i}` });
+    const results = await Promise.allSettled([1, 2, 3, 4].map(() => approveBuild(deps, buildId, 'usr_1')));
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled', 'fulfilled']);
+    const approved = results.reduce((n, r) => n + (r.status === 'fulfilled' ? r.value.approved : 0), 0);
+    expect(approved).toBe(10);
+    expect(await deps.db.selectFrom('baselines').selectAll().execute()).toHaveLength(10);
+  });
+
+  test('approve-all racing a single approval still approves everything once', async () => {
+    const buildId = await openBuild(deps);
+    const checks = [];
+    for (let i = 0; i < 5; i++) checks.push((await submit(deps, buildId, white, { name: `s${i}` })).check);
+    const [all, one] = await Promise.allSettled([
+      approveBuild(deps, buildId, 'usr_1'),
+      approveCheck(deps, checks[2]?.id ?? '', 'usr_2'),
+    ]);
+    // Approve-all never fails because of the single approval. The single approval either wins
+    // or finds the check already approved (409), which is the documented behaviour.
+    expect(all?.status).toBe('fulfilled');
+    if (one?.status === 'rejected') expect((one.reason as AppError).code).toBe('check_not_reviewable');
+    const approvedByAll = all?.status === 'fulfilled' ? all.value.approved : 0;
+    expect(approvedByAll + (one?.status === 'fulfilled' ? 1 : 0)).toBe(5);
+    expect(await deps.db.selectFrom('baselines').selectAll().execute()).toHaveLength(5);
+    expect((await getBuild(deps, buildId)).verdict).toBe('passed');
   });
 });

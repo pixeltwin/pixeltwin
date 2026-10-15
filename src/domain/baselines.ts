@@ -110,6 +110,13 @@ export async function promoteBranch(
     throw new AppError('invalid_promotion', 400, `Branch "${branch}" is the main branch; there is nothing to promote.`);
   }
   return deps.db.transaction().execute(async (tx) => {
+    // Lock the project row (a no-op update) so concurrent promotions run one after another;
+    // each then sees the main baselines the previous one appended.
+    await tx
+      .updateTable('projects')
+      .set((eb) => ({ slug: eb.ref('slug') }))
+      .where('id', '=', project.id)
+      .execute();
     const rows = await tx
       .selectFrom('baselines')
       .selectAll()
