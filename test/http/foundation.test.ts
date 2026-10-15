@@ -155,6 +155,18 @@ describe('auth routes', () => {
     expect(await problemOf(await attempt())).toMatchObject({ status: 429, code: 'rate_limited' });
   });
 
+  test('one client cannot dodge the login limit by changing the email', async () => {
+    t = await createTestApp();
+    let limited = 0;
+    for (let i = 0; i < 61; i++) {
+      const res = await t.request('POST', '/api/v1/auth/login', {
+        json: { email: `nobody${i}@example.com`, password: 'wrong password' },
+      });
+      if (res.status === 429) limited += 1;
+    }
+    expect(limited).toBe(1);
+  });
+
   test('a project token cannot use session-only endpoints', async () => {
     t = await createTestApp();
     const { createProject } = await import('../../src/domain/projects');

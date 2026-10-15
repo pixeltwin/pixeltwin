@@ -4,7 +4,7 @@ import { silentLogger } from '../log';
 import { MemoryStorage } from '../storage/memory';
 import { createApp } from './app';
 import { openApiDocument } from './docs';
-import { RateLimiter } from './rate-limit';
+import { LoginLimiter } from './rate-limit';
 
 /**
  * The OpenAPI document of a throwaway app (in-memory database, never queried). Used by the
@@ -22,7 +22,7 @@ export function buildOpenApiDocument() {
     config: { publicUrl: 'http://localhost:8080', maxImageBytes: 10 * 1024 * 1024 },
     logger: silentLogger,
     setup: new SetupState(null),
-    loginLimiter: new RateLimiter(10, 60_000),
+    loginLimiter: new LoginLimiter(),
   });
   const document = openApiDocument(app);
   void handle.close();

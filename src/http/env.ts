@@ -3,7 +3,7 @@ import type { Principal } from '../domain/auth/policy';
 import type { SetupState } from '../domain/auth/setup';
 import type { Deps } from '../domain/deps';
 import type { Logger } from '../log';
-import type { RateLimiter } from './rate-limit';
+import type { LoginLimiter } from './rate-limit';
 
 export const API = '/api/v1';
 export const SESSION_COOKIE = 'pt_session';
@@ -14,7 +14,7 @@ export interface Services {
   config: Pick<Config, 'publicUrl' | 'maxImageBytes'>;
   logger: Logger;
   setup: SetupState;
-  loginLimiter: RateLimiter;
+  loginLimiter: LoginLimiter;
 }
 
 export interface AppEnv {

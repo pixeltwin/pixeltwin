@@ -5,7 +5,7 @@ import { createProjectToken, type TokenScope } from '../../src/domain/auth/token
 import { createUser } from '../../src/domain/auth/users';
 import { createApp } from '../../src/http/app';
 import type { AppEnv } from '../../src/http/env';
-import { RateLimiter } from '../../src/http/rate-limit';
+import { LoginLimiter } from '../../src/http/rate-limit';
 import { silentLogger } from '../../src/log';
 import { createTestDeps, type TestDeps } from './deps';
 
@@ -41,7 +41,7 @@ export async function createTestApp(
     config: { publicUrl: PUBLIC_URL, maxImageBytes: options.maxImageBytes ?? deps.limits.maxImageBytes },
     logger: silentLogger,
     setup,
-    loginLimiter: new RateLimiter(10, 60_000),
+    loginLimiter: new LoginLimiter(),
   });
 
   const request: TestApp['request'] = async (method, path, opts = {}) => {

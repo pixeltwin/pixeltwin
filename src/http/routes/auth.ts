@@ -44,7 +44,7 @@ export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void 
   });
   app.openapi(login, async (c) => {
     const { email, password } = c.req.valid('json');
-    if (!s.loginLimiter.hit(`${clientIp(c)}|${email.trim().toLowerCase()}`)) {
+    if (!s.loginLimiter.hit(clientIp(c), email)) {
       throw new AppError('rate_limited', 429, 'Too many login attempts; wait a minute and try again.');
     }
     const user = await checkPassword(s.deps, email, password);

@@ -26,3 +26,24 @@ export class RateLimiter {
     return window.count <= this.#limit;
   }
 }
+
+/**
+ * Login attempts (spec §7.1): 10 per minute per (IP, email), plus 60 per minute per IP so a
+ * client cannot dodge the first limit by trying a new email each time.
+ */
+export class LoginLimiter {
+  readonly #perIpEmail: RateLimiter;
+  readonly #perIp: RateLimiter;
+
+  constructor(options: { perIpEmail?: number; perIp?: number; now?: () => number } = {}) {
+    this.#perIpEmail = new RateLimiter(options.perIpEmail ?? 10, 60_000, options.now);
+    this.#perIp = new RateLimiter(options.perIp ?? 60, 60_000, options.now);
+  }
+
+  /** Records an attempt; false when either limit is exceeded. */
+  hit(ip: string, email: string): boolean {
+    const byEmail = this.#perIpEmail.hit(`${ip}|${email.trim().toLowerCase()}`);
+    const byIp = this.#perIp.hit(ip);
+    return byEmail && byIp;
+  }
+}

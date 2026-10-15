@@ -4,7 +4,7 @@ import { DiffPool } from './diff/pool';
 import { SetupState } from './domain/auth/setup';
 import type { Deps } from './domain/deps';
 import { createApp } from './http/app';
-import { RateLimiter } from './http/rate-limit';
+import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
 import { LocalStorage } from './storage/local';
 
@@ -30,7 +30,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     limits: { maxImageBytes: config.maxImageBytes, maxImagePixels: config.maxImagePixels },
   };
   const { state, token } = await SetupState.init(deps);
-  const app = createApp({ deps, config, logger, setup: state, loginLimiter: new RateLimiter(10, 60_000) });
+  const app = createApp({ deps, config, logger, setup: state, loginLimiter: new LoginLimiter() });
 
   const server = Bun.serve({
     port: config.port,
