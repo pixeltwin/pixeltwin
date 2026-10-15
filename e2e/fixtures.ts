@@ -71,13 +71,30 @@ export function screenshot(
   ]);
 }
 
-export const test = base.extend<{ seeded: Seeded; reviewerPage: Page; adminPage: Page }, { admin: Api }>({
-  admin: [
+/** Session cookies of the admin and the reviewer, one login each per worker. */
+export interface Sessions {
+  admin: string;
+  reviewer: string;
+}
+
+export const test = base.extend<
+  { seeded: Seeded; reviewerPage: Page; adminPage: Page },
+  { sessions: Sessions; admin: Api }
+>({
+  // Logging in once per worker keeps the suite under the login limit (10 a minute per email).
+  sessions: [
     // biome-ignore lint/correctness/noEmptyPattern: Playwright reads fixture dependencies from this pattern.
     async ({}, use, workerInfo) => {
       const url = workerInfo.project.use.baseURL as string;
-      const cookie = await sessionCookie(url, ADMIN);
-      await use(new Api(url, { cookie: `pt_session=${cookie}`, origin: url }));
+      await use({ admin: await sessionCookie(url, ADMIN), reviewer: await sessionCookie(url, REVIEWER) });
+    },
+    { scope: 'worker' },
+  ],
+
+  admin: [
+    async ({ sessions }, use, workerInfo) => {
+      const url = workerInfo.project.use.baseURL as string;
+      await use(new Api(url, { cookie: `pt_session=${sessions.admin}`, origin: url }));
     },
     { scope: 'worker' },
   ],
@@ -108,21 +125,13 @@ export const test = base.extend<{ seeded: Seeded; reviewerPage: Page; adminPage:
     await use({ slug, name, ci, buildId: second.id, changed: changed.id, fresh: fresh.id, same: same.id });
   },
 
-  reviewerPage: async ({ page, baseURL }, use) => {
-    await page
-      .context()
-      .addCookies([
-        { name: 'pt_session', value: await sessionCookie(baseURL as string, REVIEWER), url: baseURL as string },
-      ]);
+  reviewerPage: async ({ page, baseURL, sessions }, use) => {
+    await page.context().addCookies([{ name: 'pt_session', value: sessions.reviewer, url: baseURL as string }]);
     await use(page);
   },
 
-  adminPage: async ({ page, baseURL }, use) => {
-    await page
-      .context()
-      .addCookies([
-        { name: 'pt_session', value: await sessionCookie(baseURL as string, ADMIN), url: baseURL as string },
-      ]);
+  adminPage: async ({ page, baseURL, sessions }, use) => {
+    await page.context().addCookies([{ name: 'pt_session', value: sessions.admin, url: baseURL as string }]);
     await use(page);
   },
 });

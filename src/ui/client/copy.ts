@@ -34,6 +34,6 @@ export function initCopy(): void {
     const from = button.dataset.copyFrom ? document.getElementById(button.dataset.copyFrom) : null;
     const text = button.dataset.copy ?? from?.textContent ?? '';
     if (await writeText(text.trim())) toast('Copied to clipboard', { tone: 'success', timeout: 2000 });
-    else toast('Copy failed: select the text and copy it by hand.', { tone: 'error' });
+    else toast('Copy failed: select the text and copy it by hand.', { tone: 'danger' });
   });
 }

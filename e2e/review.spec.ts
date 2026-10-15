@@ -1,4 +1,4 @@
-import { expect, open, REVIEWER, sessionCookie, test } from './fixtures';
+import { expect, open, test } from './fixtures';
 
 interface CheckJson {
   review: string;
@@ -47,6 +47,29 @@ test('a small window still shows the filmstrip, with the stage shrinking instead
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
   await expect(page.locator('.frame').first()).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+});
+
+test('toasts appear at the top, in the colour of what happened, never over the buttons', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
+  await page.keyboard.press('a');
+  const approved = page.locator('.toast').last();
+  await expect(approved).toHaveClass(/tone-success/);
+  const toast = await approved.boundingBox();
+  const button = await page.getByRole('button', { name: /Approve/ }).boundingBox();
+  if (!toast || !button) throw new Error('toast or button not on screen');
+  const apart =
+    toast.x + toast.width <= button.x ||
+    button.x + button.width <= toast.x ||
+    toast.y + toast.height <= button.y ||
+    button.y + button.height <= toast.y;
+  expect(apart).toBe(true);
+  expect(toast.y).toBeLessThan(200);
+
+  await page.keyboard.press('r');
+  await expect(page.locator('.toast').last()).toHaveClass(/tone-danger/);
 });
 
 test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {
@@ -110,11 +133,9 @@ test('a check someone else reviewed first is reported, and the review moves on',
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
 });
 
-test('without JavaScript the same page reviews with plain forms', async ({ browser, baseURL, seeded }) => {
+test('without JavaScript the same page reviews with plain forms', async ({ browser, baseURL, sessions, seeded }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
-  await context.addCookies([
-    { name: 'pt_session', value: await sessionCookie(baseURL as string, REVIEWER), url: baseURL as string },
-  ]);
+  await context.addCookies([{ name: 'pt_session', value: sessions.reviewer, url: baseURL as string }]);
   const page = await context.newPage();
   await page.goto(`/ui/checks/${seeded.changed}?filter=pending`);
   await expect(page.locator('.pane-baseline img')).toBeVisible();

@@ -175,9 +175,9 @@ async function alreadyReviewed(id: string): Promise<void> {
     const check = await api<{ review: string }>('GET', `/checks/${id}`);
     states.set(id, check.review);
     const by = (await page(checkUrl(id))).querySelector<HTMLElement>('[data-reviewed-by]')?.dataset.reviewedBy;
-    toast(`Already ${check.review} by ${by ?? 'another reviewer'}`);
+    toast(`Already ${check.review} by ${by ?? 'another reviewer'}`, { tone: 'warning' });
   } catch {
-    toast('Someone else reviewed this check already');
+    toast('Someone else reviewed this check already', { tone: 'warning' });
   }
   await advance();
 }
@@ -194,7 +194,7 @@ async function review(action: Action): Promise<void> {
       if (err instanceof ApiError && err.status === 409) return await alreadyReviewed(id);
       if (err instanceof ApiError && err.status === 401) return;
       toast(`Couldn't ${action} ${name}`, {
-        tone: 'error',
+        tone: 'danger',
         timeout: 0,
         action: { label: 'Retry', run: () => void review(action) },
       });
@@ -205,7 +205,7 @@ async function review(action: Action): Promise<void> {
     forget(id);
     lastReviewed = id;
     toast(`${action === 'approve' ? 'Approved' : 'Rejected'} ${name}`, {
-      tone: 'success',
+      tone: action === 'approve' ? 'success' : 'danger',
       action: { label: 'Undo (U)', run: () => void undo(id) },
     });
     await advance();
@@ -223,11 +223,11 @@ async function undo(target: string | null = lastReviewed ?? currentId()): Promis
       await api('POST', `/checks/${target}/reset`);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'review_not_resettable') {
-        toast("Can't undo: a newer baseline exists.", { tone: 'error' });
+        toast("Can't undo: a newer baseline exists.", { tone: 'danger' });
       } else if (err instanceof ApiError && err.code === 'check_not_reviewable') {
         toast('Nothing to undo: this check waits for review.');
       } else if (!(err instanceof ApiError && err.status === 401)) {
-        toast(`Couldn't undo: ${err instanceof Error ? err.message : String(err)}`, { tone: 'error' });
+        toast(`Couldn't undo: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
       }
       return;
     }

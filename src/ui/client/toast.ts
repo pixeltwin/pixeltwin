@@ -1,7 +1,8 @@
 // Toasts (UI spec §3.2): short messages in the layout's aria-live region, with an optional
 // action (Undo, Retry). With JavaScript they replace the server's flash banners.
 
-export type ToastTone = 'neutral' | 'success' | 'error';
+/** The colour of what happened: green done, red rejected or failed, amber needs a look. */
+export type ToastTone = 'neutral' | 'success' | 'danger' | 'warning';
 
 export interface ToastOptions {
   tone?: ToastTone;
@@ -69,7 +70,7 @@ export function toast(message: string, options: ToastOptions = {}): Toast {
 /** Server flash banners (`.flash`) become toasts; the banner stays for no-JS visitors only. */
 export function initToasts(): void {
   for (const flash of document.querySelectorAll<HTMLElement>('main .flash')) {
-    toast(flash.textContent ?? '', { tone: flash.classList.contains('error') ? 'error' : 'success' });
+    toast(flash.textContent ?? '', { tone: flash.classList.contains('error') ? 'danger' : 'success' });
     flash.remove();
   }
 }

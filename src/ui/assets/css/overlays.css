@@ -1,12 +1,14 @@
 /* Overlays: toasts, dialogs, the shortcut sheet. Shadows appear only here (UI spec §2). */
+/* Toasts sit at the top, below the top bar, clear of the review's action bar at the bottom. */
 .toasts {
   position: fixed;
-  right: var(--space-4);
-  bottom: var(--space-4);
+  top: calc(var(--topbar-height) + var(--space-3));
+  left: 50%;
   z-index: 60;
   display: grid;
   gap: var(--space-2);
-  justify-items: end;
+  justify-items: center;
+  transform: translateX(-50%);
   pointer-events: none;
 }
 .toast {
@@ -23,16 +25,35 @@
   pointer-events: auto;
   animation: toast-in var(--duration) ease-out;
 }
-.toast.tone-error {
-  background: var(--red);
-  color: #fff;
+/* Tinted tones: the tint is laid over the surface so the toast stays opaque in both themes. */
+.toast.tone-success,
+.toast.tone-danger,
+.toast.tone-warning {
+  border: 1px solid var(--tone-border);
+  background: linear-gradient(var(--tone-bg), var(--tone-bg)), var(--surface);
+  color: var(--tone-text);
+}
+.toast.tone-success {
+  --tone-bg: var(--green-bg);
+  --tone-border: var(--green-border);
+  --tone-text: var(--green);
+}
+.toast.tone-danger {
+  --tone-bg: var(--red-bg);
+  --tone-border: var(--red-border);
+  --tone-text: var(--red);
+}
+.toast.tone-warning {
+  --tone-bg: var(--amber-bg);
+  --tone-border: var(--amber-border);
+  --tone-text: var(--amber);
 }
 .toast .ghost {
   color: inherit;
   border-color: transparent;
 }
 .toast .ghost:hover {
-  background: rgb(255 255 255 / 0.16);
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
 .toast-close {
   font-size: var(--text-lg);
@@ -40,7 +61,7 @@
 }
 @keyframes toast-in {
   from {
-    transform: translateY(8px);
+    transform: translateY(-8px);
     opacity: 0;
   }
 }
