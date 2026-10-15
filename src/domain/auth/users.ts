@@ -111,6 +111,7 @@ async function guardLastAdmin(deps: DbDeps, user: UsersTable, change: (tx: Db) =
 export async function updateUser(deps: DbDeps, id: string, input: unknown): Promise<UserView> {
   const changes = parseInput(updateUserSchema, input);
   const user = await getUserRow(deps, id);
+  if (Object.keys(changes).length === 0) return toUserView(user);
   const apply = async (db: Db) => {
     try {
       await db.updateTable('users').set(changes).where('id', '=', id).execute();

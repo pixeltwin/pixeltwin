@@ -93,4 +93,9 @@ describe('users', () => {
       'user_not_found',
     );
   });
+
+  test('an update with no changes returns the user unchanged', async () => {
+    const user = await createUser(deps, { email: 'ada@example.com', password: PASSWORD, role: 'reviewer' });
+    expect(await updateUser(deps, user.id, {})).toEqual(user);
+  });
 });
