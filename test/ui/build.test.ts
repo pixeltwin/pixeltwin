@@ -105,6 +105,16 @@ describe('UI build page', () => {
     expect((await postForm(t, `/ui/builds/${buildId}/approve`, {}, viewer)).status).toBe(403);
   });
 
+  test('an open build updates itself while it runs', async () => {
+    const { buildId } = await seedBuild();
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
+    expect(page).toContain('data-islands="live"');
+    expect(page).toContain('data-live="build-head" data-live-open=""');
+    expect(page).toContain('data-live="chips"');
+    expect(page).toContain('data-live="checks"');
+    expect(page).toContain('data-palette-review');
+  });
+
   test('a filter with no checks says so', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=error`, { as: viewer }));

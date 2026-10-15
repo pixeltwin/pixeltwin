@@ -21,6 +21,8 @@ export interface LayoutProps {
   islands?: string[];
   /** `focus`: a full-width page without the content column (focus-mode review). */
   variant?: 'focus';
+  /** The project this page belongs to: the palette offers its branches and builds. */
+  project?: string;
   children?: Child;
 }
 
@@ -98,7 +100,7 @@ function UserMenu({ ui }: { ui: Ui }) {
   );
 }
 
-export function Layout({ ui, title, crumbs, notice, error, islands, variant, children }: LayoutProps) {
+export function Layout({ ui, title, crumbs, notice, error, islands, variant, project, children }: LayoutProps) {
   // The doctype keeps browsers out of quirks mode; JSX cannot express it.
   return (
     <>
@@ -112,7 +114,13 @@ export function Layout({ ui, title, crumbs, notice, error, islands, variant, chi
           <link rel="stylesheet" href={ui.url(ASSET_PATHS.css)} />
           <script type="module" src={ui.url(clientModulePath('boot'))} />
         </head>
-        <body data-base={ui.url('')} data-islands={islands?.join(' ')} class={variant}>
+        <body
+          data-base={ui.url('')}
+          data-islands={islands?.join(' ') || undefined}
+          data-project={project}
+          data-role={ui.user?.role}
+          class={variant}
+        >
           <a class="skip-link" href="#main">
             Skip to content
           </a>
@@ -120,6 +128,12 @@ export function Layout({ ui, title, crumbs, notice, error, islands, variant, chi
             <Brand ui={ui} />
             {crumbs && crumbs.length > 0 && <Crumbs crumbs={crumbs} />}
             <div class="topbar-end">
+              {ui.user && (
+                // Shown by the boot script: the palette needs JavaScript.
+                <button type="button" class="palette-hint ghost small" data-palette-open hidden>
+                  <span>Search</span> <kbd>⌘K</kbd>
+                </button>
+              )}
               <UserMenu ui={ui} />
             </div>
           </header>

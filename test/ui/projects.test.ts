@@ -110,6 +110,18 @@ describe('UI projects', () => {
       expect(page).toContain('Review 1');
     });
 
+    test('open builds keep the page live; the Review button is a palette action too', async () => {
+      const { cartBuild } = await seedWeb();
+      const live = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
+      expect(live).toContain('data-islands="live"');
+      expect(live).toContain('data-live="lanes" data-live-open=""');
+      expect(live).toContain('data-palette-review');
+      await finalizeBuild(t.deps, cartBuild);
+      const settled = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
+      expect(settled).not.toContain('data-live-open');
+      expect(settled).not.toContain('data-islands="live"');
+    });
+
     test('settings are a tab for admins only', async () => {
       await seedWeb();
       expect(await html(await t.request('GET', '/ui/p/web', { as: admin }))).toContain('href="/ui/p/web/settings"');
@@ -137,6 +149,9 @@ describe('UI projects', () => {
       expect(page).toContain('data-copy-from="snippet-curl"');
       expect(page).toContain('href="/ui/p/web/settings/tokens/new"');
       expect(page).not.toContain('class="step done"');
+      // The page turns into the branch list by itself when the first build arrives.
+      expect(page).toContain('data-live="onboarding" data-live-open="" data-live-reload=""');
+      expect(page).toContain('data-islands="tokens live"');
     });
 
     test('the token step is done once the project has a token; viewers are told to ask an admin', async () => {
@@ -159,6 +174,7 @@ describe('UI projects', () => {
       // feature/cart's build is still open: it is running, and its pending check shows too.
       expect(page).toContain('tone-blue">running</span>');
       expect(page).toContain('aria-current="page">All builds</a>');
+      expect(page).toContain('data-live="builds" data-live-open=""');
     });
 
     test('filters by branch from a list of the project branches', async () => {

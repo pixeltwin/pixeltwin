@@ -72,6 +72,7 @@ function SettingsPage(props: {
       title={`${project.name} settings`}
       notice={props.notice}
       islands={['tokens']}
+      project={project.slug}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'Settings' }]}
     >
       <div class="page-head">

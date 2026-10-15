@@ -242,13 +242,19 @@ function BranchesPage(props: {
   notice?: string | undefined;
 }) {
   const { ui, project, summaries } = props;
+  // Open builds still receive checks: the live island keeps the lanes current until they finish.
+  const running = summaries.some((x) => x.latest.state === 'open');
   return (
     <Layout
       ui={ui}
       title={project.name}
       crumbs={[{ label: project.name }]}
       notice={props.notice}
-      islands={props.onboarding && props.canManage ? ['tokens'] : undefined}
+      project={project.slug}
+      islands={[
+        ...(props.onboarding && props.canManage ? ['tokens'] : []),
+        ...(props.onboarding || running ? ['live'] : []),
+      ]}
     >
       <div class="page-head">
         <div>
@@ -259,13 +265,13 @@ function BranchesPage(props: {
             <span class="mono">{project.mainBranch}</span>
           </p>
         </div>
-        {props.review && (
-          <div class="page-actions">
-            <a class="button primary" href={props.review.href}>
+        <div class="page-actions" data-live="actions">
+          {props.review && (
+            <a class="button primary" href={props.review.href} data-palette-review>
               {`Review ${props.review.count} →`}
             </a>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <ProjectTabs ui={ui} slug={project.slug} current="branches" canManage={props.canManage} />
       {props.onboarding ? (
@@ -277,7 +283,7 @@ function BranchesPage(props: {
           canManage={props.canManage}
         />
       ) : (
-        <div class="lanes">
+        <div class="lanes" data-live="lanes" data-live-open={running ? '' : undefined}>
           {summaries.map((summary) => (
             <Lane ui={ui} slug={project.slug} summary={summary} />
           ))}
@@ -288,6 +294,7 @@ function BranchesPage(props: {
 }
 
 function BuildsTable({ ui, builds }: { ui: Ui; builds: BuildView[] }) {
+  const running = builds.some((b) => b.state === 'open');
   return (
     <table class="builds stack-on-phone">
       <thead>
@@ -301,7 +308,7 @@ function BuildsTable({ ui, builds }: { ui: Ui; builds: BuildView[] }) {
           <th>Created</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody data-live="builds" data-live-open={running ? '' : undefined}>
         {builds.map((b) => (
           <tr>
             <td>
@@ -348,6 +355,8 @@ function AllBuildsPage(props: {
       ui={ui}
       title={`${project.name} builds`}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'All builds' }]}
+      project={project.slug}
+      islands={builds.some((b) => b.state === 'open') ? ['live'] : undefined}
     >
       <div class="page-head">
         <div>

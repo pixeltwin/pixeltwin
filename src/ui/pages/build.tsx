@@ -50,6 +50,8 @@ function BuildPage(props: {
 }) {
   const { ui, project, build, checks, filter } = props;
   const pending = build.counts.review.pending;
+  // An open build still receives checks; the live island refreshes the header, chips and grid.
+  const open = build.state === 'open';
   return (
     <Layout
       ui={ui}
@@ -63,8 +65,10 @@ function BuildPage(props: {
         },
         { label: `#${build.number}` },
       ]}
+      project={project.slug}
+      islands={open ? ['live'] : undefined}
     >
-      <div class="page-head">
+      <div class="page-head" data-live="build-head" data-live-open={open ? '' : undefined}>
         <div>
           <div class="title-row">
             <h1>{`Build #${build.number}`}</h1>
@@ -92,13 +96,17 @@ function BuildPage(props: {
             </form>
           )}
           {props.firstPending && (
-            <a class="button primary" href={ui.url(`/ui/checks/${props.firstPending}?filter=pending`)}>
+            <a
+              class="button primary"
+              href={ui.url(`/ui/checks/${props.firstPending}?filter=pending`)}
+              data-palette-review
+            >
               Start review
             </a>
           )}
         </div>
       </div>
-      <nav class="chips" aria-label="Filter checks">
+      <nav class="chips" aria-label="Filter checks" data-live="chips">
         {CHECK_FILTERS.map((f) => {
           const count = countFor(f, build.counts);
           if (count === 0 && f.key !== 'all' && f.key !== filter.key) return null;
@@ -112,17 +120,19 @@ function BuildPage(props: {
           );
         })}
       </nav>
-      {checks.length === 0 ? (
-        <div class="empty">
-          <h3>No checks match this filter.</h3>
-        </div>
-      ) : (
-        <div class="check-grid">
-          {checks.map((check) => (
-            <CheckCard ui={ui} check={check} size={props.sizes.get(thumbnailSha(check))} filter={filter} />
-          ))}
-        </div>
-      )}
+      <div data-live="checks">
+        {checks.length === 0 ? (
+          <div class="empty">
+            <h3>No checks match this filter.</h3>
+          </div>
+        ) : (
+          <div class="check-grid">
+            {checks.map((check) => (
+              <CheckCard ui={ui} check={check} size={props.sizes.get(thumbnailSha(check))} filter={filter} />
+            ))}
+          </div>
+        )}
+      </div>
       {props.older && (
         <div class="pager">
           <span />

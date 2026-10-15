@@ -88,3 +88,49 @@ dialog h2 {
     max-width: none;
   }
 }
+
+/* Command palette (UI spec §4.3). */
+dialog.palette {
+  width: min(600px, calc(100vw - 2 * var(--space-4)));
+  margin-top: 12vh;
+  padding: 0;
+  overflow: hidden;
+}
+.palette input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--space-5);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  font-size: var(--text-lg);
+}
+.palette input:focus-visible {
+  outline: none;
+}
+.palette ul {
+  max-height: 50vh;
+  margin: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+  list-style: none;
+}
+.palette li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.palette li[aria-selected="true"] {
+  background: var(--surface-2);
+}
+.palette-hint {
+  color: var(--text-muted);
+}
+@media (max-width: 640px) {
+  .palette-hint span {
+    display: none;
+  }
+}

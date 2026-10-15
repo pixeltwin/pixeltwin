@@ -74,6 +74,13 @@ describe('UI shell and theme', () => {
     expect(page).toMatch(/<a class="brand" href="\/ui">[\s\S]*pixeltwin/);
   });
 
+  test('the ⌘K button waits hidden until the palette starts; the body says who is looking', async () => {
+    const page = await html(await t.request('GET', '/ui', { as: admin }));
+    expect(page).toMatch(/<button[^>]*data-palette-open[^>]*hidden/);
+    expect(page).toContain('data-role="admin"');
+    expect(await html(await t.request('GET', '/ui/p/web', { as: reviewer }))).toContain('data-project="web"');
+  });
+
   test('the login page has no user menu', async () => {
     const page = await html(await t.request('GET', '/ui/login'));
     expect(page).not.toContain('action="/ui/logout"');

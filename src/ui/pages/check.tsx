@@ -333,6 +333,7 @@ function CheckPage(props: {
       title={check.name}
       notice={props.notice}
       islands={['review']}
+      project={project.slug}
       variant="focus"
       crumbs={[
         { label: project.name, href: ui.url(`/ui/p/${project.slug}`) },

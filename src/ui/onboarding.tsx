@@ -78,7 +78,14 @@ export function Onboarding({
   const code = snippets(publicUrl, project.slug);
   const base = publicUrl.replace(/\/+$/, '');
   return (
-    <section class="onboarding" aria-labelledby="onboarding-title">
+    // Live: once the first build arrives the page reloads into the branch list (UI spec §4.4).
+    <section
+      class="onboarding"
+      aria-labelledby="onboarding-title"
+      data-live="onboarding"
+      data-live-open=""
+      data-live-reload=""
+    >
       <h2 id="onboarding-title">Send your first screenshots</h2>
       <p class="sub">Three steps. This page shows the project's branches once the first build arrives.</p>
       <ol class="steps">
