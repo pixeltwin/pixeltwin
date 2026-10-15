@@ -4,6 +4,13 @@ Self-hosted visual regression testing with an API built for CI and AI agents.
 
 > Status: early development (0.x). See `docs/superpowers/specs/` for the design.
 
+![Branches of a project: main passed, a feature branch waiting for review](docs/screenshots/branches-light.png)
+
+Review a build with the keyboard: Side, Slider, Onion and Diff views, zoom to a changed region,
+<kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>U</kbd> undo, <kbd>J</kbd>/<kbd>K</kbd> next and previous.
+
+![Reviewing a changed check in the slider view, dark theme](docs/screenshots/review-slider-dark.png)
+
 ## Run it
 
 **Docker** (images for amd64 and arm64 are published by the release workflow to
@@ -87,6 +94,16 @@ bun run lint         # `bun run format` fixes formatting
 bun run openapi      # regenerate openapi.json after changing the API (a test checks it)
 bun scripts/build.ts            # binary for this machine in dist/ (`all` for every target)
 bun scripts/smoke.ts dist/pixeltwin-*-darwin-arm64   # end-to-end check of a binary
+```
+
+Browser tests (Playwright, Chromium) start their own server from source on port 18777
+(`E2E_PORT` to change it); the review flow, dialogs, theme, palette, phone layout and the
+no-JavaScript fallback are covered:
+
+```sh
+bunx playwright install chromium   # once
+bun run e2e
+bun run screenshots                # refresh docs/screenshots/ (pixeltwin also compares them itself)
 ```
 
 Run the tests against Postgres too:

@@ -38,9 +38,14 @@ document.addEventListener('change', (event) => {
   if (form instanceof HTMLFormElement) form.requestSubmit();
 });
 
-for (const name of (document.body.dataset.islands ?? '').split(/\s+/)) {
-  if (!/^[a-z-]+$/.test(name)) continue;
-  import(`./${name}.js${version}`)
-    .then((module: { init?: () => void }) => module.init?.())
-    .catch((err: unknown) => console.error(`pixeltwin: island "${name}" failed to start`, err));
-}
+const islands = (document.body.dataset.islands ?? '').split(/\s+/).filter((name) => /^[a-z-]+$/.test(name));
+void Promise.all(
+  islands.map((name) =>
+    import(`./${name}.js${version}`)
+      .then((module: { init?: () => void }) => module.init?.())
+      .catch((err: unknown) => console.error(`pixeltwin: island "${name}" failed to start`, err)),
+  ),
+).then(() => {
+  // Every island is listening now; browser tests wait for this before pressing keys.
+  document.body.dataset.ready = '';
+});

@@ -1,0 +1,3 @@
+[test]
+# Browser tests in e2e/ run with Playwright (`bun run e2e`), not with `bun test`.
+root = "test"
