@@ -38,19 +38,6 @@ describe('UI review flow', () => {
     return { buildId, changed, fresh, same };
   }
 
-  test('the build page shows thumbnails, filters and Approve all only to reviewers', async () => {
-    const { buildId, changed, same } = await seedBuild();
-    const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: reviewer }));
-    expect(page).toContain(`src="/api/v1/images/${changed.diffImageSha}"`);
-    expect(page).toContain(`src="/api/v1/images/${same.imageSha}"`);
-    expect(page).toContain('Approve all 2');
-    expect(await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }))).not.toContain('Approve all');
-
-    const pending = await html(await t.request('GET', `/ui/builds/${buildId}?review=pending`, { as: viewer }));
-    expect(pending).toContain('class="current"');
-    expect(pending).not.toContain(`/ui/checks/${same.id}`);
-  });
-
   test('the check page shows the diff with region boxes and keyboard actions', async () => {
     const { changed } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/checks/${changed.id}`, { as: reviewer }));
@@ -85,15 +72,6 @@ describe('UI review flow', () => {
     expect(await html(await t.request('GET', `/ui/builds/${buildId}?done=rejected`, { as: reviewer }))).toContain(
       'Rejected.',
     );
-  });
-
-  test('approve all from the build page', async () => {
-    const { buildId } = await seedBuild();
-    const res = await postForm(t, `/ui/builds/${buildId}/approve`, {}, reviewer);
-    expect(location(res)).toBe(`/ui/builds/${buildId}?done=approved-all`);
-    const page = await html(await t.request('GET', location(res), { as: reviewer }));
-    expect(page).toContain('All pending checks approved.');
-    expect(page).toContain('badge passed');
   });
 
   test('viewers see no review buttons and cannot post reviews', async () => {

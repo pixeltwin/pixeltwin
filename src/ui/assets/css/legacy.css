@@ -1,48 +1,4 @@
-/* Page rules from before the redesign, kept until the build and check pages are rebuilt. */
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin: var(--space-3) 0;
-}
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-4);
-}
-.card {
-  display: block;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  color: var(--text);
-}
-.card:hover {
-  border-color: var(--border-strong);
-  text-decoration: none;
-}
-.card img {
-  display: block;
-  width: 100%;
-  height: 150px;
-  object-fit: contain;
-  object-position: top;
-  background: var(--surface-2);
-}
-.card .meta {
-  padding: var(--space-2) var(--space-3);
-  display: grid;
-  gap: var(--space-1);
-}
-.card .name {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* Page rules from before the redesign, kept until the check page is rebuilt. */
 .compare {
   display: grid;
   grid-template-columns: 1fr 1fr;

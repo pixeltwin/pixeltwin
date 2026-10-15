@@ -1,44 +1,56 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
-import { CHECK_RESULTS, CHECK_REVIEWS, type CheckResult, type CheckReview } from '../../db/schema';
+import type { Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, getBuild } from '../../domain/builds';
-import { type CheckView, listChecks } from '../../domain/checks';
+import { type CheckView, firstPendingCheckId, listChecks } from '../../domain/checks';
+import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Badge, Pager, Variant, When } from '../components';
+import { Ago, BuildStatus, countsText, Pill, toneOf, Variant } from '../components';
 import { noticeOf, type Ui, uiOf, userOf } from '../context';
+import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
-
-interface Filter {
-  label: string;
-  result?: CheckResult;
-  review?: CheckReview;
-}
-
-const FILTERS: Filter[] = [
-  { label: 'All' },
-  { label: 'To review', review: 'pending' },
-  { label: 'Changed', result: 'changed' },
-  { label: 'New', result: 'new' },
-  { label: 'Errors', result: 'error' },
-  { label: 'Unchanged', result: 'unchanged' },
-  { label: 'Rejected', review: 'rejected' },
-];
-
-function filterQuery(f: Filter): string {
-  const params = new URLSearchParams();
-  if (f.result) params.set('result', f.result);
-  if (f.review) params.set('review', f.review);
-  const q = params.toString();
-  return q ? `?${q}` : '';
-}
 
 /** The thumbnail: the diff for changed checks (changes in red), otherwise the screenshot. */
 function thumbnailSha(check: CheckView): string {
   return check.result === 'changed' && check.diffImageSha ? check.diffImageSha : check.imageSha;
+}
+
+const REVIEW_LABELS = { none: '', pending: 'to review', approved: 'approved', rejected: 'rejected' } as const;
+
+/** Result and review state of a check: `changed` `to review`, `new` `approved`, … */
+export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
+  return (
+    <span class="status">
+      <Pill tone={toneOf(check.result)}>{check.result}</Pill>
+      {check.review !== 'none' && <Pill tone={toneOf(check.review)}>{REVIEW_LABELS[check.review]}</Pill>}
+    </span>
+  );
+}
+
+function CheckCard({ ui, check, size, filter }: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter }) {
+  const sha = thumbnailSha(check);
+  return (
+    <a class="check-card" href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}>
+      <div class="thumb">
+        <img
+          src={ui.url(`/api/v1/images/${sha}`)}
+          alt={check.name}
+          loading="lazy"
+          width={size?.width}
+          height={size?.height}
+        />
+      </div>
+      <div class="check-card-body">
+        <span class="check-name">{check.name}</span>
+        <Variant variant={check.variant} />
+        <CheckStatus check={check} />
+      </div>
+    </a>
+  );
 }
 
 function BuildPage(props: {
@@ -46,68 +58,94 @@ function BuildPage(props: {
   project: Project;
   build: BuildView;
   checks: CheckView[];
-  active: Filter;
+  sizes: Map<string, Size>;
+  filter: CheckFilter;
+  firstPending: string | null;
   canReview: boolean;
   older?: string | undefined;
   notice?: string | undefined;
 }) {
-  const { ui, project, build, checks, active } = props;
+  const { ui, project, build, checks, filter } = props;
+  const pending = build.counts.review.pending;
   return (
-    <Layout ui={ui} title={`Build ${build.externalId ?? build.id.slice(-8)}`} notice={props.notice}>
-      <p class="muted">
-        <a href={ui.url(`/ui/p/${project.slug}`)}>{project.name}</a>
-      </p>
-      <h1>
-        {`Build ${build.externalId ?? build.id.slice(-8)} `}
-        <Badge value={build.verdict} />
-      </h1>
-      <p class="sub">
-        {`${build.branch}${build.branch !== build.baseBranch ? ` (compared with ${build.baseBranch})` : ''} · ${build.state} · `}
-        <When at={build.createdAt} />
-        {build.commitSha && ` · ${build.commitSha.slice(0, 12)}`}
-      </p>
-      <div class="toolbar">
-        <nav class="tabs">
-          {FILTERS.map((f) => (
-            <a
-              class={f.label === active.label ? 'current' : ''}
-              href={ui.url(`/ui/builds/${build.id}${filterQuery(f)}`)}
-            >
-              {f.label}
+    <Layout
+      ui={ui}
+      title={`Build #${build.number}`}
+      notice={props.notice}
+      crumbs={[
+        { label: project.name, href: ui.url(`/ui/p/${project.slug}`) },
+        {
+          label: build.branch,
+          href: ui.url(`/ui/p/${project.slug}/builds?branch=${encodeURIComponent(build.branch)}`),
+        },
+        { label: `#${build.number}` },
+      ]}
+    >
+      <div class="page-head">
+        <div>
+          <div class="title-row">
+            <h1>{`Build #${build.number}`}</h1>
+            <BuildStatus build={build} />
+          </div>
+          <p class="sub meta-line">
+            <span class="mono">{build.branch}</span>
+            {build.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
+            {build.commitSha && <span class="mono">{build.commitSha.slice(0, 7)}</span>}
+            {build.externalId && <span>{build.externalId}</span>}
+            <Ago at={build.createdAt} />
+            <span>{countsText(build.counts)}</span>
+          </p>
+        </div>
+        <div class="page-actions">
+          {props.canReview && pending > 0 && (
+            <form method="post" action={ui.url(`/ui/builds/${build.id}/approve`)}>
+              <button
+                type="submit"
+                data-confirm={`Approve all ${pending} checks waiting for review? Their screenshots become the baselines on ${build.branch}.`}
+                data-confirm-label="Approve all"
+              >
+                {`Approve all ${pending}`}
+              </button>
+            </form>
+          )}
+          {props.firstPending && (
+            <a class="button primary" href={ui.url(`/ui/checks/${props.firstPending}?filter=pending`)}>
+              Start review
             </a>
-          ))}
-        </nav>
-        {props.canReview && build.counts.review.pending > 0 && (
-          <form class="inline" method="post" action={ui.url(`/ui/builds/${build.id}/approve`)}>
-            <button
-              class="approve"
-              type="submit"
-              data-confirm={`Approve all ${build.counts.review.pending} pending checks? Their screenshots become baselines on ${build.branch}.`}
-            >
-              {`Approve all ${build.counts.review.pending}`}
-            </button>
-          </form>
-        )}
+          )}
+        </div>
       </div>
-      {checks.length === 0 ? (
-        <p class="panel">No checks match.</p>
-      ) : (
-        <div class="grid">
-          {checks.map((check) => (
-            <a class="card" href={ui.url(`/ui/checks/${check.id}`)}>
-              <img src={ui.url(`/api/v1/images/${thumbnailSha(check)}`)} alt={check.name} loading="lazy" />
-              <div class="meta">
-                <span class="name">{check.name}</span>
-                <Variant variant={check.variant} />
-                <span>
-                  <Badge value={check.result} /> {check.review !== 'none' && <Badge value={check.review} />}
-                </span>
-              </div>
+      <nav class="chips" aria-label="Filter checks">
+        {CHECK_FILTERS.map((f) => {
+          const count = countFor(f, build.counts);
+          if (count === 0 && f.key !== 'all' && f.key !== filter.key) return null;
+          return (
+            <a
+              href={ui.url(`/ui/builds/${build.id}?filter=${f.key}`)}
+              aria-current={f.key === filter.key ? 'page' : undefined}
+            >
+              {f.label} <span class="count">{count}</span>
             </a>
+          );
+        })}
+      </nav>
+      {checks.length === 0 ? (
+        <div class="empty">
+          <h3>No checks match this filter.</h3>
+        </div>
+      ) : (
+        <div class="check-grid">
+          {checks.map((check) => (
+            <CheckCard ui={ui} check={check} size={props.sizes.get(thumbnailSha(check))} filter={filter} />
           ))}
         </div>
       )}
-      <Pager older={props.older} />
+      {props.older && (
+        <div class="pager">
+          <span />
+          <a href={props.older}>More checks →</a>
+        </div>
+      )}
     </Layout>
   );
 }
@@ -118,15 +156,19 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const id = c.req.param('id');
     const build = await getBuild(s.deps, id);
     const project = await getProjectById(s.deps, build.projectId);
-    const result = CHECK_RESULTS.find((r) => r === c.req.query('result'));
-    const review = CHECK_REVIEWS.find((r) => r === c.req.query('review'));
-    const active = FILTERS.find((f) => f.result === result && f.review === review) ?? (FILTERS[0] as Filter);
+    const filter = filterFromQuery({
+      filter: c.req.query('filter'),
+      result: c.req.query('result'),
+      review: c.req.query('review'),
+    });
     const cursor = c.req.query('cursor') || undefined;
-    const page = await listChecks(s.deps, id, { result: active.result, review: active.review, cursor, limit: 200 });
+    const [page, firstPending] = await Promise.all([
+      listChecks(s.deps, id, { result: filter.result, review: filter.review, cursor, limit: 200 }),
+      firstPendingCheckId(s.deps, id),
+    ]);
+    const sizes = await imageSizes(s.deps, page.items.map(thumbnailSha));
     const older = page.nextCursor
-      ? ui.url(
-          `/ui/builds/${id}?${new URLSearchParams({ ...(active.result ? { result: active.result } : {}), ...(active.review ? { review: active.review } : {}), cursor: page.nextCursor })}`,
-        )
+      ? ui.url(`/ui/builds/${id}?filter=${filter.key}&cursor=${encodeURIComponent(page.nextCursor)}`)
       : undefined;
     return c.html(
       <BuildPage
@@ -134,7 +176,9 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         project={project}
         build={build}
         checks={page.items}
-        active={active}
+        sizes={sizes}
+        filter={filter}
+        firstPending={firstPending}
         canReview={hasPermission(userOf(c), 'check.review')}
         older={older}
         notice={noticeOf(c)}
