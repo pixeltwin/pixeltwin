@@ -14,6 +14,9 @@ test('a reviewer goes through a build with the keyboard, without page loads', as
     (window as unknown as { stayed: boolean }).stayed = true;
   });
   await expect(page.locator('.review-position')).toHaveText('1 / 2');
+  // The whole review fits the window: the filmstrip and the action bar are fully visible.
+  await expect(page.locator('.frame').first()).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: /Approve/ })).toBeInViewport({ ratio: 1 });
 
   await page.keyboard.press('a');
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
@@ -35,6 +38,16 @@ test('a reviewer goes through a build with the keyboard, without page loads', as
   for (const id of [seeded.changed, seeded.fresh]) {
     expect((await seeded.ci.call<CheckJson>('GET', `/checks/${id}`)).review).toBe('approved');
   }
+});
+
+test('a small window still shows the filmstrip, with the stage shrinking instead', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
+  await expect(page.locator('.frame').first()).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
 test('a comment goes with the review: C to write, Esc to leave the field, R to reject', async ({

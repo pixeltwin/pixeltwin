@@ -214,9 +214,10 @@ body.focus main {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* With the viewer: fixed-height viewports, transformed canvases, one mode at a time. */
+/* With the viewer: sized viewports, transformed canvases, one mode at a time. On phones the page
+   scrolls, so viewports get a height of their own; wide screens size them to the window below. */
 .stage.interactive .viewport {
-  height: max(320px, calc(100vh - 330px));
+  height: max(240px, calc(100dvh - 420px));
   cursor: grab;
   touch-action: none;
 }
@@ -243,10 +244,42 @@ body.focus main {
 .stage.interactive[data-mode="onion"] .pane-overlay,
 .stage.interactive[data-mode="diff"] .pane-diff,
 .stage.interactive[data-mode="new"] .pane-current {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .stage.interactive:not([data-mode="side"]) .panes {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* Wide screens: the review fills the window exactly. Header, action bar and filmstrip keep their
+   height; the stage takes the rest, so nothing falls below the bottom edge. */
+@media (min-width: 901px) {
+  .review:has(.stage.interactive) {
+    height: calc(100dvh - var(--topbar-height));
+    min-height: 0;
+  }
+  .review:has(.stage.interactive) .review-body {
+    min-height: 0;
+  }
+  .review:has(.stage.interactive) .review-info {
+    overflow-y: auto;
+  }
+  .stage.interactive {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .stage.interactive .panes {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .stage.interactive .viewport {
+    flex: 1;
+    height: auto;
+    min-height: 120px;
+  }
 }
 
 /* Info strip. */
@@ -337,9 +370,6 @@ body.focus main {
   }
   .stage {
     padding: var(--space-2);
-  }
-  .stage.interactive .viewport {
-    height: max(240px, calc(100vh - 360px));
   }
   .review-title .muted {
     display: none;
