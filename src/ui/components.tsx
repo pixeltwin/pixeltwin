@@ -1,5 +1,6 @@
 import type { Child } from 'hono/jsx';
 import type { BuildView } from '../domain/builds';
+import type { CheckView } from '../domain/checks';
 import type { BuildCounts, Verdict } from '../domain/verdict';
 import type { AppError } from '../errors';
 import type { Ui } from './context';
@@ -223,6 +224,23 @@ export function BuildStatus({ build }: { build: Pick<BuildView, 'state' | 'verdi
     <span class="status">
       <Pill tone="blue">running</Pill>
       {attention && <VerdictPill verdict={build.verdict} />}
+    </span>
+  );
+}
+
+/** The thumbnail: the diff for changed checks (changes in red), otherwise the screenshot. */
+export function thumbnailSha(check: CheckView): string {
+  return check.result === 'changed' && check.diffImageSha ? check.diffImageSha : check.imageSha;
+}
+
+const REVIEW_LABELS = { none: '', pending: 'to review', approved: 'approved', rejected: 'rejected' } as const;
+
+/** Result and review state of a check: `changed` `to review`, `new` `approved`, … */
+export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
+  return (
+    <span class="status">
+      <Pill tone={toneOf(check.result)}>{check.result}</Pill>
+      {check.review !== 'none' && <Pill tone={toneOf(check.review)}>{REVIEW_LABELS[check.review]}</Pill>}
     </span>
   );
 }

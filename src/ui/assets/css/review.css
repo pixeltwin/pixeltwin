@@ -1,0 +1,363 @@
+/* Focus-mode review (UI spec §5). Without JavaScript the stage shows everything stacked
+   (data-mode="all"); the viewer island adds .interactive and switches modes. */
+body.focus main {
+  max-width: none;
+  padding: 0;
+}
+.review {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-height));
+}
+.review-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.review-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.review-title h1 {
+  font-size: var(--text-xl);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.review-position {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.progress {
+  height: 3px;
+  background: var(--surface-2);
+}
+.progress span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--primary);
+  transition: width var(--duration);
+}
+.review-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  min-height: 0;
+}
+
+/* Filmstrip (before the stage rules: its img selector is less specific). */
+.filmstrip {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+}
+.filmstrip ol {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  list-style: none;
+}
+.frame {
+  position: relative;
+  display: block;
+  width: 96px;
+  height: 60px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.frame .dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.frame[aria-current="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+/* Stage. */
+.stage {
+  min-width: 0;
+  padding: var(--space-4);
+}
+.stage:focus-visible {
+  outline-offset: -2px;
+}
+.stage-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.stage-toolbar .segmented {
+  margin: 0;
+}
+.onion-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-weight: 400;
+}
+.zoom-controls {
+  margin-left: auto;
+}
+.panes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.pane {
+  margin: 0;
+  min-width: 0;
+}
+.pane figcaption {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.viewport {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(var(--checker) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+}
+.shot {
+  position: relative;
+}
+.shot img,
+.layers img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.shot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.shot svg rect {
+  fill: var(--diff-fill);
+  stroke: var(--diff);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.layers {
+  position: relative;
+}
+.layers .layer-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 24px;
+  margin-left: -12px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 11px;
+  width: 2px;
+  background: var(--focus);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
+}
+
+/* No JavaScript: baseline and this build side by side, the diff below, no overlay. */
+.stage[data-mode="all"] .pane-diff {
+  grid-column: 1 / -1;
+}
+.stage[data-mode="all"] .pane-overlay,
+.stage[data-mode="new"] .pane-overlay {
+  display: none;
+}
+.stage[data-mode="new"] .panes {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* With the viewer: fixed-height viewports, transformed canvases, one mode at a time. */
+.stage.interactive .viewport {
+  height: max(320px, calc(100vh - 330px));
+  cursor: grab;
+  touch-action: none;
+}
+.stage.interactive .viewport:active {
+  cursor: grabbing;
+}
+.stage.interactive .canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.stage.interactive .shot img,
+.stage.interactive .layers img {
+  max-width: none;
+}
+.stage.interactive .pane {
+  display: none;
+}
+.stage.interactive[data-mode="side"] .pane-baseline,
+.stage.interactive[data-mode="side"] .pane-current,
+.stage.interactive[data-mode="slider"] .pane-overlay,
+.stage.interactive[data-mode="onion"] .pane-overlay,
+.stage.interactive[data-mode="diff"] .pane-diff,
+.stage.interactive[data-mode="new"] .pane-current {
+  display: block;
+}
+.stage.interactive:not([data-mode="side"]) .panes {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Info strip. */
+.review-info {
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+.review-info .summary {
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+.facts {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-muted);
+}
+.regions {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.regions button {
+  width: 100%;
+  justify-content: flex-start;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.reviewed {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.reviewed .comment {
+  display: block;
+  margin-top: var(--space-1);
+  font-style: italic;
+}
+
+/* Action bar: sticky at the bottom, in thumb reach on phones. */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.review-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+}
+.review-form textarea {
+  flex: 1;
+  min-height: 34px;
+  max-width: 480px;
+  resize: none;
+}
+.review-buttons {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.review-buttons button,
+.review-buttons .button {
+  min-height: 38px;
+  padding: 0 var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .review-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-info {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+@media (max-width: 640px) {
+  .panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stage {
+    padding: var(--space-2);
+  }
+  .stage.interactive .viewport {
+    height: max(240px, calc(100vh - 360px));
+  }
+  .review-title .muted {
+    display: none;
+  }
+  .review-form {
+    flex-wrap: wrap;
+  }
+  .review-form textarea {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .review-buttons {
+    width: 100%;
+  }
+  .review-buttons > * {
+    flex: 1;
+  }
+}
+.stage.magnified .canvas img {
+  image-rendering: pixelated;
+}

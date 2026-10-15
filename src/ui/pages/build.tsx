@@ -9,27 +9,10 @@ import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, BuildStatus, countsText, Pill, toneOf, Variant } from '../components';
+import { Ago, BuildStatus, CheckStatus, countsText, thumbnailSha, Variant } from '../components';
 import { noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
-
-/** The thumbnail: the diff for changed checks (changes in red), otherwise the screenshot. */
-function thumbnailSha(check: CheckView): string {
-  return check.result === 'changed' && check.diffImageSha ? check.diffImageSha : check.imageSha;
-}
-
-const REVIEW_LABELS = { none: '', pending: 'to review', approved: 'approved', rejected: 'rejected' } as const;
-
-/** Result and review state of a check: `changed` `to review`, `new` `approved`, … */
-export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
-  return (
-    <span class="status">
-      <Pill tone={toneOf(check.result)}>{check.result}</Pill>
-      {check.review !== 'none' && <Pill tone={toneOf(check.review)}>{REVIEW_LABELS[check.review]}</Pill>}
-    </span>
-  );
-}
 
 function CheckCard({ ui, check, size, filter }: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter }) {
   const sha = thumbnailSha(check);

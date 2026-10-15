@@ -1,36 +1,35 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
+import type { Child } from 'hono/jsx';
 import type { Project } from '../../db/schema';
-import type { DiffData, DiffErrorData, Size } from '../../diff/types';
+import type { DiffData, DiffErrorData, Region, Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
-import { type CheckNeighbors, type CheckView, checkNeighbors, getCheck } from '../../domain/checks';
+import { type BuildView, getBuild } from '../../domain/builds';
+import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { approveCheck, rejectCheck, resetReview } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Badge, Variant, When } from '../components';
+import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { type CheckFilter, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
-
-type View = 'side' | 'diff';
 
 function isDiffData(diff: CheckView['diff']): diff is DiffData {
   return diff !== null && !('error' in diff);
 }
 
-function Shot({
-  ui,
-  sha,
-  alt,
-  size,
-  regions,
-}: {
-  ui: Ui;
-  sha: string;
-  alt: string;
-  size?: Size | undefined;
-  regions?: DiffData['regions'];
-}) {
+/** Who reviewed: a user's email, or the name of the project token that did it. */
+async function reviewerName(s: Services, id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const user = await s.deps.db.selectFrom('users').select('email').where('id', '=', id).executeTakeFirst();
+  if (user) return user.email;
+  const token = await s.deps.db.selectFrom('projectTokens').select('name').where('id', '=', id).executeTakeFirst();
+  return token ? `token “${token.name}”` : 'a deleted account';
+}
+
+function Shot(props: { ui: Ui; sha: string; alt: string; size?: Size | undefined; regions?: Region[] }) {
+  const { ui, sha, alt, size, regions } = props;
   return (
     <div class="shot">
       <img src={ui.url(`/api/v1/images/${sha}`)} alt={alt} width={size?.width} height={size?.height} />
@@ -46,148 +45,321 @@ function Shot({
   );
 }
 
+/** One image area; the viewport clips, the canvas is what the island zooms and pans. */
+function Pane({ kind, caption, children }: { kind: string; caption: Child; children: Child }) {
+  return (
+    <figure class={`pane pane-${kind}`}>
+      <figcaption>{caption}</figcaption>
+      <div class="viewport">
+        <div class="canvas">{children}</div>
+      </div>
+    </figure>
+  );
+}
+
+function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<string, Size> }) {
+  const diff = isDiffData(check.diff) ? check.diff : null;
+  const baseline = check.baseline;
+  if (!baseline) {
+    return (
+      <section class="stage" id="stage" data-mode="new" aria-label="New snapshot">
+        <div class="panes">
+          <Pane kind="current" caption="New snapshot — no baseline yet">
+            <Shot ui={ui} sha={check.imageSha} alt="new snapshot" size={sizes.get(check.imageSha)} />
+          </Pane>
+        </div>
+      </section>
+    );
+  }
+  const modes: Array<[mode: string, label: string, key: string]> = [
+    ['side', 'Side', '1'],
+    ['slider', 'Slider', '2'],
+    ['onion', 'Onion', '3'],
+  ];
+  if (check.diffImageSha) modes.push(['diff', 'Diff', '4']);
+  const baseSize = sizes.get(baseline.imageSha);
+  const currentSize = sizes.get(check.imageSha);
+  return (
+    // `all` is the no-JavaScript view: side by side, then the diff. The island switches modes.
+    <section class="stage" id="stage" data-mode="all" aria-label="Comparison">
+      <div class="stage-toolbar" hidden>
+        <fieldset class="segmented modes">
+          <legend class="visually-hidden">Compare mode</legend>
+          {modes.map(([mode, label, key]) => (
+            <button type="button" data-mode-button={mode} aria-pressed="false">
+              {label} <kbd>{key}</kbd>
+            </button>
+          ))}
+        </fieldset>
+        <label class="onion-control" hidden>
+          <span class="muted">Opacity</span>
+          <input type="range" min="0" max="100" value="50" data-onion />
+        </label>
+        <div class="zoom-controls">
+          <button type="button" class="small" data-zoom="toggle" aria-label="Toggle fit and 100% (Z)">
+            <span data-zoom-label>Fit</span> <kbd>Z</kbd>
+          </button>
+        </div>
+      </div>
+      <div class="panes">
+        <Pane kind="baseline" caption={`Baseline · ${baseline.branch}`}>
+          <Shot ui={ui} sha={baseline.imageSha} alt="baseline" size={baseSize} />
+        </Pane>
+        <Pane kind="current" caption="This build">
+          <Shot ui={ui} sha={check.imageSha} alt="this build" size={currentSize} />
+        </Pane>
+        {check.diffImageSha && (
+          <Pane kind="diff" caption="Diff · changes in red">
+            <Shot
+              ui={ui}
+              sha={check.diffImageSha}
+              alt="diff"
+              size={sizes.get(check.diffImageSha)}
+              regions={diff?.regions}
+            />
+          </Pane>
+        )}
+        <Pane
+          kind="overlay"
+          caption={
+            <>
+              <span>{`Baseline · ${baseline.branch}`}</span>
+              <span>This build</span>
+            </>
+          }
+        >
+          <div class="layers">
+            <img
+              src={ui.url(`/api/v1/images/${baseline.imageSha}`)}
+              alt=""
+              width={baseSize?.width}
+              height={baseSize?.height}
+            />
+            <img
+              class="layer-top"
+              src={ui.url(`/api/v1/images/${check.imageSha}`)}
+              alt=""
+              width={currentSize?.width}
+              height={currentSize?.height}
+            />
+            <div class="divider" aria-hidden="true" />
+          </div>
+        </Pane>
+      </div>
+    </section>
+  );
+}
+
+function Info({ check, branch, reviewer }: { check: CheckView; branch: string; reviewer: string | null }) {
+  const diff = isDiffData(check.diff) ? check.diff : null;
+  const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
+  const dims = diff?.dimensions;
+  return (
+    <aside class="review-info" aria-label="About this check">
+      <p class="summary">{diff?.summary ?? diffError?.message ?? (check.baseline ? 'No changes.' : 'New snapshot.')}</p>
+      <div class="facts">
+        {diff && <span>{`${diff.percent}% changed`}</span>}
+        {check.baseline && (
+          <span>
+            {'Baseline '}
+            <span class="mono">{check.baseline.branch}</span>
+            {check.baseline.fallback && <span class="muted">{` (fallback: ${branch} has none yet)`}</span>}
+          </span>
+        )}
+        {dims && (dims.baseline.width !== dims.current.width || dims.baseline.height !== dims.current.height) && (
+          <span>{`Size ${dims.baseline.width}×${dims.baseline.height} → ${dims.current.width}×${dims.current.height}`}</span>
+        )}
+      </div>
+      {diff && diff.regions.length > 0 && (
+        <ul class="regions" aria-label="Changed regions">
+          {diff.regions.map((r, i) => (
+            <li>
+              <button type="button" class="small ghost" data-region={`${r.x},${r.y},${r.width},${r.height}`}>
+                {`${i + 1}. ${r.width}×${r.height} at (${r.x},${r.y})`}
+              </button>
+            </li>
+          ))}
+          {diff.regionsTruncated && <li class="muted">and more</li>}
+        </ul>
+      )}
+      {check.reviewedAt !== null && reviewer && (
+        <p class="reviewed" data-reviewed-by={reviewer}>
+          {`${check.review === 'approved' ? 'Approved' : 'Rejected'} by ${reviewer} `}
+          <Ago at={check.reviewedAt} />
+          {check.reviewComment && <span class="comment">{`“${check.reviewComment}”`}</span>}
+        </p>
+      )}
+    </aside>
+  );
+}
+
+function ActionBar(props: { ui: Ui; check: CheckView; filter: CheckFilter; next: string | null; canReview: boolean }) {
+  const { ui, check, filter, next } = props;
+  if (!props.canReview) return null;
+  const reviewable = check.review === 'pending' || check.review === 'rejected';
+  const resettable = check.review === 'approved' || check.review === 'rejected';
+  if (!reviewable && !resettable) return null;
+  return (
+    <div class="action-bar">
+      {resettable && (
+        <form method="post" action={ui.url(`/ui/checks/${check.id}/reset`)} data-reset-form>
+          <button type="submit" class="ghost" data-key="u" data-key-label="Undo review">
+            Undo review <kbd>U</kbd>
+          </button>
+        </form>
+      )}
+      {reviewable && (
+        <form class="review-form" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-review-form>
+          <input type="hidden" name="filter" value={filter.key} />
+          <label class="visually-hidden" for="comment">
+            Comment
+          </label>
+          <textarea id="comment" name="comment" rows={1} maxlength={1000} placeholder="Comment (optional)" />
+          <div class="review-buttons">
+            {check.review === 'pending' && (
+              // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
+              <button
+                type="submit"
+                class="reject"
+                formaction={ui.url(`/ui/checks/${check.id}/reject`)}
+                data-key="r"
+                data-key-label="Reject"
+              >
+                Reject <kbd>R</kbd>
+              </button>
+            )}
+            {next && (
+              <a class="button ghost" href={next} data-skip>
+                Skip
+              </a>
+            )}
+            <button type="submit" class="approve" data-key="a" data-key-label="Approve">
+              Approve <kbd>A</kbd>
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function Filmstrip(props: {
+  ui: Ui;
+  checks: CheckView[];
+  current: string;
+  filter: CheckFilter;
+  sizes: Map<string, Size>;
+}) {
+  const { ui, checks, current, filter } = props;
+  return (
+    <nav class="filmstrip" aria-label="Checks in this build">
+      <ol>
+        {checks.map((c) => {
+          const sha = thumbnailSha(c);
+          const size = props.sizes.get(sha);
+          const state = c.review === 'none' ? c.result : c.review;
+          return (
+            <li>
+              <a
+                class="frame"
+                href={ui.url(`/ui/checks/${c.id}?filter=${filter.key}`)}
+                aria-current={c.id === current ? 'true' : undefined}
+                data-frame={c.id}
+              >
+                <img
+                  src={ui.url(`/api/v1/images/${sha}`)}
+                  alt=""
+                  loading="lazy"
+                  width={size?.width}
+                  height={size?.height}
+                />
+                <Dot tone={toneOf(state)} label={`${c.name}: ${state}`} />
+              </a>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 function CheckPage(props: {
   ui: Ui;
   project: Project;
+  build: BuildView;
   check: CheckView;
-  view: View;
+  filter: CheckFilter;
+  strip: CheckView[];
   sizes: Map<string, Size>;
-  nav: CheckNeighbors;
   canReview: boolean;
+  reviewer: string | null;
   notice?: string | undefined;
-  error?: string | undefined;
 }) {
-  const { ui, project, check, view, sizes, nav } = props;
-  const diff = isDiffData(check.diff) ? check.diff : null;
-  const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
-  const reviewable = props.canReview && (check.review === 'pending' || check.review === 'rejected');
-  const here = (v: View) => ui.url(`/ui/checks/${check.id}?view=${v}`);
-
+  const { ui, project, build, check, filter, strip } = props;
+  const at = strip.findIndex((c) => c.id === check.id);
+  // When the check is outside the filter (reviewed meanwhile), its neighbours are found by order.
+  const prevCheck = at >= 0 ? strip[at - 1] : strip.filter((c) => c.id < check.id).at(-1);
+  const nextCheck = at >= 0 ? strip[at + 1] : strip.find((c) => c.id > check.id);
+  const href = (c: CheckView | undefined) => (c ? ui.url(`/ui/checks/${c.id}?filter=${filter.key}`) : null);
+  const prev = href(prevCheck);
+  const next = href(nextCheck);
+  const buildHref = ui.url(`/ui/builds/${build.id}?filter=${filter.key}`);
   return (
-    <Layout ui={ui} title={check.name} notice={props.notice} error={props.error}>
-      <p class="muted">
-        <a href={ui.url(`/ui/p/${project.slug}`)}>{project.name}</a>
-        {' / '}
-        <a href={ui.url(`/ui/builds/${check.buildId}`)}>build</a>
-        {nav.previous && (
-          <>
-            {' · '}
-            <a href={ui.url(`/ui/checks/${nav.previous}`)} data-key="k">
-              ← previous <kbd>k</kbd>
-            </a>
-          </>
-        )}
-        {nav.next && (
-          <>
-            {' · '}
-            <a href={ui.url(`/ui/checks/${nav.next}`)} data-key="j">
-              next <kbd>j</kbd> →
-            </a>
-          </>
-        )}
-      </p>
-      <h1>
-        {`${check.name} `}
-        <Badge value={check.result} /> {check.review !== 'none' && <Badge value={check.review} />}
-      </h1>
-      <p class="sub">
-        <Variant variant={check.variant} />
-      </p>
-
-      <div class="layout">
-        <section>
-          {check.baseline && check.diffImageSha && (
-            <nav class="tabs">
-              <a class={view === 'diff' ? 'current' : ''} href={here('diff')}>
-                Diff
+    <Layout
+      ui={ui}
+      title={check.name}
+      notice={props.notice}
+      islands={['review']}
+      variant="focus"
+      crumbs={[
+        { label: project.name, href: ui.url(`/ui/p/${project.slug}`) },
+        {
+          label: build.branch,
+          href: ui.url(`/ui/p/${project.slug}/builds?branch=${encodeURIComponent(build.branch)}`),
+        },
+        { label: `#${build.number}`, href: ui.url(`/ui/builds/${build.id}`) },
+        { label: check.name },
+      ]}
+    >
+      <div class="review" id="review" data-check={check.id} data-build={build.id} data-filter={filter.key}>
+        <header class="review-head">
+          <a class="button ghost small" href={buildHref} data-key="escape" data-key-label="Back to the build">
+            {`← #${build.number}`}
+          </a>
+          <div class="review-title">
+            <h1>{check.name}</h1>
+            <Variant variant={check.variant} />
+          </div>
+          <CheckStatus check={check} />
+          <span class="review-nav">
+            {prev && (
+              <a
+                class="button small"
+                href={prev}
+                data-key="k"
+                data-key-label="Previous check"
+                aria-label="Previous check"
+              >
+                ←
               </a>
-              <a class={view === 'side' ? 'current' : ''} href={here('side')}>
-                Side by side
+            )}
+            <span class="review-position">{`${at >= 0 ? at + 1 : '–'} / ${strip.length}`}</span>
+            {next && (
+              <a class="button small" href={next} data-key="j" data-key-label="Next check" aria-label="Next check">
+                →
               </a>
-            </nav>
-          )}
-          {view === 'diff' && check.diffImageSha && diff ? (
-            <figure class="diffview">
-              <figcaption>Changed pixels in red, regions outlined</figcaption>
-              <Shot
-                ui={ui}
-                sha={check.diffImageSha}
-                alt="diff"
-                size={sizes.get(check.diffImageSha)}
-                regions={diff.regions}
-              />
-            </figure>
-          ) : check.baseline ? (
-            <div class="compare">
-              <figure>
-                <figcaption>{`Baseline (${check.baseline.branch})`}</figcaption>
-                <Shot ui={ui} sha={check.baseline.imageSha} alt="baseline" size={sizes.get(check.baseline.imageSha)} />
-              </figure>
-              <figure>
-                <figcaption>This build</figcaption>
-                <Shot ui={ui} sha={check.imageSha} alt="current" size={sizes.get(check.imageSha)} />
-              </figure>
-            </div>
-          ) : (
-            <figure class="diffview">
-              <figcaption>New snapshot: no baseline yet. Approve to make it the baseline.</figcaption>
-              <Shot ui={ui} sha={check.imageSha} alt="current" size={sizes.get(check.imageSha)} />
-            </figure>
-          )}
-        </section>
-
-        <aside class="panel">
-          <dl>
-            <dt>Summary</dt>
-            <dd>{diff?.summary ?? diffError?.message ?? 'New snapshot.'}</dd>
-            {diff && (
-              <>
-                <dt>Changed</dt>
-                <dd>{`${diff.pixels} px (${diff.percent}%), ${diff.regions.length}${diff.regionsTruncated ? '+' : ''} region${diff.regions.length === 1 && !diff.regionsTruncated ? '' : 's'}`}</dd>
-              </>
             )}
-            <dt>Baseline</dt>
-            <dd>
-              {check.baseline
-                ? `${check.baseline.branch}${check.baseline.fallback ? ' (fallback from base branch)' : ''}`
-                : 'none'}
-            </dd>
-            <dt>Thresholds</dt>
-            <dd>{`colour ${check.colorThreshold}, tolerance ${check.tolerancePercent}%`}</dd>
-            {check.reviewedAt !== null && (
-              <>
-                <dt>Reviewed</dt>
-                <dd>
-                  <When at={check.reviewedAt} />
-                  {check.reviewComment && <div>{`“${check.reviewComment}”`}</div>}
-                </dd>
-              </>
-            )}
-          </dl>
-          {reviewable && (
-            <div class="actions">
-              <form class="stack" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-key="a">
-                <button class="approve" type="submit">
-                  Approve <kbd>a</kbd>
-                </button>
-              </form>
-              {check.review === 'pending' && (
-                // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
-                <form class="stack" method="post" action={ui.url(`/ui/checks/${check.id}/reject`)} data-key="r">
-                  <textarea name="comment" rows={2} maxlength={1000} placeholder="Optional comment" />
-                  <button class="reject" type="submit">
-                    Reject <kbd>r</kbd>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-          {nav.nextPending && (
-            <p>
-              <a href={ui.url(`/ui/checks/${nav.nextPending}`)}>Next to review →</a>
-            </p>
-          )}
-        </aside>
+          </span>
+        </header>
+        <div class="progress" data-progress hidden>
+          <span />
+        </div>
+        <div class="review-body">
+          <Stage ui={ui} check={check} sizes={props.sizes} />
+          <Info check={check} branch={build.branch} reviewer={props.reviewer} />
+        </div>
+        <ActionBar ui={ui} check={check} filter={filter} next={next} canReview={props.canReview} />
+        <Filmstrip ui={ui} checks={strip} current={check.id} filter={filter} sizes={props.sizes} />
       </div>
     </Layout>
   );
@@ -197,26 +369,29 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
   app.get('/ui/checks/:id', async (c) => {
     const ui = uiOf(c, s);
     const check = await getCheck(s.deps, c.req.param('id'));
-    const [project, nav, sizes] = await Promise.all([
+    // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
+    const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
+    const [project, build, strip, reviewer] = await Promise.all([
       getProjectById(s.deps, check.projectId),
-      checkNeighbors(s.deps, check),
-      imageSizes(
-        s.deps,
-        [check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
-      ),
+      getBuild(s.deps, check.buildId),
+      listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, limit: 200 }),
+      reviewerName(s, check.reviewedBy),
     ]);
-    const asked = c.req.query('view');
-    const view: View = asked === 'side' || asked === 'diff' ? asked : check.result === 'changed' ? 'diff' : 'side';
-    const canReview = hasPermission(userOf(c), 'check.review');
+    const sizes = await imageSizes(s.deps, [
+      ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
+      ...strip.items.map(thumbnailSha),
+    ]);
     return c.html(
       <CheckPage
         ui={ui}
         project={project}
+        build={build}
         check={check}
-        view={view}
+        filter={filter}
+        strip={strip.items}
         sizes={sizes}
-        nav={nav}
-        canReview={canReview}
+        canReview={hasPermission(userOf(c), 'check.review')}
+        reviewer={reviewer}
         notice={noticeOf(c)}
       />,
     );
@@ -231,6 +406,8 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       }
       const form = await c.req.parseBody();
       const comment = field(form, 'comment');
+      const filterKey = field(form, 'filter');
+      const filter = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
       const id = c.req.param('id');
       const review = action === 'approve' ? approveCheck : rejectCheck;
       const check = await review(s.deps, id, user.id, comment ? { comment } : {});
@@ -238,7 +415,9 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       const { nextPending } = await checkNeighbors(s.deps, check);
       const done = action === 'approve' ? 'approved' : 'rejected';
       return c.redirect(
-        ui.url(nextPending ? `/ui/checks/${nextPending}?done=${done}` : `/ui/builds/${check.buildId}?done=${done}`),
+        ui.url(
+          nextPending ? `/ui/checks/${nextPending}?${filter}done=${done}` : `/ui/builds/${check.buildId}?done=${done}`,
+        ),
         303,
       );
     });

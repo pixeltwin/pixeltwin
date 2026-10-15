@@ -17,6 +17,10 @@ export interface LayoutProps {
   crumbs?: Crumb[];
   notice?: string | undefined;
   error?: string | undefined;
+  /** Client islands this page starts (UI spec §3.2), e.g. `['review']`. */
+  islands?: string[];
+  /** `focus`: a full-width page without the content column (focus-mode review). */
+  variant?: 'focus';
   children?: Child;
 }
 
@@ -94,7 +98,7 @@ function UserMenu({ ui }: { ui: Ui }) {
   );
 }
 
-export function Layout({ ui, title, crumbs, notice, error, children }: LayoutProps) {
+export function Layout({ ui, title, crumbs, notice, error, islands, variant, children }: LayoutProps) {
   // The doctype keeps browsers out of quirks mode; JSX cannot express it.
   return (
     <>
@@ -108,7 +112,7 @@ export function Layout({ ui, title, crumbs, notice, error, children }: LayoutPro
           <link rel="stylesheet" href={ui.url(ASSET_PATHS.css)} />
           <script type="module" src={ui.url(clientModulePath('boot'))} />
         </head>
-        <body data-base={ui.url('')}>
+        <body data-base={ui.url('')} data-islands={islands?.join(' ')} class={variant}>
           <a class="skip-link" href="#main">
             Skip to content
           </a>

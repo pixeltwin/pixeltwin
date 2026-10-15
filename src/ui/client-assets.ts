@@ -15,11 +15,29 @@ import keymap from './client/keymap.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import keys from './client/keys.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import review from './client/review.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import theme from './client/theme.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import toast from './client/toast.ts' with { type: 'text' };
+// @ts-expect-error -- see above
+import viewer from './client/viewer.ts' with { type: 'text' };
+// @ts-expect-error -- see above
+import zoom from './client/zoom.ts' with { type: 'text' };
 
-const SOURCES: Record<string, string> = { api, boot, copy, dialog, keymap, keys, theme, toast };
+const SOURCES: Record<string, string> = {
+  api,
+  boot,
+  copy,
+  dialog,
+  keymap,
+  keys,
+  review,
+  theme,
+  toast,
+  viewer,
+  zoom,
+};
 
 /** One version for all modules: they import each other, so they change together. */
 export const CLIENT_VERSION = createHash('sha256')
