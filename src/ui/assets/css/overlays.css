@@ -1,0 +1,90 @@
+/* Overlays: toasts, dialogs, the shortcut sheet. Shadows appear only here (UI spec §2). */
+.toasts {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 60;
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-text);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+  pointer-events: auto;
+  animation: toast-in var(--duration) ease-out;
+}
+.toast.tone-error {
+  background: var(--red);
+  color: #fff;
+}
+.toast .ghost {
+  color: inherit;
+  border-color: transparent;
+}
+.toast .ghost:hover {
+  background: rgb(255 255 255 / 0.16);
+}
+.toast-close {
+  font-size: var(--text-lg);
+  opacity: 0.7;
+}
+@keyframes toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+
+dialog {
+  width: min(480px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-8));
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+}
+dialog::backdrop {
+  background: var(--backdrop);
+}
+dialog h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-lg);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.shortcut-list {
+  grid-template-columns: 80px 1fr;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+.shortcut-list dt {
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .toasts {
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: var(--space-3);
+    justify-items: stretch;
+  }
+  .toast {
+    max-width: none;
+  }
+}

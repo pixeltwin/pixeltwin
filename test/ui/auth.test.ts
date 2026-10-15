@@ -100,7 +100,7 @@ describe('UI authentication', () => {
     const css = await t.request('GET', '/ui/assets/app.css');
     expect(css.headers.get('content-type')).toStartWith('text/css');
     expect(await css.text()).toContain('--primary');
-    expect((await t.request('GET', '/ui/assets/app.js')).headers.get('content-type')).toStartWith('text/javascript');
+    expect((await t.request('GET', '/ui/assets/boot.js')).headers.get('content-type')).toStartWith('text/javascript');
     const missing = await t.request('GET', '/ui/nowhere', { as: admin });
     expect(missing.status).toBe(404);
     expect(await html(missing)).toContain('Not found');
@@ -110,7 +110,7 @@ describe('UI authentication', () => {
     t = await createTestApp();
     const page = await html(await t.request('GET', '/ui/login'));
     const css = /href="(\/ui\/assets\/app\.css\?v=[0-9a-f]{12})"/.exec(page)?.[1];
-    const js = /src="(\/ui\/assets\/app\.js\?v=[0-9a-f]{12})"/.exec(page)?.[1];
+    const js = /src="(\/ui\/assets\/boot\.js\?v=[0-9a-f]{12})"/.exec(page)?.[1];
     expect(css).toBeDefined();
     expect(js).toBeDefined();
     const res = await t.request('GET', css ?? '');
@@ -133,7 +133,7 @@ describe('UI authentication', () => {
 
   test('only the current asset version is cached as immutable', async () => {
     t = await createTestApp();
-    for (const path of ['/ui/assets/app.css?v=deadbeef0000', '/ui/assets/app.css', '/ui/assets/app.js?v=0']) {
+    for (const path of ['/ui/assets/app.css?v=deadbeef0000', '/ui/assets/app.css', '/ui/assets/boot.js?v=0']) {
       const res = await t.request('GET', path);
       expect({ path, cache: res.headers.get('cache-control') }).toEqual({ path, cache: 'no-store' });
     }

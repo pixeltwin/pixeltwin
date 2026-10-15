@@ -1,6 +1,7 @@
 import { raw } from 'hono/html';
 import type { Child } from 'hono/jsx';
 import { ASSET_PATHS } from './assets';
+import { clientModulePath } from './client-assets';
 import type { Ui } from './context';
 import { THEMES } from './theme';
 
@@ -105,9 +106,9 @@ export function Layout({ ui, title, crumbs, notice, error, children }: LayoutPro
           <meta name="color-scheme" content="light dark" />
           <title>{`${title} · pixeltwin`}</title>
           <link rel="stylesheet" href={ui.url(ASSET_PATHS.css)} />
-          <script src={ui.url(ASSET_PATHS.js)} defer />
+          <script type="module" src={ui.url(clientModulePath('boot'))} />
         </head>
-        <body>
+        <body data-base={ui.url('')}>
           <a class="skip-link" href="#main">
             Skip to content
           </a>
@@ -131,6 +132,7 @@ export function Layout({ ui, title, crumbs, notice, error, children }: LayoutPro
             )}
             {children}
           </main>
+          <div class="toasts" aria-live="polite" data-toasts="" />
         </body>
       </html>
     </>

@@ -14,7 +14,12 @@ export interface FilledRect {
 }
 
 /** Encodes a solid-colour PNG with optional filled rectangles. */
-export function makePng(width: number, height: number, fill: Rgba = WHITE, rects: FilledRect[] = []): Uint8Array {
+export function makePng(
+  width: number,
+  height: number,
+  fill: Rgba = WHITE,
+  rects: FilledRect[] = [],
+): Uint8Array<ArrayBuffer> {
   const png = new PNG({ width, height });
   for (let i = 0; i < width * height; i++) png.data.set(fill, i * 4);
   for (const r of rects) {

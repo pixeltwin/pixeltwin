@@ -62,7 +62,7 @@ describe('server end to end', () => {
     const { token } = (await tokenRes.json()) as { token: string };
     const auth = { authorization: `Bearer ${token}` };
 
-    const post = async (buildId: string, png: Uint8Array) => {
+    const post = async (buildId: string, png: Uint8Array<ArrayBuffer>) => {
       const form = new FormData();
       form.set('image', new File([png], 'home.png', { type: 'image/png' }));
       form.set('meta', JSON.stringify({ name: 'home', variant: { browser: 'chromium' } }));
