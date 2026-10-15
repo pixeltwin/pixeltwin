@@ -82,7 +82,13 @@ async function evaluate(
   colorThreshold: number,
   tolerancePercent: number,
 ): Promise<Outcome> {
-  const job = { current: image, ignoreRegions, colorThreshold, tolerancePercent };
+  const job = {
+    current: image,
+    ignoreRegions,
+    colorThreshold,
+    tolerancePercent,
+    maxPixels: deps.limits.maxImagePixels,
+  };
 
   if (!baseline) {
     const validated = await deps.runDiff({ ...job, baseline: null });

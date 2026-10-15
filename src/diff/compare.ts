@@ -73,6 +73,13 @@ export function compareImages(job: DiffJob): DiffJobResult {
 
   const width = Math.max(current.width, baseline.width);
   const height = Math.max(current.height, baseline.height);
+  if (width * height > job.maxPixels) {
+    return {
+      kind: 'error',
+      code: 'diff_failed',
+      message: `Images of ${baseline.width}×${baseline.height} and ${current.width}×${current.height} need a ${width}×${height} comparison canvas (${width * height} pixels); the limit is ${job.maxPixels}.`,
+    };
+  }
   const overlapWidth = Math.min(current.width, baseline.width);
   const overlapHeight = Math.min(current.height, baseline.height);
   const sizeChanged = current.width !== baseline.width || current.height !== baseline.height;

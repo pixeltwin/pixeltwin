@@ -9,6 +9,7 @@ const job = (current: Uint8Array, baseline: Uint8Array | null, extra: Partial<Di
   ignoreRegions: [],
   colorThreshold: 0.1,
   tolerancePercent: 0,
+  maxPixels: 40_000_000,
   ...extra,
 });
 
@@ -101,5 +102,15 @@ describe('compareImages', () => {
     const base = makePng(10, 10);
     expect(compared(compareImages(job(shifted, base))).result).toBe('unchanged');
     expect(compared(compareImages(job(shifted, base, { colorThreshold: 0 }))).result).toBe('changed');
+  });
+
+  test('refuses a comparison canvas larger than maxPixels, even when each image is within it', () => {
+    const wide = makePng(100, 10);
+    const tall = makePng(10, 100);
+    expect(compareImages(job(tall, wide, { maxPixels: 5000 }))).toEqual({
+      kind: 'error',
+      code: 'diff_failed',
+      message: 'Images of 100×10 and 10×100 need a 100×100 comparison canvas (10000 pixels); the limit is 5000.',
+    });
   });
 });

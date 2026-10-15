@@ -9,6 +9,7 @@ const job = (current: Uint8Array, baseline: Uint8Array | null, colorThreshold = 
   ignoreRegions: [],
   colorThreshold,
   tolerancePercent: 0,
+  maxPixels: 40_000_000,
 });
 
 const misbehaving = new URL('./misbehaving-worker.ts', import.meta.url).href;

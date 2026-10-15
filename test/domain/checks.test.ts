@@ -152,6 +152,14 @@ describe('submitCheck', () => {
     expect(check).toMatchObject({ result: 'error', diff: { error: { code: 'diff_failed' } } });
   });
 
+  test('differently shaped images whose combined canvas exceeds the pixel limit are an error result', async () => {
+    deps.limits.maxImagePixels = 5000;
+    await seedBaseline(deps, project, makePng(100, 10));
+    const buildId = await openBuild(deps);
+    const { check } = await submit(deps, buildId, makePng(10, 100));
+    expect(check).toMatchObject({ result: 'error', diff: { error: { code: 'diff_failed' } } });
+  });
+
   test('lists checks with filters', async () => {
     await seedBaseline(deps, project, white);
     const buildId = await openBuild(deps);

@@ -45,6 +45,11 @@ export interface DiffJob {
   ignoreRegions: Rect[];
   colorThreshold: number;
   tolerancePercent: number;
+  /**
+   * Upper bound for the comparison canvas (max width × max height). Differently shaped images
+   * can need a canvas far larger than either image, so the per-image limit is not enough.
+   */
+  maxPixels: number;
 }
 
 export type DiffJobResult =
