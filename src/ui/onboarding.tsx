@@ -1,6 +1,7 @@
 import type { Child } from 'hono/jsx';
 import type { Project } from '../db/schema';
 import type { Ui } from './context';
+import { NewTokenDialog } from './token-forms';
 
 /** Copy-ready snippets for this server and project (UI spec §4.5). */
 export function snippets(publicUrl: string, slug: string) {
@@ -87,13 +88,18 @@ export function Onboarding({
           ) : canManage ? (
             <p>
               Tests send screenshots with a project token (scopes read and write).{' '}
-              <a class="button small" href={ui.url(`/ui/p/${project.slug}/settings`)}>
+              <a
+                class="button small"
+                href={ui.url(`/ui/p/${project.slug}/settings/tokens/new`)}
+                data-dialog-open="new-token"
+              >
                 Create a token
               </a>
             </p>
           ) : (
             <p class="muted">Tests send screenshots with a project token. Ask an admin for a token.</p>
           )}
+          {canManage && !hasToken && <NewTokenDialog ui={ui} slug={project.slug} />}
         </Step>
         <Step n={2} done={false} title="Post a check from your tests">
           {/* Radio tabs: they switch without JavaScript. */}

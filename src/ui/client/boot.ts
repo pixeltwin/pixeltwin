@@ -16,6 +16,12 @@ initDialogs();
 initCopy();
 initTheme();
 
+// Forms marked data-autosubmit save as soon as a field changes (their Save button is for no-JS).
+document.addEventListener('change', (event) => {
+  const form = event.target instanceof Element ? event.target.closest('form[data-autosubmit]') : null;
+  if (form instanceof HTMLFormElement) form.requestSubmit();
+});
+
 for (const name of (document.body.dataset.islands ?? '').split(/\s+/)) {
   if (!/^[a-z-]+$/.test(name)) continue;
   import(`./${name}.js${version}`)

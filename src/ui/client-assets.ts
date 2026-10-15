@@ -23,6 +23,8 @@ import theme from './client/theme.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import toast from './client/toast.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import tokens from './client/tokens.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import viewer from './client/viewer.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import zoom from './client/zoom.ts' with { type: 'text' };
@@ -38,6 +40,7 @@ const SOURCES: Record<string, string> = {
   review,
   theme,
   toast,
+  tokens,
   viewer,
   zoom,
 };

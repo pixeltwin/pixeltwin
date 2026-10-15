@@ -3,11 +3,12 @@ import type { Context } from 'hono';
 import type { AppEnv, Services } from '../http/env';
 import { APP_CSS, ASSET_VERSIONS } from './assets';
 import { CLIENT_MODULES, CLIENT_VERSION } from './client-assets';
-import { registerAdminPages } from './pages/admin';
 import { registerAuthPages } from './pages/auth';
 import { registerBuildPages } from './pages/build';
 import { registerCheckPages } from './pages/check';
 import { registerProjectPages } from './pages/projects';
+import { registerSettingsPages } from './pages/settings';
+import { registerUserPages } from './pages/users';
 import { uiSession } from './session';
 import { registerThemeRoute } from './theme';
 
@@ -38,5 +39,6 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
   registerProjectPages(app, s);
   registerBuildPages(app, s);
   registerCheckPages(app, s);
-  registerAdminPages(app, s);
+  registerSettingsPages(app, s);
+  registerUserPages(app, s);
 }

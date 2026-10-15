@@ -243,7 +243,13 @@ function BranchesPage(props: {
 }) {
   const { ui, project, summaries } = props;
   return (
-    <Layout ui={ui} title={project.name} crumbs={[{ label: project.name }]} notice={props.notice}>
+    <Layout
+      ui={ui}
+      title={project.name}
+      crumbs={[{ label: project.name }]}
+      notice={props.notice}
+      islands={props.onboarding && props.canManage ? ['tokens'] : undefined}
+    >
       <div class="page-head">
         <div>
           <h1>{project.name}</h1>

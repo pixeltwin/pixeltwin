@@ -71,6 +71,23 @@ describe('UI authentication', () => {
     expect(location(await t.request('GET', '/ui/setup'))).toBe('/ui/login');
   });
 
+  test('login and setup are a centred card; setup says where its link comes from and marks bad fields', async () => {
+    t = await createTestApp({ setupToken: 'setup-secret' });
+    const setup = await html(await t.request('GET', '/ui/setup?token=setup-secret'));
+    expect(setup).toContain('class="auth-card"');
+    expect(setup).toContain('the server log');
+    const short = await postForm(t, '/ui/setup', {
+      token: 'setup-secret',
+      email: 'root@example.com',
+      password: 'short',
+    });
+    expect(short.status).toBe(422);
+    expect(await html(short)).toMatch(/id="setup-password"[^>]*aria-invalid="true"/);
+
+    await postForm(t, '/ui/setup', { token: 'setup-secret', email: 'root@example.com', password: PASSWORD });
+    expect(await html(await t.request('GET', '/ui/login'))).toContain('class="auth-card"');
+  });
+
   test('logout ends the session', async () => {
     t = await createTestApp();
     const admin = await t.userAs('admin');

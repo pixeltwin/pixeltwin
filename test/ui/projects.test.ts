@@ -135,7 +135,7 @@ describe('UI projects', () => {
       expect(page).toContain('http://pixeltwin.test/llms.txt');
       for (const tab of ['Playwright', 'curl', 'AI agent']) expect(page).toContain(`>${tab}</label>`);
       expect(page).toContain('data-copy-from="snippet-curl"');
-      expect(page).toContain('href="/ui/p/web/settings"');
+      expect(page).toContain('href="/ui/p/web/settings/tokens/new"');
       expect(page).not.toContain('class="step done"');
     });
 
