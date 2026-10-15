@@ -130,7 +130,7 @@ describe('command line', () => {
   test('migrate applies migrations once', async () => {
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
-    expect(lines).toEqual(['Applied: 0001_init', 'Database is up to date.']);
+    expect(lines).toEqual(['Applied: 0001_init, 0002_retention_indexes', 'Database is up to date.']);
   });
 
   test('admin reset-password prints a working password', async () => {

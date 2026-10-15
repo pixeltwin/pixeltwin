@@ -68,4 +68,13 @@ describe('storeImage', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ sha, width: 10, height: 10, bytes: png.byteLength });
   });
+
+  test('storing an image again refreshes its timestamp', async () => {
+    const png = makePng(10, 10);
+    const sha = await storeImage(deps, png, { width: 10, height: 10 });
+    await deps.db.updateTable('images').set({ createdAt: 1 }).where('sha', '=', sha).execute();
+    await storeImage(deps, png, { width: 10, height: 10 });
+    const row = await deps.db.selectFrom('images').select('createdAt').where('sha', '=', sha).executeTakeFirstOrThrow();
+    expect(row.createdAt).toBeGreaterThan(Date.now() - 60_000);
+  });
 });

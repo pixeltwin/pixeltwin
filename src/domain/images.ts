@@ -48,12 +48,15 @@ export async function storeImage(
 ): Promise<string> {
   const sha = sha256Hex(bytes);
   const key = imageKey(sha);
-  if (!(await deps.storage.exists(key))) await deps.storage.put(key, bytes);
+  // Record (or refresh) the row first: image GC only removes images untouched for an hour, so
+  // re-using an old unreferenced image here protects it before the bytes are checked.
+  const now = Date.now();
   await deps.db
     .insertInto('images')
-    .values({ sha, width: size.width, height: size.height, bytes: bytes.byteLength, createdAt: Date.now() })
-    .onConflict((oc) => oc.column('sha').doNothing())
+    .values({ sha, width: size.width, height: size.height, bytes: bytes.byteLength, createdAt: now })
+    .onConflict((oc) => oc.column('sha').doUpdateSet({ createdAt: now }))
     .execute();
+  if (!(await deps.storage.exists(key))) await deps.storage.put(key, bytes);
   return sha;
 }
 
