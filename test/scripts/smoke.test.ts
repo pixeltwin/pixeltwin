@@ -13,3 +13,11 @@ test('the smoke test passes against the server started from source', async () =>
     '✓ docs, contract, llms.txt and UI served',
   ]);
 }, 60_000);
+
+test('a server that never prints its startup lines fails the smoke test at the deadline', async () => {
+  const started = Date.now();
+  await expect(smokeCommand(['sh', '-c', 'sleep 30'], () => {}, { startupTimeoutMs: 500 })).rejects.toThrow(
+    'the server did not start within 0.5 s',
+  );
+  expect(Date.now() - started).toBeLessThan(5_000);
+}, 10_000);

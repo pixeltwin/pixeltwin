@@ -7,6 +7,7 @@ on:
 
 jobs:
   check:
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +20,7 @@ jobs:
       - run: bun test
 
   test-postgres:
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -44,6 +46,7 @@ jobs:
       - run: bun test
 
   smoke:
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +58,7 @@ jobs:
       - run: bun scripts/smoke.ts dist/pixeltwin-*-linux-x64
 
   docker:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

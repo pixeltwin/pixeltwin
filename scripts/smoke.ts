@@ -123,8 +123,17 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+export interface SmokeCommandOptions {
+  /** How long the server may take to print its "listening" and setup-token lines. Default 20 s. */
+  startupTimeoutMs?: number;
+}
+
 /** Starts `command serve` with an empty data dir on a free port, runs the smoke test, stops it. */
-export async function smokeCommand(command: string[], log: (line: string) => void = console.log): Promise<void> {
+export async function smokeCommand(
+  command: string[],
+  log: (line: string) => void = console.log,
+  { startupTimeoutMs = 20_000 }: SmokeCommandOptions = {},
+): Promise<void> {
   const dataDir = mkdtempSync(join(tmpdir(), 'pixeltwin-smoke-'));
   const port = await freePort();
   const proc = Bun.spawn([...command, 'serve'], {
@@ -145,10 +154,15 @@ export async function smokeCommand(command: string[], log: (line: string) => voi
     const reader = proc.stdout.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + startupTimeoutMs;
+    const timeout = new Error(`the server did not start within ${startupTimeoutMs / 1000} s`);
     while (!(listening && setupToken)) {
-      if (Date.now() > deadline) throw new Error('the server did not start within 20 s');
-      const { value, done } = await reader.read();
+      // A silent server never resolves read(), so the deadline has to race it.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(timeout), Math.max(0, deadline - Date.now()));
+      });
+      const { value, done } = await Promise.race([reader.read(), expired]).finally(() => clearTimeout(timer));
       if (done) throw new Error(`the server exited with code ${await proc.exited}`);
       buffer += decoder.decode(value, { stream: true });
       for (const line of buffer.split('\n').slice(0, -1)) {
