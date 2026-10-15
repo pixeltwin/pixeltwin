@@ -45,6 +45,15 @@ function toView(build: Build, counts: BuildCounts): BuildView {
   return { ...build, verdict: deriveVerdict(counts), counts };
 }
 
+/** Adds verdict and counts to build rows, counting all their checks in one query. */
+export async function viewsOf(deps: DbDeps, builds: Build[]): Promise<BuildView[]> {
+  const counts = await countChecks(
+    deps,
+    builds.map((b) => b.id),
+  );
+  return builds.map((b) => toView(b, counts.get(b.id) ?? emptyCounts()));
+}
+
 export async function getBuild(deps: DbDeps, id: string): Promise<BuildView> {
   const build = await getBuildRow(deps, id);
   const counts = await countChecks(deps, [id]);
@@ -131,14 +140,7 @@ export async function listBuilds(
     .limit(page.limit + 1)
     .execute();
   const result = toPage(rows, page.limit);
-  const counts = await countChecks(
-    deps,
-    result.items.map((b) => b.id),
-  );
-  return {
-    items: result.items.map((b) => toView(b, counts.get(b.id) ?? emptyCounts())),
-    nextCursor: result.nextCursor,
-  };
+  return { items: await viewsOf(deps, result.items), nextCursor: result.nextCursor };
 }
 
 /** Closes the build to new checks. Idempotent: keeps the first `finalizedAt`. */

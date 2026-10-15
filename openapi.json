@@ -422,6 +422,56 @@
           "nextCursor"
         ]
       },
+      "BranchSummary": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "integer"
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "empty",
+                    "error",
+                    "rejected",
+                    "pending",
+                    "passed"
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "number",
+                "verdict",
+                "createdAt"
+              ]
+            },
+            "description": "The last 10 builds of the branch, newest first"
+          }
+        },
+        "required": [
+          "branch",
+          "latest",
+          "recent"
+        ]
+      },
       "Check": {
         "type": "object",
         "properties": {
@@ -2385,6 +2435,78 @@
             }
           },
           "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/branches": {
+      "get": {
+        "tags": [
+          "builds"
+        ],
+        "summary": "List branches with their latest build: main first, then by latest build (at most 50)",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Branches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BranchSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

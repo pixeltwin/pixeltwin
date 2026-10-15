@@ -34,6 +34,25 @@ describe('build routes', () => {
     expect(Object.keys(project)).not.toContain('buildSeq');
   });
 
+  test('branches lists each branch with its latest build; read access to the project is enough', async () => {
+    const { token } = await t.tokenAs('web', ['write']);
+    for (const branch of ['main', 'feature/cart', 'main']) {
+      await t.request('POST', '/api/v1/projects/web/builds', { as: { token }, json: { branch } });
+    }
+    const { token: reader } = await t.tokenAs('web', ['read']);
+    const res = await t.request('GET', '/api/v1/projects/web/branches', { as: { token: reader } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ branch: string; latest: { number: number }; recent: unknown[] }>;
+    expect(body.map((b) => [b.branch, b.latest.number, b.recent.length])).toEqual([
+      ['main', 3, 2],
+      ['feature/cart', 2, 1],
+    ]);
+
+    await t.request('POST', '/api/v1/projects', { as: admin, json: { slug: 'app', name: 'App' } });
+    const { token: other } = await t.tokenAs('app', ['read']);
+    expect((await t.request('GET', '/api/v1/projects/web/branches', { as: { token: other } })).status).toBe(403);
+  });
+
   test('the contract documents the build number', async () => {
     const doc = (await (await t.request('GET', '/openapi.json')).json()) as {
       components: { schemas: { Build: { required: string[]; properties: Record<string, unknown> } } };

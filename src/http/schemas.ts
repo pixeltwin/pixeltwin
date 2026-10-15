@@ -70,6 +70,23 @@ export const BuildSchema = z
   })
   .openapi('Build');
 
+export const BranchSummarySchema = z
+  .object({
+    branch: z.string(),
+    latest: BuildSchema,
+    recent: z
+      .array(
+        z.object({
+          id: z.string(),
+          number: z.number().int(),
+          verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'passed']),
+          createdAt: z.number().int(),
+        }),
+      )
+      .openapi({ description: 'The last 10 builds of the branch, newest first' }),
+  })
+  .openapi('BranchSummary');
+
 const RectSchema = z.object({
   x: z.number().int(),
   y: z.number().int(),
