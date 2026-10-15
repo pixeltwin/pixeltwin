@@ -84,6 +84,10 @@ describe('UI focus mode', () => {
     expect(body).toContain(`src="/api/v1/images/${changed.diffImageSha}"`);
     expect(body).toContain('viewBox="0 0 100 100"');
     expect(body).toContain('<rect x="10" y="10" width="10" height="10"');
+    // Side by side marks the changed regions on both images too.
+    expect(body.split('<rect x="10" y="10" width="10" height="10"').length - 1).toBe(3);
+    // Images never start a native drag, which would fight the slider and panning.
+    expect(body).not.toMatch(/<img (?![^>]*draggable="false")[^>]*src="\/api\/v1\/images/);
     expect(body).toContain('data-mode="all"');
     for (const mode of ['side', 'slider', 'onion', 'diff']) expect(body).toContain(`data-mode-button="${mode}"`);
     expect(body).not.toContain('style=');

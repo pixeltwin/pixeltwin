@@ -96,6 +96,7 @@ export function mountViewer(root: HTMLElement): () => void {
     if (!available.includes(next) || !stage) return;
     mode = next;
     stage.dataset.mode = next;
+    hideHairs();
     for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.modeButton === next));
     if (onionControl) onionControl.hidden = next !== 'onion';
     storeMode(next);
@@ -148,8 +149,21 @@ export function mountViewer(root: HTMLElement): () => void {
     });
   }
 
+  // Side by side: one crosshair per image, both at the same spot of the screenshot.
+  const hairs: HTMLElement[] = [];
+  const hideHairs = () => {
+    for (const hair of hairs) hair.hidden = true;
+  };
+
   // Wheel and pinch zoom, drag to pan, drag the divider, double-click for Fit / 100 %.
   for (const viewport of stage.querySelectorAll<HTMLElement>('.viewport')) {
+    const hair = document.createElement('div');
+    hair.className = 'crosshair';
+    hair.hidden = true;
+    viewport.append(hair);
+    hairs.push(hair);
+    cleanups.push(() => hair.remove());
+
     const pointers = new Map<number, { x: number; y: number }>();
     let dragging: 'pan' | 'divider' | null = null;
     let pinch = 0;
@@ -177,10 +191,13 @@ export function mountViewer(root: HTMLElement): () => void {
     );
     listen(viewport, 'pointerdown', (e) => {
       if (e.button !== 0) return;
+      // No text selection or native image drag: either would paint over the images.
+      e.preventDefault();
       viewport.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, local(e));
-      const onDivider = mode === 'slider' && e.target instanceof Element && e.target.closest('.divider');
-      dragging = onDivider ? 'divider' : 'pan';
+      // In Slider mode a drag moves the divider, except when zoomed and not grabbing it: then it pans.
+      const onDivider = e.target instanceof Element && e.target.closest('.divider');
+      dragging = mode === 'slider' && (fit || onDivider) ? 'divider' : 'pan';
       if (dragging === 'divider') moveDivider(e);
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
@@ -188,6 +205,14 @@ export function mountViewer(root: HTMLElement): () => void {
       }
     });
     listen(viewport, 'pointermove', (e) => {
+      if (mode === 'side' && e.pointerType === 'mouse') {
+        const at = local(e);
+        for (const h of hairs) {
+          h.hidden = false;
+          h.style.setProperty('--x', `${at.x}px`);
+          h.style.setProperty('--y', `${at.y}px`);
+        }
+      }
       const previous = pointers.get(e.pointerId);
       if (!previous) return;
       const point = local(e);
@@ -215,6 +240,7 @@ export function mountViewer(root: HTMLElement): () => void {
       if (pointers.size === 0) dragging = null;
     };
     listen(viewport, 'pointerup', release);
+    listen(viewport, 'pointerleave', hideHairs);
     listen(viewport, 'pointercancel', release);
     listen(viewport, 'dblclick', toggleZoom);
   }

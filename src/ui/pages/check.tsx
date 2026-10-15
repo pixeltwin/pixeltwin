@@ -28,14 +28,33 @@ async function reviewerName(s: Services, id: string | null): Promise<string | nu
   return token ? `token “${token.name}”` : 'a deleted account';
 }
 
-function Shot(props: { ui: Ui; sha: string; alt: string; size?: Size | undefined; regions?: Region[] }) {
+/** A screenshot with region boxes; `soft` boxes only outline (side by side), diff boxes are filled. */
+function Shot(props: {
+  ui: Ui;
+  sha: string;
+  alt: string;
+  size?: Size | undefined;
+  regions?: Region[] | undefined;
+  soft?: boolean;
+}) {
   const { ui, sha, alt, size, regions } = props;
   return (
     <div class="shot">
-      <img src={ui.url(`/api/v1/images/${sha}`)} alt={alt} width={size?.width} height={size?.height} />
+      <img
+        src={ui.url(`/api/v1/images/${sha}`)}
+        alt={alt}
+        width={size?.width}
+        height={size?.height}
+        draggable="false"
+      />
       {size && regions && regions.length > 0 && (
         // Region boxes as SVG attributes: the CSP forbids inline styles.
-        <svg viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
+        <svg
+          class={props.soft ? 'soft' : undefined}
+          viewBox={`0 0 ${size.width} ${size.height}`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
           {regions.map((r) => (
             <rect x={r.x} y={r.y} width={r.width} height={r.height} />
           ))}
@@ -103,10 +122,10 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
       </div>
       <div class="panes">
         <Pane kind="baseline" caption={`Baseline · ${baseline.branch}`}>
-          <Shot ui={ui} sha={baseline.imageSha} alt="baseline" size={baseSize} />
+          <Shot ui={ui} sha={baseline.imageSha} alt="baseline" size={baseSize} regions={diff?.regions} soft />
         </Pane>
         <Pane kind="current" caption="This build">
-          <Shot ui={ui} sha={check.imageSha} alt="this build" size={currentSize} />
+          <Shot ui={ui} sha={check.imageSha} alt="this build" size={currentSize} regions={diff?.regions} soft />
         </Pane>
         {check.diffImageSha && (
           <Pane kind="diff" caption="Diff · changes in red">
@@ -130,12 +149,14 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
         >
           <div class="layers">
             <img
+              draggable="false"
               src={ui.url(`/api/v1/images/${baseline.imageSha}`)}
               alt=""
               width={baseSize?.width}
               height={baseSize?.height}
             />
             <img
+              draggable="false"
               class="layer-top"
               src={ui.url(`/api/v1/images/${check.imageSha}`)}
               alt=""
@@ -268,6 +289,7 @@ function Filmstrip(props: {
                 data-review={c.review}
               >
                 <img
+                  draggable="false"
                   src={ui.url(`/api/v1/images/${sha}`)}
                   alt=""
                   loading="lazy"
