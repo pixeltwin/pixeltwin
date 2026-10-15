@@ -194,7 +194,8 @@ function NewProjectPage(props: { ui: Ui; values?: FormValues; errors?: Record<st
   );
 }
 
-function Lane({ ui, slug, summary }: { ui: Ui; slug: string; summary: BranchSummary }) {
+function Lane(props: { ui: Ui; slug: string; summary: BranchSummary; reviewHref?: string | undefined }) {
+  const { ui, slug, summary } = props;
   const build = summary.latest;
   return (
     <article class="lane">
@@ -206,6 +207,11 @@ function Lane({ ui, slug, summary }: { ui: Ui; slug: string; summary: BranchSumm
         {summary.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
         <BuildStatus build={build} />
         <span class="lane-meta">
+          {props.reviewHref && (
+            <a class="button small" href={props.reviewHref}>
+              Review
+            </a>
+          )}
           <a href={ui.url(`/ui/builds/${build.id}`)}>{`#${build.number}`}</a>
           <span class="muted">
             <Ago at={build.createdAt} />
@@ -237,6 +243,8 @@ function BranchesPage(props: {
   project: Project;
   summaries: BranchSummary[];
   review: { href: string; count: number } | null;
+  /** Per branch: its latest build's first check waiting for review. */
+  laneReviews: Map<string, string>;
   canManage: boolean;
   onboarding?: { hasToken: boolean; publicUrl: string } | undefined;
   notice?: string | undefined;
@@ -285,7 +293,7 @@ function BranchesPage(props: {
       ) : (
         <div class="lanes" data-live="lanes" data-live-open={running ? '' : undefined}>
           {summaries.map((summary) => (
-            <Lane ui={ui} slug={project.slug} summary={summary} />
+            <Lane ui={ui} slug={project.slug} summary={summary} reviewHref={props.laneReviews.get(summary.branch)} />
           ))}
         </div>
       )}
@@ -439,13 +447,18 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
     const summaries = await listBranchSummaries(s.deps, slug);
     const canManage = hasPermission(userOf(c), 'project.admin');
 
-    // "Review N →" opens the most recent build that has checks waiting.
+    // Each lane whose latest build has checks waiting links to the first one; "Review N →" in the
+    // header opens the most recent of those builds.
     const waiting = summaries
-      .map((x) => x.latest)
-      .filter((b) => b.counts.review.pending > 0)
-      .sort((a, b) => b.createdAt - a.createdAt)[0];
-    const first = waiting ? await firstPendingCheckId(s.deps, waiting.id) : null;
-    const review = first ? { href: ui.url(`/ui/checks/${first}?filter=pending`), count: pendingIn(summaries) } : null;
+      .filter((x) => x.latest.counts.review.pending > 0)
+      .sort((a, b) => b.latest.createdAt - a.latest.createdAt);
+    const laneReviews = new Map<string, string>();
+    for (const x of waiting) {
+      const first = await firstPendingCheckId(s.deps, x.latest.id);
+      if (first) laneReviews.set(x.branch, ui.url(`/ui/checks/${first}?filter=pending`));
+    }
+    const newest = waiting[0] && laneReviews.get(waiting[0].branch);
+    const review = newest ? { href: newest, count: pendingIn(summaries) } : null;
 
     const onboarding =
       summaries.length === 0
@@ -457,6 +470,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
         project={project}
         summaries={summaries}
         review={review}
+        laneReviews={laneReviews}
         canManage={canManage}
         onboarding={onboarding}
         notice={noticeOf(c)}

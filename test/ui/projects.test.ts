@@ -122,6 +122,17 @@ describe('UI projects', () => {
       expect(settled).not.toContain('data-islands="live"');
     });
 
+    test('a lane whose latest build waits for review links straight to it', async () => {
+      const { pendingCheck } = await seedWeb();
+      const page = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
+      const lane = page.slice(page.indexOf('>feature/cart<'));
+      expect(lane.slice(0, lane.indexOf('</article>'))).toContain(
+        `class="button small" href="/ui/checks/${pendingCheck}?filter=pending">Review</a>`,
+      );
+      const main = page.slice(page.indexOf('>main<'));
+      expect(main.slice(0, main.indexOf('</article>'))).not.toContain('>Review</a>');
+    });
+
     test('settings are a tab for admins only', async () => {
       await seedWeb();
       expect(await html(await t.request('GET', '/ui/p/web', { as: admin }))).toContain('href="/ui/p/web/settings"');
