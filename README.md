@@ -15,6 +15,9 @@ docker run -d --name pixeltwin -p 8080:8080 -v pixeltwin-data:/data \
 docker logs pixeltwin          # shows the setup link
 ```
 
+The container runs as uid 65532 (distroless `nonroot`). A named volume works as is; a bind-mounted
+directory must be writable by that user, for example `sudo chown -R 65532:65532 ./pixeltwin-data`.
+
 **Binary**: download `pixeltwin-<version>-<os>-<arch>` from the GitHub release (check it against
 `SHA256SUMS`), then:
 
@@ -22,6 +25,10 @@ docker logs pixeltwin          # shows the setup link
 chmod +x pixeltwin-*-linux-x64
 ./pixeltwin-*-linux-x64 serve  # http://localhost:8080, data in ./data (SQLite + images)
 ```
+
+The binaries are not signed. On macOS, clear the download quarantine before the first run:
+`xattr -d com.apple.quarantine pixeltwin-*-darwin-*`. x64 binaries are built for any x86-64 CPU
+(Bun's baseline target, no AVX2 needed).
 
 **From source**: requires [Bun](https://bun.sh) (version in `.bun-version`).
 
@@ -91,6 +98,14 @@ docker stop pixeltwin-pg
 ```
 
 `TEST_DATABASE_URL` tables are truncated before each test. Never point it at a database you care about.
+
+### Releasing
+
+Bump `src/version.ts`, commit, then push a tag `v<version>`. The release workflow checks that the tag
+matches, runs the tests and the smoke test, attaches the binaries and `SHA256SUMS` to a GitHub
+release, and pushes the image to GHCR. GHCR packages start private: after the first release, open
+the package's settings on GitHub and set its visibility to public, or `docker pull` will ask for a
+login.
 
 ## Licence
 
