@@ -25,13 +25,31 @@ export function userOf(c: Context<AppEnv>): UiUser {
   return principal;
 }
 
+function hasControlOrBackslash(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f || ch === '\\') return true;
+  }
+  return false;
+}
+
 /**
  * Where to go after logging in. Only paths inside the UI are accepted, so `next` cannot send
  * the user to another site (`//evil.example`, `https://…`) or to the API.
  */
 export function safeNext(next: string | undefined): string {
-  if (!next || !/^\/ui(\/|\?|$)/.test(next) || next.startsWith('//') || next.includes('\\')) return '/ui';
-  return next;
+  // Control characters, backslashes and encoded dots or slashes are never legitimate here.
+  if (!next || hasControlOrBackslash(next) || /%2e|%2f|%5c/i.test(next)) return '/ui';
+  let url: URL;
+  try {
+    url = new URL(next, 'http://ui.invalid');
+  } catch {
+    return '/ui';
+  }
+  // Resolve dot segments first, then check where the path really points.
+  if (url.origin !== 'http://ui.invalid') return '/ui';
+  if (url.pathname !== '/ui' && !url.pathname.startsWith('/ui/')) return '/ui';
+  return url.pathname + url.search;
 }
 
 /** Fixed notices shown after a redirect (`?done=approved`); never reflects request text. */

@@ -37,7 +37,18 @@ describe('UI authentication', () => {
   test('the return path cannot leave the UI', async () => {
     t = await createTestApp();
     await t.userAs('viewer', 'ada@example.com');
-    for (const next of ['//evil.example', 'https://evil.example', '/api/v1/users', '/\\evil.example', '/uinot']) {
+    const attempts = [
+      '//evil.example',
+      'https://evil.example',
+      '/api/v1/users',
+      '/\\evil.example',
+      '/uinot',
+      '/ui/../api/v1/users',
+      '/ui/%2e%2e/api',
+      '/ui/../..//evil.example',
+      '/ui/\nx',
+    ];
+    for (const next of attempts) {
       const res = await postForm(t, '/ui/login', { email: 'ada@example.com', password: PASSWORD, next });
       expect({ next, to: location(res) }).toEqual({ next, to: '/ui' });
     }
