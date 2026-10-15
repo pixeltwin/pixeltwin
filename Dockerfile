@@ -9,7 +9,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts
 COPY tsconfig.json ./
 COPY src ./src
 RUN case "$TARGETARCH" in \
-      amd64) target=linux-x64 ;; \
+      amd64) target=linux-x64-baseline ;; \
       arm64) target=linux-arm64 ;; \
       *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac \

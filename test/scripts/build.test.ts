@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { nativeTarget, outfileFor, parseTargets, TARGETS } from '../../scripts/build';
+import { bunTarget, nativeTarget, outfileFor, parseTargets, TARGETS } from '../../scripts/build';
 
 describe('build script', () => {
   test('maps this machine to a target', () => {
@@ -14,6 +14,14 @@ describe('build script', () => {
     expect(parseTargets(['all'])).toEqual([...TARGETS]);
     expect(parseTargets(['linux-arm64', 'darwin-x64'])).toEqual(['linux-arm64', 'darwin-x64']);
     expect(() => parseTargets(['linux-386'])).toThrow('Unknown target "linux-386"');
+  });
+
+  test('x64 binaries use the baseline build, so CPUs without AVX2 can run them', () => {
+    expect(bunTarget('linux-x64')).toBe('bun-linux-x64-baseline');
+    expect(bunTarget('darwin-x64')).toBe('bun-darwin-x64-baseline');
+    expect(bunTarget('windows-x64')).toBe('bun-windows-x64-baseline');
+    expect(bunTarget('linux-arm64')).toBe('bun-linux-arm64');
+    expect(bunTarget('darwin-arm64')).toBe('bun-darwin-arm64');
   });
 
   test('names files by version and target', () => {

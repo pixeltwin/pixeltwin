@@ -31,12 +31,27 @@ export function outfileFor(target: Target, version: string = VERSION): string {
   return `pixeltwin-${version}-${target}${target.startsWith('windows') ? '.exe' : ''}`;
 }
 
+/**
+ * Bun's x64 default needs AVX2 (Haswell, 2013+); the baseline build runs on any x86-64 CPU,
+ * including older servers and some VMs, at a small speed cost. File names stay the same.
+ */
+export function bunTarget(target: Target): string {
+  return `bun-${target}${target.endsWith('-x64') ? '-baseline' : ''}`;
+}
+
 /** The worker is a second entrypoint: inside the binary it is loaded as ./diff/worker.ts. */
 export function build(targets: Target[], outDir = 'dist'): string[] {
   mkdirSync(outDir, { recursive: true });
   const files = targets.map((target) => {
     const outfile = join(outDir, outfileFor(target));
-    const args = ['build', '--compile', '--minify', `--target=bun-${target}`, 'src/main.ts', 'src/diff/worker.ts'];
+    const args = [
+      'build',
+      '--compile',
+      '--minify',
+      `--target=${bunTarget(target)}`,
+      'src/main.ts',
+      'src/diff/worker.ts',
+    ];
     const result = Bun.spawnSync([process.execPath, ...args, '--outfile', outfile], {
       stdout: 'inherit',
       stderr: 'inherit',

@@ -16,3 +16,9 @@ test('the image runs as non-root, keeps data in a volume and checks its own heal
   expect(dockerfile).toContain('HEALTHCHECK');
   expect(dockerfile).toContain('"healthcheck"');
 });
+
+test('the amd64 image uses the baseline build, so CPUs without AVX2 can run it', () => {
+  const dockerfile = read('Dockerfile');
+  expect(dockerfile).toContain('amd64) target=linux-x64-baseline ;;');
+  expect(dockerfile).toContain('arm64) target=linux-arm64 ;;');
+});
