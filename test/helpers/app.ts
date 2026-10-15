@@ -6,7 +6,7 @@ import { createUser } from '../../src/domain/auth/users';
 import { createApp } from '../../src/http/app';
 import type { AppEnv } from '../../src/http/env';
 import { LoginLimiter } from '../../src/http/rate-limit';
-import { silentLogger } from '../../src/log';
+import { type Logger, silentLogger } from '../../src/log';
 import { createTestDeps, type TestDeps } from './deps';
 
 export const PUBLIC_URL = 'http://pixeltwin.test';
@@ -32,14 +32,14 @@ export interface TestApp {
 }
 
 export async function createTestApp(
-  options: { setupToken?: string | null; maxImageBytes?: number } = {},
+  options: { setupToken?: string | null; maxImageBytes?: number; logger?: Logger } = {},
 ): Promise<TestApp> {
   const deps = await createTestDeps();
   const setup = new SetupState(options.setupToken ?? null);
   const app = createApp({
     deps,
     config: { publicUrl: PUBLIC_URL, maxImageBytes: options.maxImageBytes ?? deps.limits.maxImageBytes },
-    logger: silentLogger,
+    logger: options.logger ?? silentLogger,
     setup,
     loginLimiter: new LoginLimiter(),
   });

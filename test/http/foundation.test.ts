@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { createLogger } from '../../src/log';
 import { createTestApp, PASSWORD, problemOf, type TestApp } from '../helpers/app';
 
 describe('HTTP foundation', () => {
@@ -17,6 +18,22 @@ describe('HTTP foundation', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'ok', database: 'ok', storage: 'ok' });
     expect(res.headers.get('x-request-id')).toMatch(/^req_/);
+  });
+
+  test('healthz requests are logged at debug, so probes do not flood the info log', async () => {
+    const lines: { level: string; msg: string; path?: string }[] = [];
+    const logged = await createTestApp({ logger: createLogger('debug', (line) => lines.push(JSON.parse(line))) });
+    try {
+      await logged.request('GET', '/healthz');
+      await logged.request('GET', '/api/v1/nope');
+    } finally {
+      await logged.close();
+    }
+    const requests = lines.filter((l) => l.msg === 'request').map((l) => ({ level: l.level, path: l.path }));
+    expect(requests).toEqual([
+      { level: 'debug', path: '/healthz' },
+      { level: 'info', path: '/api/v1/nope' },
+    ]);
   });
 
   test('unknown routes are a problem+json 404 with a request id', async () => {
