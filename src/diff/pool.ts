@@ -22,7 +22,8 @@ interface Job {
 }
 
 interface Slot {
-  worker: Worker;
+  /** null after a crash or timeout; a new worker is spawned when the next job needs this slot. */
+  worker: Worker | null;
   current: (Job & { timer: ReturnType<typeof setTimeout> }) | null;
 }
 
@@ -30,7 +31,9 @@ const CLOSED: DiffJobResult = { kind: 'error', code: 'diff_failed', message: 'Di
 
 /**
  * Runs diff jobs on a fixed set of Bun workers. A job that exceeds `timeoutMs`, or whose
- * worker crashes, resolves to an error result and its worker is replaced. `run` never rejects.
+ * worker crashes, resolves to an error result and its worker is discarded. Replacements are
+ * spawned only when a job is waiting, so a worker that cannot load fails each job quickly
+ * instead of respawning in a loop. `run` never rejects.
  */
 export class DiffPool {
   readonly #options: DiffPoolOptions;
@@ -41,7 +44,11 @@ export class DiffPool {
 
   constructor(options: DiffPoolOptions) {
     this.#options = options;
-    for (let i = 0; i < options.size; i++) this.#slots.push(this.#spawn());
+    for (let i = 0; i < options.size; i++) {
+      const slot: Slot = { worker: null, current: null };
+      slot.worker = this.#spawn(slot);
+      this.#slots.push(slot);
+    }
   }
 
   run = (job: DiffJob): Promise<DiffJobResult> =>
@@ -61,16 +68,16 @@ export class DiffPool {
         clearTimeout(slot.current.timer);
         slot.current.resolve(CLOSED);
       }
-      slot.worker.terminate();
+      slot.worker?.terminate();
     }
     this.#slots.length = 0;
     for (const queued of this.#queue.splice(0)) queued.resolve(CLOSED);
   }
 
-  #spawn(): Slot {
+  #spawn(slot: Slot): Worker {
     const worker = new Worker(this.#options.workerSpecifier ?? defaultWorkerSpecifier());
-    const slot: Slot = { worker, current: null };
     worker.onmessage = (event: MessageEvent<{ id: number; result: DiffJobResult }>) => {
+      if (slot.worker !== worker) return;
       const current = slot.current;
       if (!current || current.id !== event.data.id) return;
       clearTimeout(current.timer);
@@ -80,24 +87,23 @@ export class DiffPool {
     };
     worker.onerror = (event: ErrorEvent) => {
       event.preventDefault();
+      if (slot.worker !== worker) return;
       // The raw message can contain source code and paths; keep the stored message generic.
-      this.#replace(slot, { kind: 'error', code: 'diff_failed', message: 'Diff worker crashed.' });
+      this.#discard(slot, { kind: 'error', code: 'diff_failed', message: 'Diff worker crashed.' });
     };
-    return slot;
+    return worker;
   }
 
-  #replace(slot: Slot, result: DiffJobResult): void {
+  #discard(slot: Slot, result: DiffJobResult): void {
     const current = slot.current;
     slot.current = null;
     if (current) {
       clearTimeout(current.timer);
       current.resolve(result);
     }
-    slot.worker.terminate();
-    if (this.#closed) return;
-    const index = this.#slots.indexOf(slot);
-    if (index >= 0) this.#slots[index] = this.#spawn();
-    this.#dispatch();
+    slot.worker?.terminate();
+    slot.worker = null;
+    if (!this.#closed) this.#dispatch();
   }
 
   #dispatch(): void {
@@ -105,9 +111,10 @@ export class DiffPool {
       if (slot.current) continue;
       const next = this.#queue.shift();
       if (!next) return;
+      slot.worker ??= this.#spawn(slot);
       const timer = setTimeout(
         () =>
-          this.#replace(slot, {
+          this.#discard(slot, {
             kind: 'error',
             code: 'diff_timeout',
             message: `Diff took longer than ${this.#options.timeoutMs} ms.`,
