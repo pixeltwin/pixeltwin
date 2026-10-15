@@ -26,14 +26,14 @@ export function fitScale(image: Size, box: Size): number {
 }
 
 /**
- * Keeps the image in the box: on an axis where it is smaller than the box it is centred
- * horizontally and top-aligned vertically; where it is larger, no gap opens at its edges.
+ * Keeps the image in the box: on an axis where it is smaller than the box it is centred;
+ * where it is larger, no gap opens at its edges.
  */
 export function clampPan(view: View, image: Size, box: Size): View {
   const w = image.width * view.scale;
   const h = image.height * view.scale;
   const x = w <= box.width ? (box.width - w) / 2 : Math.min(0, Math.max(box.width - w, view.x));
-  const y = h <= box.height ? 0 : Math.min(0, Math.max(box.height - h, view.y));
+  const y = h <= box.height ? (box.height - h) / 2 : Math.min(0, Math.max(box.height - h, view.y));
   return { scale: view.scale, x, y };
 }
 

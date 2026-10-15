@@ -7,13 +7,13 @@ const { fitView, actualView, zoomAt, panBy, regionView, clampPan, MAX_SCALE } = 
 const box = { width: 800, height: 600 };
 
 describe('zoom math', () => {
-  test('fit shrinks a big image into the box, centred horizontally and top-aligned', () => {
-    expect(fitView({ width: 1600, height: 600 }, box)).toEqual({ scale: 0.5, x: 0, y: 0 });
+  test('fit shrinks a big image into the box and centres it both ways', () => {
+    expect(fitView({ width: 1600, height: 600 }, box)).toEqual({ scale: 0.5, x: 0, y: 150 });
     expect(fitView({ width: 800, height: 1200 }, box)).toEqual({ scale: 0.5, x: 200, y: 0 });
   });
 
   test('fit never enlarges a small image', () => {
-    expect(fitView({ width: 400, height: 300 }, box)).toEqual({ scale: 1, x: 200, y: 0 });
+    expect(fitView({ width: 400, height: 300 }, box)).toEqual({ scale: 1, x: 200, y: 150 });
   });
 
   test('100% shows real pixels from the top-left corner, centred when the image is narrower', () => {
@@ -41,8 +41,12 @@ describe('zoom math', () => {
     const image = { width: 1600, height: 1200 };
     expect(panBy({ scale: 1, x: 0, y: 0 }, 500, 500, image, box)).toEqual({ scale: 1, x: 0, y: 0 });
     expect(panBy({ scale: 1, x: 0, y: 0 }, -5000, -5000, image, box)).toEqual({ scale: 1, x: -800, y: -600 });
-    // An image smaller than the box stays put.
-    expect(clampPan({ scale: 1, x: 90, y: 90 }, { width: 400, height: 300 }, box)).toEqual({ scale: 1, x: 200, y: 0 });
+    // An image smaller than the box stays centred.
+    expect(clampPan({ scale: 1, x: 90, y: 90 }, { width: 400, height: 300 }, box)).toEqual({
+      scale: 1,
+      x: 200,
+      y: 150,
+    });
   });
 
   test('a region is shown enlarged and centred, with room around it', () => {
