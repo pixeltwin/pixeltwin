@@ -232,10 +232,6 @@ function ActionBar(props: { ui: Ui; check: CheckView; filter: CheckFilter; next:
       {reviewable && (
         <form class="review-form" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-review-form>
           <input type="hidden" name="filter" value={filter.key} />
-          <label class="visually-hidden" for="comment">
-            Comment
-          </label>
-          <textarea id="comment" name="comment" rows={1} maxlength={1000} placeholder="Comment (optional)" />
           <div class="review-buttons">
             {check.review === 'pending' && (
               // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.

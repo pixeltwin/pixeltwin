@@ -182,21 +182,21 @@ async function alreadyReviewed(id: string): Promise<void> {
   await advance();
 }
 
-async function review(action: Action, comment: string): Promise<void> {
+async function review(action: Action): Promise<void> {
   if (busy) return;
   busy = true;
   const id = currentId();
   const name = currentName();
   try {
     try {
-      await api('POST', `/checks/${id}/${action}`, comment ? { comment } : {});
+      await api('POST', `/checks/${id}/${action}`, {});
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) return await alreadyReviewed(id);
       if (err instanceof ApiError && err.status === 401) return;
       toast(`Couldn't ${action} ${name}`, {
         tone: 'error',
         timeout: 0,
-        action: { label: 'Retry', run: () => void review(action, comment) },
+        action: { label: 'Retry', run: () => void review(action) },
       });
       return;
     }
@@ -271,8 +271,7 @@ function onSubmit(event: SubmitEvent): void {
   if (form.matches('[data-review-form]')) {
     event.preventDefault();
     const action: Action = event.submitter?.getAttribute('formaction')?.endsWith('/reject') ? 'reject' : 'approve';
-    const comment = form.querySelector('textarea')?.value.trim() ?? '';
-    void review(action, comment);
+    void review(action);
   } else if (form.matches('[data-reset-form]')) {
     event.preventDefault();
     void undo(currentId());
@@ -327,11 +326,6 @@ export function init(): void {
     key: 'arrowright',
     label: 'Next check',
     run: () => root.querySelector<HTMLElement>('[data-key="j"]')?.click(),
-  });
-  onKey({
-    key: 'c',
-    label: 'Write a comment',
-    run: () => root.querySelector<HTMLTextAreaElement>('textarea[name="comment"]')?.focus(),
   });
   onKey({
     key: 'escape',

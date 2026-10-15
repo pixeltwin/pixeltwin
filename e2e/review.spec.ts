@@ -2,7 +2,6 @@ import { expect, open, REVIEWER, sessionCookie, test } from './fixtures';
 
 interface CheckJson {
   review: string;
-  reviewComment: string | null;
 }
 
 test('a reviewer goes through a build with the keyboard, without page loads', async ({
@@ -50,21 +49,12 @@ test('a small window still shows the filmstrip, with the stage shrinking instead
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
-test('a comment goes with the review: C to write, Esc to leave the field, R to reject', async ({
-  reviewerPage: page,
-  seeded,
-}) => {
+test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
-  await page.keyboard.press('c');
-  await page.keyboard.type('button colour is wrong');
-  await page.keyboard.press('Escape');
-  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
   await page.keyboard.press('r');
   await expect(page.locator('.toast').last()).toContainText('Rejected home');
-  expect(await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).toMatchObject({
-    review: 'rejected',
-    reviewComment: 'button colour is wrong',
-  });
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+  expect((await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).review).toBe('rejected');
 });
 
 test('arrow keys move between checks; Shift+arrows move the slider', async ({ reviewerPage: page, seeded }) => {

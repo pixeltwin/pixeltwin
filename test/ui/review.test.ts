@@ -102,14 +102,14 @@ describe('UI focus mode', () => {
     expect(body).toContain('(fallback: feature/cart has none yet)');
   });
 
-  test('reviewers get Approve, Reject, a comment and Skip; viewers get none of them', async () => {
+  test('reviewers get Approve, Reject and Skip, without a comment field; viewers get none of them', async () => {
     const { changed, fresh } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}?filter=pending`);
     expect(body).toContain(`action="/ui/checks/${changed.id}/approve"`);
     expect(body).toContain(`formaction="/ui/checks/${changed.id}/reject"`);
     expect(body).toContain('data-key="a"');
     expect(body).toContain('data-key="r"');
-    expect(body).toContain('name="comment"');
+    expect(body).not.toContain('<textarea');
     expect(body).toContain('<input type="hidden" name="filter" value="pending"/>');
     expect(body).toContain(`class="button ghost" href="/ui/checks/${fresh.id}?filter=pending"`);
     const forViewer = await page(`/ui/checks/${changed.id}`, viewer);

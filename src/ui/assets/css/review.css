@@ -338,12 +338,6 @@ body.focus main {
   gap: var(--space-3);
   flex: 1;
 }
-.review-form textarea {
-  flex: 1;
-  min-height: 34px;
-  max-width: 480px;
-  resize: none;
-}
 .review-buttons {
   display: flex;
   gap: var(--space-2);
@@ -376,10 +370,6 @@ body.focus main {
   }
   .review-form {
     flex-wrap: wrap;
-  }
-  .review-form textarea {
-    max-width: none;
-    flex-basis: 100%;
   }
   .review-buttons {
     width: 100%;
