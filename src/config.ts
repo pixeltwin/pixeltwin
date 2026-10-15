@@ -2,7 +2,12 @@ import { cpus } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 
+const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
+
 const envSchema = z.object({
+  PORT: z.coerce.number().int().min(0).max(65_535).default(8080),
+  PUBLIC_URL: z.url({ protocol: /^https?$/ }).optional(),
+  LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   DATA_DIR: z.string().default('./data'),
   DATABASE_URL: z
     .string()
@@ -18,7 +23,13 @@ const envSchema = z.object({
   MAX_IMAGE_PIXELS: z.coerce.number().int().min(1).default(40_000_000),
 });
 
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
 export interface Config {
+  port: number;
+  /** Origin plus optional path prefix, without a trailing slash, e.g. `https://vrt.example.com`. */
+  publicUrl: string;
+  logLevel: LogLevel;
   dataDir: string;
   /** `postgres://…` or `sqlite:<path>`. */
   databaseUrl: string;
@@ -48,6 +59,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const e = parsed.data;
   const dataDir = resolve(e.DATA_DIR);
   return {
+    port: e.PORT,
+    publicUrl: (e.PUBLIC_URL ?? `http://localhost:${e.PORT}`).replace(/\/+$/, ''),
+    logLevel: e.LOG_LEVEL,
     dataDir,
     databaseUrl: e.DATABASE_URL ?? `sqlite:${join(dataDir, 'pixeltwin.db')}`,
     diffWorkers: e.DIFF_WORKERS ?? Math.max(1, cpus().length),

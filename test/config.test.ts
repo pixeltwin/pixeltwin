@@ -6,6 +6,9 @@ import { ConfigError, loadConfig } from '../src/config';
 describe('loadConfig', () => {
   test('works with no variables set', () => {
     const config = loadConfig({});
+    expect(config.port).toBe(8080);
+    expect(config.publicUrl).toBe('http://localhost:8080');
+    expect(config.logLevel).toBe('info');
     expect(config.dataDir).toBe(resolve('./data'));
     expect(config.databaseUrl).toBe(`sqlite:${resolve('./data/pixeltwin.db')}`);
     expect(config.diffWorkers).toBe(Math.max(1, cpus().length));
@@ -43,5 +46,16 @@ describe('loadConfig', () => {
       expect(problems).toContain('DATABASE_URL');
       expect(problems).toContain('DIFF_WORKERS');
     }
+  });
+
+  test('derives PUBLIC_URL from PORT and strips a trailing slash', () => {
+    expect(loadConfig({ PORT: '9000' }).publicUrl).toBe('http://localhost:9000');
+    expect(loadConfig({ PUBLIC_URL: 'https://vrt.example.com/' }).publicUrl).toBe('https://vrt.example.com');
+    expect(loadConfig({ PUBLIC_URL: 'https://example.com/vrt/' }).publicUrl).toBe('https://example.com/vrt');
+  });
+
+  test('rejects a PUBLIC_URL that is not http(s) and an unknown LOG_LEVEL', () => {
+    expect(() => loadConfig({ PUBLIC_URL: 'ftp://example.com' })).toThrow('PUBLIC_URL');
+    expect(() => loadConfig({ LOG_LEVEL: 'loud' })).toThrow('LOG_LEVEL');
   });
 });
