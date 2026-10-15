@@ -8,8 +8,10 @@ import { authenticate } from './auth';
 import { API, type AppEnv, type Services } from './env';
 import { problemResponse, titleFor } from './problem';
 import { registerAuthRoutes } from './routes/auth';
+import { registerBaselineRoutes } from './routes/baselines';
 import { registerBuildRoutes } from './routes/builds';
 import { registerCheckRoutes } from './routes/checks';
+import { registerImageRoutes } from './routes/images';
 import { registerProjectRoutes } from './routes/projects';
 import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
@@ -102,5 +104,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerProjectRoutes(app, services);
   registerBuildRoutes(app, services);
   registerCheckRoutes(app, services);
+  registerBaselineRoutes(app, services);
+  registerImageRoutes(app, services);
   return app;
 }
