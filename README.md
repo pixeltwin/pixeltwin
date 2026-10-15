@@ -2,16 +2,32 @@
 
 Self-hosted visual regression testing with an API built for CI and AI agents.
 
-> Status: early development. The engine, the HTTP API and the review UI work; release builds
-> (binaries, Docker image) are in progress. See `docs/superpowers/specs/`.
+> Status: early development (0.x). See `docs/superpowers/specs/` for the design.
 
 ## Run it
 
-Requires [Bun](https://bun.sh) (version in `.bun-version`).
+**Docker** (images for amd64 and arm64 are published by the release workflow to
+`ghcr.io/<owner>/pixeltwin`, where `<owner>` is the GitHub account hosting this repository):
+
+```sh
+docker run -d --name pixeltwin -p 8080:8080 -v pixeltwin-data:/data \
+  -e PUBLIC_URL=http://localhost:8080 ghcr.io/<owner>/pixeltwin:latest
+docker logs pixeltwin          # shows the setup link
+```
+
+**Binary**: download `pixeltwin-<version>-<os>-<arch>` from the GitHub release (check it against
+`SHA256SUMS`), then:
+
+```sh
+chmod +x pixeltwin-*-linux-x64
+./pixeltwin-*-linux-x64 serve  # http://localhost:8080, data in ./data (SQLite + images)
+```
+
+**From source**: requires [Bun](https://bun.sh) (version in `.bun-version`).
 
 ```sh
 bun install
-bun src/main.ts serve        # http://localhost:8080, data in ./data (SQLite + images)
+bun src/main.ts serve
 ```
 
 On first start the log prints a setup link (`setupUrl`). Open it to create the first admin in the
@@ -35,7 +51,11 @@ curl -b cookies -H 'origin: http://localhost:8080' -H 'content-type: application
 
 The workflow for CI and agents is in `/llms.txt`; the full contract is `/openapi.json`.
 
-Other commands: `bun src/main.ts migrate`, `bun src/main.ts admin reset-password <email>`.
+Other commands: `migrate`, `admin reset-password <email>`, and `healthcheck` (exit 0 when the server
+on `PORT` answers; the Docker image uses it).
+
+Builds older than a project's retention period (90 days by default, set per project) and images
+nothing references any more are deleted by an hourly job.
 
 ### Configuration
 
@@ -58,6 +78,8 @@ bun test             # SQLite in memory
 bun run typecheck
 bun run lint         # `bun run format` fixes formatting
 bun run openapi      # regenerate openapi.json after changing the API (a test checks it)
+bun scripts/build.ts            # binary for this machine in dist/ (`all` for every target)
+bun scripts/smoke.ts dist/pixeltwin-*-darwin-arm64   # end-to-end check of a binary
 ```
 
 Run the tests against Postgres too:
