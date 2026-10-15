@@ -295,9 +295,7 @@ body.focus main {
   font-weight: 500;
 }
 .facts {
-  display: grid;
-  gap: var(--space-1);
-  color: var(--text-muted);
+  gap: var(--space-1) var(--space-4);
 }
 .regions {
   margin: var(--space-3) 0 0;

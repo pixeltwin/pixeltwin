@@ -98,10 +98,22 @@ describe('UI focus mode', () => {
     const body = await page(`/ui/checks/${changed.id}`);
     expect(body).not.toContain('1 changed region; largest 10×10 at (10,10) in top-left');
     expect(body).not.toContain('class="summary"');
-    expect(body).toContain('1% changed');
     expect(body).toContain('data-region="10,10,10,10"');
-    expect(body).toContain('(fallback: feature/cart has none yet)');
     expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('New snapshot.</p>');
+  });
+
+  test('the info strip shows Diff, Tolerance and Branch', async () => {
+    const { changed, fresh } = await seedBuild();
+    const body = await page(`/ui/checks/${changed.id}`);
+    expect(body).toContain('<dt>Diff</dt><dd>1%</dd>');
+    expect(body).toContain('<dt>Tolerance</dt><dd>0%</dd>');
+    expect(body).toContain(
+      '<dt>Branch</dt><dd><span class="mono">main</span><span class="muted"> (fallback: feature/cart has none yet)</span></dd>',
+    );
+    expect(body).not.toContain('% changed');
+    const forNew = await page(`/ui/checks/${fresh.id}`);
+    expect(forNew).not.toContain('<dt>Diff</dt>');
+    expect(forNew).not.toContain('<dt>Branch</dt>');
   });
 
   test('an error check still says what went wrong', async () => {

@@ -178,19 +178,35 @@ function Info({ check, branch, reviewer }: { check: CheckView; branch: string; r
   return (
     <aside class="review-info" aria-label="About this check">
       {diffError && <p class="diff-error">{diffError.message}</p>}
-      <div class="facts">
-        {diff && <span>{`${diff.percent}% changed`}</span>}
+      <dl class="facts">
+        {diff && (
+          <>
+            <dt>Diff</dt>
+            <dd>{`${diff.percent}%`}</dd>
+          </>
+        )}
+        {diff && (
+          <>
+            <dt>Tolerance</dt>
+            <dd>{`${check.tolerancePercent}%`}</dd>
+          </>
+        )}
         {check.baseline && (
-          <span>
-            {'Baseline '}
-            <span class="mono">{check.baseline.branch}</span>
-            {check.baseline.fallback && <span class="muted">{` (fallback: ${branch} has none yet)`}</span>}
-          </span>
+          <>
+            <dt>Branch</dt>
+            <dd>
+              <span class="mono">{check.baseline.branch}</span>
+              {check.baseline.fallback && <span class="muted">{` (fallback: ${branch} has none yet)`}</span>}
+            </dd>
+          </>
         )}
         {dims && (dims.baseline.width !== dims.current.width || dims.baseline.height !== dims.current.height) && (
-          <span>{`Size ${dims.baseline.width}×${dims.baseline.height} → ${dims.current.width}×${dims.current.height}`}</span>
+          <>
+            <dt>Size</dt>
+            <dd>{`${dims.baseline.width}×${dims.baseline.height} → ${dims.current.width}×${dims.current.height}`}</dd>
+          </>
         )}
-      </div>
+      </dl>
       {diff && diff.regions.length > 0 && (
         <ul class="regions" aria-label="Changed regions">
           {diff.regions.map((r, i) => (
