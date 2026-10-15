@@ -9,6 +9,7 @@ import { API, type AppEnv, type Services } from './env';
 import { problemResponse, titleFor } from './problem';
 import { registerAuthRoutes } from './routes/auth';
 import { registerSystemRoutes } from './routes/system';
+import { registerUserRoutes } from './routes/users';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
 const HTTP_CODES: Record<number, string> = {
@@ -94,5 +95,6 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
 
   registerSystemRoutes(app, services);
   registerAuthRoutes(app, services);
+  registerUserRoutes(app, services);
   return app;
 }
