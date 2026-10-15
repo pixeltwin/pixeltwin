@@ -8,10 +8,12 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "openapi": "bun run scripts/openapi.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.6.3",
+    "@scalar/api-reference": "^1.74.0",
     "hono": "^4.13.13",
     "kysely": "^0.29.6",
     "pg": "^8.23.1",

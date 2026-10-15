@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { AppError, validationError } from '../errors';
 import { newId } from '../ids';
 import { authenticate } from './auth';
+import { registerDocRoutes } from './docs';
 import { API, type AppEnv, type Services } from './env';
 import { problemResponse, titleFor } from './problem';
 import { registerAuthRoutes } from './routes/auth';
@@ -106,5 +107,6 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerCheckRoutes(app, services);
   registerBaselineRoutes(app, services);
   registerImageRoutes(app, services);
+  registerDocRoutes(app, services);
   return app;
 }
