@@ -1,11 +1,10 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
-import type { Context } from 'hono';
-import { getConnInfo } from 'hono/bun';
 import { createSession, deleteSession } from '../../domain/auth/sessions';
 import { completeSetup, setupInputSchema } from '../../domain/auth/setup';
 import { changePassword, authenticate as checkPassword, getUserRow, toUserView } from '../../domain/auth/users';
 import { AppError } from '../../errors';
 import { principalOf } from '../auth';
+import { clientIp } from '../client-ip';
 import { clearSessionCookie, setSessionCookie } from '../cookies';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
@@ -13,15 +12,6 @@ import { json, problems, UserSchema } from '../schemas';
 
 const loginSchema = z.strictObject({ email: z.string().min(1).max(320), password: z.string().min(1).max(1024) });
 const passwordSchema = z.strictObject({ currentPassword: z.string(), newPassword: z.string() });
-
-/** The connection's address. X-Forwarded-For is ignored on purpose: it is spoofable. */
-function clientIp(c: Context<AppEnv>): string {
-  try {
-    return getConnInfo(c).remote.address ?? 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
 
 export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void {
   const setup = defineRoute('public', {

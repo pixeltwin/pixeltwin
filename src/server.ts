@@ -43,6 +43,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
   if (token) {
     logger.warn('no users yet; create the first admin with the setup token', {
       setupToken: token,
+      setupUrl: `${config.publicUrl}/ui/setup?token=${token}`,
       example: `curl -X POST ${config.publicUrl}/api/v1/setup -H 'content-type: application/json' -d '{"token":"${token}","email":"you@example.com","password":"at least 10 characters"}'`,
     });
   }

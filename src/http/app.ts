@@ -4,6 +4,8 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { AppError, validationError } from '../errors';
 import { newId } from '../ids';
+import { renderUiError } from '../ui/errors';
+import { registerUi } from '../ui/register';
 import { authenticate } from './auth';
 import { registerDocRoutes } from './docs';
 import { API, type AppEnv, type Services } from './env';
@@ -18,6 +20,7 @@ import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
+const UI_PATH = /^\/ui(\/|$)/;
 const HTTP_CODES: Record<number, string> = {
   400: 'bad_request',
   404: 'not_found',
@@ -70,6 +73,12 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
 
   app.onError((err, c) => {
     const requestId = c.get('requestId') ?? newId('req');
+    if (UI_PATH.test(c.req.path)) {
+      if (!(err instanceof AppError)) {
+        services.logger.error('unhandled error', { requestId, error: err instanceof Error ? err.stack : String(err) });
+      }
+      return renderUiError(c, services, err, requestId);
+    }
     if (err instanceof AppError) return problemResponse(err.status, err.code, err.detail, requestId, err.errors);
     if (err instanceof HTTPException && err.status < 500) {
       const code = HTTP_CODES[err.status] ?? `http_${err.status}`;
@@ -83,9 +92,11 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
       requestId,
     );
   });
-  app.notFound((c) =>
-    problemResponse(404, 'not_found', `No route for ${c.req.method} ${c.req.path}.`, c.get('requestId')),
-  );
+  app.notFound((c) => {
+    const err = new AppError('not_found', 404, `No route for ${c.req.method} ${c.req.path}.`);
+    if (UI_PATH.test(c.req.path)) return renderUiError(c, services, err, c.get('requestId'));
+    return problemResponse(err.status, err.code, err.detail, c.get('requestId'));
+  });
 
   app.openAPIRegistry.registerComponent('securitySchemes', 'projectToken', {
     type: 'http',
@@ -108,5 +119,6 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerBaselineRoutes(app, services);
   registerImageRoutes(app, services);
   registerDocRoutes(app, services);
+  registerUi(app, services);
   return app;
 }

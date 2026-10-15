@@ -7,9 +7,6 @@ import { openApiDocument } from '../../src/http/docs';
 import { createTestApp, problemOf, type TestApp } from '../helpers/app';
 import { makePng } from '../helpers/png';
 
-/** Public routes served outside openapi.json. Anything else under the app must be documented. */
-const UNDOCUMENTED_PUBLIC = ['/healthz', '/openapi.json', '/docs', '/docs/scalar.js', '/llms.txt'];
-
 interface Operation {
   method: string;
   path: string;
@@ -51,12 +48,13 @@ describe('authorization policy', () => {
     expect(ops.filter((op) => !valid.has(op.permission))).toEqual([]);
   });
 
+  // Routes outside /api (healthz, docs, the UI) are not part of the API contract.
   test('every API route is documented', () => {
     const documented = new Set(ops.map((op) => `${op.method} ${op.path}`));
     const served = t.app.routes
       .filter((r) => r.method !== 'ALL')
       .map((r) => `${r.method} ${r.path.replace(/:(\w+)/g, '{$1}')}`)
-      .filter((key) => !UNDOCUMENTED_PUBLIC.some((p) => key.endsWith(` ${p}`)));
+      .filter((key) => key.includes(' /api/'));
     expect(served.filter((key) => !documented.has(key))).toEqual([]);
   });
 
