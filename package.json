@@ -11,6 +11,8 @@
     "format": "biome check --write ."
   },
   "dependencies": {
+    "@hono/zod-openapi": "^1.6.3",
+    "hono": "^4.13.13",
     "kysely": "^0.29.6",
     "pg": "^8.23.1",
     "pixelmatch": "^8.0.0",
