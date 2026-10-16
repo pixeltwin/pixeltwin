@@ -3,46 +3,93 @@ import type { Project } from '../db/schema';
 import type { Ui } from './context';
 import { NewTokenDialog } from './token-forms';
 
-/** Copy-ready snippets for this server and project (UI spec §4.5). */
-export function snippets(publicUrl: string, slug: string) {
+/** One copyable block of a snippet tab: what it is and its code. */
+interface SnippetBlock {
+  label: string;
+  code: string;
+}
+
+/**
+ * Copy-ready snippets for this server and project (UI spec §4.5). The SDK tabs come in four short
+ * blocks (install, config, a test, run) so the way in looks as small as it is.
+ */
+export function snippets(publicUrl: string, slug: string): Record<SnippetTab, SnippetBlock[]> {
   const base = publicUrl.replace(/\/+$/, '');
   const api = `${base}/api/v1`;
+  const env = `PIXELTWIN_URL=${base} PIXELTWIN_PROJECT=${slug} PIXELTWIN_TOKEN=pt_…`;
   return {
-    playwright: `// Once per run (global setup): open a build.
-const api = '${api}';
-const auth = { authorization: \`Bearer \${process.env.PIXELTWIN_TOKEN}\` };
-const build = await (await fetch(\`\${api}/projects/${slug}/builds\`, {
-  method: 'POST',
-  headers: { ...auth, 'content-type': 'application/json' },
-  body: JSON.stringify({ branch: process.env.BRANCH ?? 'main', externalId: process.env.CI_RUN_ID }),
-})).json();
+    playwright: [
+      { label: 'Install', code: 'npm install -D @pixeltwin/playwright' },
+      {
+        label: 'playwright.config.ts: one line',
+        code: `export default defineConfig({
+  globalSetup: '@pixeltwin/playwright/setup',
+  // …your config as before
+});`,
+      },
+      {
+        label: 'A test: one call per screenshot',
+        code: `import { test } from '@pixeltwin/playwright';
 
-// In each test: post a screenshot.
-const form = new FormData();
-form.set('image', new Blob([await page.screenshot({ fullPage: true })], { type: 'image/png' }));
-form.set('meta', JSON.stringify({ name: 'home', variant: { browser: testInfo.project.name } }));
-await fetch(\`\${api}/builds/\${build.id}/checks\`, { method: 'POST', headers: auth, body: form });
+test('home', async ({ page, pixeltwin }) => {
+  await page.goto('/');
+  await pixeltwin.check(page, 'home');
+});`,
+      },
+      { label: 'Run', code: `${env} npx playwright test` },
+    ],
+    wdio: [
+      { label: 'Install', code: 'npm install -D @pixeltwin/wdio' },
+      {
+        label: 'wdio.conf.ts: one service',
+        code: `import { PixeltwinService } from '@pixeltwin/wdio';
 
-// After all tests (global teardown): close the build and read the verdict.
-await fetch(\`\${api}/builds/\${build.id}/finalize\`, { method: 'POST', headers: auth });`,
-    curl: `export PIXELTWIN_TOKEN=pt_…   # a project token with read and write
+export const config = {
+  services: [[PixeltwinService, {}]],
+  // …your config as before
+};`,
+      },
+      {
+        label: 'A test: one call per screenshot',
+        code: `import '@pixeltwin/wdio';
+
+it('home', async () => {
+  await browser.url('/');
+  await browser.pixeltwinCheck('home');
+});`,
+      },
+      { label: 'Run', code: `${env} npx wdio run wdio.conf.ts` },
+    ],
+    curl: [
+      {
+        label: 'Any language: three requests',
+        code: `export PIXELTWIN_TOKEN=pt_…   # a project token with read and write
 BUILD=$(curl -s -X POST ${api}/projects/${slug}/builds \\
   -H "Authorization: Bearer $PIXELTWIN_TOKEN" -H "Content-Type: application/json" \\
   -d '{"branch":"main"}' | jq -r .id)
 curl -X POST ${api}/builds/$BUILD/checks -H "Authorization: Bearer $PIXELTWIN_TOKEN" \\
   -F image=@home.png -F 'meta={"name":"home"}'
 curl -X POST ${api}/builds/$BUILD/finalize -H "Authorization: Bearer $PIXELTWIN_TOKEN"`,
-    agent: `Read ${base}/llms.txt, then send screenshots of our key pages to the pixeltwin
+      },
+    ],
+    agent: [
+      {
+        label: 'Ask your coding agent',
+        code: `Read ${base}/llms.txt, then send screenshots of our key pages to the pixeltwin
 project "${slug}" with the token in $PIXELTWIN_TOKEN. Finalize the build and report
 its verdict and the summary of every changed check.`,
+      },
+    ],
   };
 }
 
 const TABS = [
   { key: 'playwright', label: 'Playwright' },
+  { key: 'wdio', label: 'WebdriverIO' },
   { key: 'curl', label: 'curl' },
   { key: 'agent', label: 'AI agent' },
 ] as const;
+type SnippetTab = (typeof TABS)[number]['key'];
 
 function Step({ n, done, title, children }: { n: number; done: boolean; title: string; children?: Child }) {
   return (
@@ -87,7 +134,10 @@ export function Onboarding({
       data-live-reload=""
     >
       <h2 id="onboarding-title">Send your first screenshots</h2>
-      <p class="sub">Three steps. This page shows the project's branches once the first build arrives.</p>
+      <p class="sub">
+        A few minutes: a token, one package and one call per screenshot. This page turns into the project's branches
+        once the first build arrives.
+      </p>
       <ol class="steps">
         <Step n={1} done={hasToken} title="Create a token">
           {hasToken ? (
@@ -108,7 +158,7 @@ export function Onboarding({
           )}
           {canManage && !hasToken && <NewTokenDialog ui={ui} slug={project.slug} />}
         </Step>
-        <Step n={2} done={false} title="Post a check from your tests">
+        <Step n={2} done={false} title="Add pixeltwin to your tests">
           {/* Radio tabs: they switch without JavaScript. */}
           <div class="snippet-tabs">
             {TABS.map((tab, i) => (
@@ -125,12 +175,17 @@ export function Onboarding({
             ))}
             {TABS.map((tab) => (
               <div class={`snippet snippet-${tab.key}`}>
-                <pre id={`snippet-${tab.key}`}>
-                  <code>{code[tab.key]}</code>
-                </pre>
-                <button type="button" class="small" data-copy-from={`snippet-${tab.key}`} hidden>
-                  Copy
-                </button>
+                {code[tab.key].map((block, i) => (
+                  <div class="snippet-block">
+                    <p class="snippet-label">{block.label}</p>
+                    <pre id={`snippet-${tab.key}-${i + 1}`}>
+                      <code>{block.code}</code>
+                    </pre>
+                    <button type="button" class="small" data-copy-from={`snippet-${tab.key}-${i + 1}`} hidden>
+                      Copy
+                    </button>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

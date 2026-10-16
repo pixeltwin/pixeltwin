@@ -167,8 +167,17 @@ describe('UI projects', () => {
       expect(page).toContain('Send your first screenshots');
       expect(page).toContain('http://pixeltwin.test/api/v1/projects/web/builds');
       expect(page).toContain('http://pixeltwin.test/llms.txt');
-      for (const tab of ['Playwright', 'curl', 'AI agent']) expect(page).toContain(`>${tab}</label>`);
-      expect(page).toContain('data-copy-from="snippet-curl"');
+      for (const tab of ['Playwright', 'WebdriverIO', 'curl', 'AI agent']) expect(page).toContain(`>${tab}</label>`);
+      // The SDK way: install, one line of config, one call per screenshot, run.
+      expect(page).toContain('npm install -D @pixeltwin/playwright');
+      expect(page).toContain('globalSetup: &#39;@pixeltwin/playwright/setup&#39;');
+      expect(page).toContain('await pixeltwin.check(page, &#39;home&#39;);');
+      expect(page).toContain('PIXELTWIN_URL=http://pixeltwin.test PIXELTWIN_PROJECT=web');
+      expect(page).toContain('npm install -D @pixeltwin/wdio');
+      expect(page).toContain('browser.pixeltwinCheck(');
+      expect(page).not.toContain('new FormData');
+      expect(page).toContain('data-copy-from="snippet-playwright-1"');
+      expect(page).toContain('data-copy-from="snippet-curl-1"');
       expect(page).toContain('href="/ui/p/web/settings/tokens/new"');
       expect(page).not.toContain('class="step done"');
       // The page turns into the branch list by itself when the first build arrives.

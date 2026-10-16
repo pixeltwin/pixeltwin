@@ -205,6 +205,7 @@
   margin-top: var(--space-2);
 }
 #snippet-tab-playwright:checked ~ .snippet-playwright,
+#snippet-tab-wdio:checked ~ .snippet-wdio,
 #snippet-tab-curl:checked ~ .snippet-curl,
 #snippet-tab-agent:checked ~ .snippet-agent {
   display: block;
@@ -217,8 +218,19 @@
   font-size: var(--text-xs);
   line-height: 1.6;
 }
+.snippet-block {
+  position: relative;
+}
+.snippet-block + .snippet-block {
+  margin-top: var(--space-3);
+}
+.snippet-label {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
 .snippet button {
   position: absolute;
-  top: var(--space-2);
+  top: calc(var(--space-2) + 1.6em);
   right: var(--space-2);
 }
