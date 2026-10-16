@@ -11,7 +11,14 @@ import { sha256 } from './random';
 
 type DbDeps = Pick<Deps, 'db'>;
 
-export const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
+// pixeltwin sends no email, so an address only has to look like one: one @, something on both
+// sides, no spaces. A self-hosted team may well use admin@localhost or name@intranet.
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(254)
+  .regex(/^[^\s@]+@[^\s@]+$/, 'Enter an email address like name@example.com');
 export const passwordSchema = z.string().min(10, 'Use at least 10 characters').max(1024);
 export const roleSchema = z.enum(USER_ROLES);
 

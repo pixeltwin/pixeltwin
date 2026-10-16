@@ -1033,7 +1033,9 @@
                     "minLength": 1
                   },
                   "email": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
                   },
                   "password": {
                     "type": "string",
@@ -1409,7 +1411,9 @@
                 "type": "object",
                 "properties": {
                   "email": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
                   },
                   "password": {
                     "type": "string",
@@ -1522,7 +1526,9 @@
                 "type": "object",
                 "properties": {
                   "email": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
                   },
                   "role": {
                     "type": "string",

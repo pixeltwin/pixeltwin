@@ -32,6 +32,14 @@ describe('users', () => {
     expect(row.passwordHash).toStartWith('$argon2id$');
   });
 
+  test('accepts addresses without a public domain (a self-hosted team may use admin@localhost)', async () => {
+    expect((await createUser(deps, { email: 'admin@localhost', password: PASSWORD })).email).toBe('admin@localhost');
+    expect((await createUser(deps, { email: 'qa@intranet', password: PASSWORD })).email).toBe('qa@intranet');
+    for (const email of ['no-at-sign', '@example.com', 'a@', 'a b@example.com', 'a@b@c']) {
+      expect((await appError(createUser(deps, { email, password: PASSWORD }))).code).toBe('validation_failed');
+    }
+  });
+
   test('defaults to viewer and rejects short passwords and duplicate emails', async () => {
     expect((await createUser(deps, { email: 'a@example.com', password: PASSWORD })).role).toBe('viewer');
     const short = await appError(createUser(deps, { email: 'b@example.com', password: 'short' }));
