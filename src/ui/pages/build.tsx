@@ -58,7 +58,13 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
         </div>
       </a>
       {approvable && (
-        <form class="card-approve" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)}>
+        <form
+          class="card-approve"
+          method="post"
+          action={ui.url(`/ui/checks/${check.id}/approve`)}
+          data-inplace={`/checks/${check.id}/approve`}
+          data-inplace-done={`Approved ${check.name}`}
+        >
           <input type="hidden" name="filter" value={filter.key} />
           <input type="hidden" name="back" value="build" />
           <button type="submit" class="small approve" title="Approve this new screenshot: it becomes the baseline">

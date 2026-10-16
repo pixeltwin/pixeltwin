@@ -316,3 +316,28 @@ test('without JavaScript the same page reviews with plain forms', async ({ brows
   await expect(page).toHaveURL(new RegExp(`/ui/builds/${seeded.buildId}\\?done=rejected`));
   await context.close();
 });
+
+test.describe('on a short screen', () => {
+  test.use({ viewport: { width: 1000, height: 420 } });
+
+  test('Approve on a build card approves in place: no page load, no scroll', async ({ reviewerPage: page, seeded }) => {
+    await open(page, `/ui/builds/${seeded.buildId}`);
+    const card = page.locator(`[id="${seeded.fresh}"]`);
+    await card.scrollIntoViewIfNeeded();
+    await page.mouse.wheel(0, 40);
+    await page.evaluate(() => {
+      (window as unknown as { stayed: boolean }).stayed = true;
+    });
+    const before = await page.evaluate(() => window.scrollY);
+    await card.getByRole('button', { name: 'Approve' }).click();
+    await expect(page.locator('.toast').last()).toContainText('Approved cart');
+    await expect(card.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    await expect(card).toContainText('approved');
+    expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
+    // Only the Approve row is gone: the page may end a few pixels earlier, never jump to the card.
+    expect(Math.abs((await page.evaluate(() => window.scrollY)) - before)).toBeLessThanOrEqual(4);
+    expect(page.url()).not.toContain('#');
+    const check = await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.fresh}`);
+    expect(check.review).toBe('approved');
+  });
+});

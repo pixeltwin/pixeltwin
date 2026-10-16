@@ -85,7 +85,9 @@ describe('UI build page', () => {
   });
 
   describe('approving a new screenshot from its card', () => {
-    const approveForm = (id: string) => `<form class="card-approve" method="post" action="/ui/checks/${id}/approve">`;
+    // Plain form without JavaScript; with it the live island posts to the API in place (no reload, no scroll).
+    const approveForm = (id: string) =>
+      `<form class="card-approve" method="post" action="/ui/checks/${id}/approve" data-inplace="/checks/${id}/approve"`;
 
     test('reviewers get an Approve button on new checks waiting for review only; viewers do not', async () => {
       const { buildId, changed, fresh, same } = await seedBuild();
