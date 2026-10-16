@@ -73,28 +73,44 @@ test('Compare on the promote page zooms main, the branch and the diff together',
   const viewport = page.locator('.promote-viewport').first();
   const box = await viewport.boundingBox();
   if (!box) throw new Error('compare not open');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, -600);
   const images = page.locator('.promote-large > figure:not(.promote-slider-pane) img');
   await expect(images).toHaveCount(3);
-  for (const i of [0, 1, 2]) await expect(images.nth(i)).toHaveAttribute('style', /scale\((?!1\))/);
-  await viewport.dblclick();
-  for (const i of [0, 1, 2]) await expect(images.nth(i)).not.toHaveAttribute('style', /scale/);
+  const zoomed = async () => {
+    for (const i of [0, 1, 2]) await expect(images.nth(i)).toHaveAttribute('style', /scale\((?!1\))/);
+  };
+  const fitted = async () => {
+    for (const i of [0, 1, 2]) await expect(images.nth(i)).not.toHaveAttribute('style', /scale/);
+  };
+  const label = page.locator('[data-promote-zoom-label]').first();
 
-  // The slider: the branch over main, cut where the divider is.
+  // A click zooms in where it lands, on all three images.
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await zoomed();
+  await expect(label).toHaveText(/%$/);
+  await page.getByRole('button', { name: 'Fit' }).first().click();
+  await fitted();
+  await expect(label).toHaveText('Fit');
+  // The wheel and the + button zoom too.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -600);
+  await zoomed();
+  await page.getByRole('button', { name: 'Fit' }).first().click();
+  await page.getByRole('button', { name: 'Zoom in' }).first().click();
+  await zoomed();
+  await page.getByRole('button', { name: 'Fit' }).first().click();
+
+  // The slider follows the pointer: no dragging needed.
   await page.getByRole('button', { name: 'Slider' }).first().click();
   const slider = page.locator('.promote-slider').first();
   await expect(slider).toBeVisible();
   await expect(viewport).toBeHidden();
   const top = slider.locator('.promote-top-layer');
-  const before = await top.evaluate((el) => (el as HTMLElement).style.clipPath);
   const area = await slider.boundingBox();
   if (!area) throw new Error('slider not on screen');
-  await page.mouse.move(area.x + area.width * 0.5, area.y + area.height / 2);
-  await page.mouse.down();
+  await page.mouse.move(area.x + area.width * 0.8, area.y + area.height / 2);
+  await expect(top).toHaveAttribute('style', /inset\(0(px)? 0(px)? 0(px)? 8\d/);
   await page.mouse.move(area.x + area.width * 0.2, area.y + area.height / 2, { steps: 4 });
-  await page.mouse.up();
-  await expect(top).not.toHaveAttribute('style', before ? new RegExp(before.replace(/[()%.]/g, '\\$&')) : /^$/);
+  await expect(top).toHaveAttribute('style', /inset\(0(px)? 0(px)? 0(px)? [12]\d/);
 });
 
 test('the theme switch applies at once and survives a reload', async ({ reviewerPage: page }) => {

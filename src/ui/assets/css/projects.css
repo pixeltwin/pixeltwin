@@ -372,11 +372,11 @@
   cursor: zoom-in;
   touch-action: none;
 }
-.promote-viewport.zoomed {
+.promote-viewport.zoomed:active {
   cursor: grab;
 }
-.promote-viewport.zoomed:active {
-  cursor: grabbing;
+.promote-viewport.at-max {
+  cursor: default;
 }
 .promote-full {
   display: block;
@@ -395,11 +395,44 @@
 .promote-compare .hint {
   margin: var(--space-2) 0 0;
 }
-.promote-modes {
+.promote-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   margin-top: var(--space-2);
 }
-.promote-modes[hidden] {
+.promote-tools[hidden] {
   display: none;
+}
+.promote-zoom {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+.promote-zoom [data-promote-zoom-label] {
+  display: inline-block;
+  min-width: 5ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Labels on the slider, each on its own side, so it is clear which image is which. */
+.promote-tag {
+  position: absolute;
+  top: var(--space-2);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgb(17 17 17 / 0.72);
+  color: #fff;
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+.promote-tag-left {
+  left: var(--space-2);
+}
+.promote-tag-right {
+  right: var(--space-2);
 }
 /* Side by side shows the separate images; the slider shows only its own pane, full width. */
 .promote-large[data-mode="side"] .promote-slider-pane,
@@ -417,6 +450,9 @@
   cursor: ew-resize;
   user-select: none;
 }
+.promote-slider.zoomed {
+  cursor: grab;
+}
 .promote-top-layer {
   position: absolute;
   inset: 0;
@@ -432,6 +468,25 @@
   margin-left: -1px;
   background: var(--focus);
   pointer-events: none;
+}
+/* A knob in the middle of the divider, like the review slider. */
+.promote-divider::after {
+  content: "‹ ›";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--focus);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
 }
 @media (max-width: 760px) {
   .promote-row {

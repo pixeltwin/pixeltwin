@@ -204,11 +204,16 @@ describe('UI projects', () => {
       // Compare zooms all three images together (the promote island).
       expect(page).toContain('data-islands="promote"');
       expect(page).toContain('<div class="promote-viewport">');
-      expect(page).toContain('Scroll to zoom, drag to move, double-click to fit.');
-      // A slider lays the branch over main (JavaScript switches to it; side by side is the default).
+      expect(page).toContain('Click or scroll to zoom, drag to move. In Slider, move the pointer across.');
+      // Tools (JavaScript only): Side by side or Slider, and zoom out, fit, in.
+      expect(page).toContain('<div class="promote-tools" hidden="">');
       expect(page).toContain('data-promote-mode="slider"');
+      for (const z of ['out', 'fit', 'in']) expect(page).toContain(`data-promote-zoom="${z}"`);
+      // The slider lays the branch over main, each side labelled on the image.
       expect(page).toContain('<div class="promote-viewport promote-slider">');
       expect(page).toContain('<div class="promote-divider" aria-hidden="true"></div>');
+      expect(page).toContain('<span class="promote-tag promote-tag-left">main now</span>');
+      expect(page).toContain('<span class="promote-tag promote-tag-right">feature/new</span>');
       expect(page).toContain('new on main');
 
       const png = await t.request('GET', diffUrl.replace('&amp;', '&'), { as: admin });

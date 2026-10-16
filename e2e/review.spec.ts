@@ -74,8 +74,13 @@ test('toasts appear top right, all the same size, in the colour of what happened
   await page.keyboard.press('r');
   const rejected = page.locator('.toast.tone-danger');
   await expect(rejected).toHaveCount(1);
-  const other = await rejected.boundingBox();
-  expect(other && [other.width, other.height]).toEqual([toast.width, toast.height]);
+  // Measured once its entry animation has settled.
+  await expect
+    .poll(async () => {
+      const other = await rejected.boundingBox();
+      return other && [Math.round(other.width), Math.round(other.height)];
+    })
+    .toEqual([Math.round(toast.width), Math.round(toast.height)]);
 });
 
 test('a reviewer draws an ignore area over the change; the check is compared again at once', async ({

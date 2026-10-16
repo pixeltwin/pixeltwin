@@ -540,18 +540,32 @@ function PromotePage(props: {
                   </span>
                   <details class="promote-compare">
                     <summary>Compare</summary>
-                    {c.mainImageSha && (
-                      <fieldset class="segmented promote-modes" hidden>
-                        <legend class="visually-hidden">Compare mode</legend>
-                        <button type="button" data-promote-mode="side" aria-pressed="true">
-                          Side by side
+                    {/* JavaScript shows the tools; without it Compare is side by side at fit. */}
+                    <div class="promote-tools" hidden>
+                      {c.mainImageSha && (
+                        <fieldset class="segmented promote-modes">
+                          <legend class="visually-hidden">Compare mode</legend>
+                          <button type="button" data-promote-mode="side" aria-pressed="true">
+                            Side by side
+                          </button>
+                          <button type="button" data-promote-mode="slider" aria-pressed="false">
+                            Slider
+                          </button>
+                        </fieldset>
+                      )}
+                      <span class="promote-zoom">
+                        <button type="button" class="small" data-promote-zoom="out" aria-label="Zoom out">
+                          −
                         </button>
-                        <button type="button" data-promote-mode="slider" aria-pressed="false">
-                          Slider
+                        <button type="button" class="small" data-promote-zoom="fit" aria-label="Fit">
+                          <span data-promote-zoom-label>Fit</span>
                         </button>
-                      </fieldset>
-                    )}
-                    <p class="hint">Scroll to zoom, drag to move, double-click to fit.</p>
+                        <button type="button" class="small" data-promote-zoom="in" aria-label="Zoom in">
+                          +
+                        </button>
+                      </span>
+                    </div>
+                    <p class="hint">Click or scroll to zoom, drag to move. In Slider, move the pointer across.</p>
                     <div class={showDiff ? 'promote-large three' : 'promote-large'} data-mode="side">
                       <figure>
                         <figcaption>{`${main} now`}</figcaption>
@@ -577,16 +591,14 @@ function PromotePage(props: {
                       )}
                       {c.mainImageSha && (
                         <figure class="promote-slider-pane">
-                          <figcaption>
-                            <span>{`${main} now`}</span>
-                            <span>{branch}</span>
-                          </figcaption>
                           <div class="promote-viewport promote-slider">
                             {image(imageUrl(c.mainImageSha), `${main} now`, 'promote-full')}
                             <div class="promote-top-layer">
                               {image(imageUrl(c.branchImageSha), branch, 'promote-full')}
                             </div>
                             <div class="promote-divider" aria-hidden="true" />
+                            <span class="promote-tag promote-tag-left">{`${main} now`}</span>
+                            <span class="promote-tag promote-tag-right">{branch}</span>
                           </div>
                         </figure>
                       )}
