@@ -1,0 +1,34 @@
+{
+  "name": "@pixeltwin/client",
+  "version": "0.1.0",
+  "description": "Framework-free client for pixeltwin, the self-hosted visual regression service",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./run": {
+      "types": "./dist/run.d.ts",
+      "default": "./dist/run.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "pixeltwin": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "pixeltwin",
+    "visual regression",
+    "screenshot testing"
+  ]
+}

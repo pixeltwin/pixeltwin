@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.build.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "paths": {
+      "@pixeltwin/client": ["../client/dist/index.d.ts"],
+      "@pixeltwin/client/run": ["../client/dist/run.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

@@ -14,7 +14,14 @@
     "noImplicitOverride": true,
     "types": ["bun"],
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
+    "jsxImportSource": "hono/jsx",
+    "paths": {
+      "@pixeltwin/client": ["./packages/client/src/index.ts"],
+      "@pixeltwin/client/run": ["./packages/client/src/run.ts"],
+      "@pixeltwin/playwright": ["./packages/playwright/src/index.ts"],
+      "@pixeltwin/playwright/config": ["./packages/playwright/src/config.ts"],
+      "@pixeltwin/wdio": ["./packages/wdio/src/index.ts"]
+    }
   },
-  "include": ["src", "test", "scripts", "e2e"]
+  "include": ["src", "test", "scripts", "e2e", "packages/*/src", "packages/*/test"]
 }

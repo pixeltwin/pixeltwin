@@ -88,6 +88,38 @@ nothing references any more are deleted by an hourly job.
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |
 
+## Post screenshots from your tests: the JavaScript SDK
+
+No `fetch` plumbing: [`@pixeltwin/playwright`](packages/playwright/README.md) for Playwright Test,
+[`@pixeltwin/wdio`](packages/wdio/README.md) for WebdriverIO, and the framework-free
+[`@pixeltwin/client`](packages/client/README.md) under both. One pixeltwin build per test run
+(and per CI run across shards), a summary with review links at the end, and with
+`PIXELTWIN_GATE=1` the run fails unless the verdict is `passed`.
+
+```ts
+// playwright.config.ts
+export default defineConfig({ globalSetup: '@pixeltwin/playwright/setup' /* , …your projects */ });
+
+// tests/home.spec.ts
+import { test } from '@pixeltwin/playwright';
+
+test('home', async ({ page, pixeltwin }) => {
+  await page.goto('/');
+  await pixeltwin.check(page, 'home', { ignore: [page.locator('.clock')] }); // variant: browser + viewport
+});
+```
+
+```ts
+// wdio.conf.ts: services: [[PixeltwinService, { project: 'web' }]]
+await browser.pixeltwinCheck('home', { ignore: [$('.clock')] });
+```
+
+```sh
+PIXELTWIN_URL=http://localhost:8080 PIXELTWIN_TOKEN=pt_… PIXELTWIN_PROJECT=web PIXELTWIN_GATE=1 npx playwright test
+```
+
+The packages are not on npm yet; `bun scripts/build-sdk.ts pack <dir>` builds installable tarballs.
+
 ## Development
 
 ```sh
@@ -97,7 +129,12 @@ bun run lint         # `bun run format` fixes formatting
 bun run openapi      # regenerate openapi.json after changing the API (a test checks it)
 bun scripts/build.ts            # binary for this machine in dist/ (`all` for every target)
 bun scripts/smoke.ts dist/pixeltwin-*-darwin-arm64   # end-to-end check of a binary
+bun scripts/build-sdk.ts        # SDK packages to packages/*/dist (`pack <dir>` for tarballs)
 ```
+
+The SDK tests (`test/sdk/`, part of `bun test`) start their own server from source on a free port
+in 19000–19099 with an empty data dir; `test/sdk/playwright.test.ts` runs a real Playwright suite
+(`packages/playwright/test/suite/`) through the SDK, so it needs Chromium (see below).
 
 Browser tests (Playwright, Chromium) start their own server from source on port 18777
 (`E2E_PORT` to change it); the review flow, dialogs, theme, palette, phone layout and the
