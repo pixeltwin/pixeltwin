@@ -1,0 +1,13 @@
+apiVersion: v2
+name: pixeltwin
+description: Self-hosted visual regression testing with an API built for CI and AI agents.
+type: application
+# The chart's own version. Bump it on any change to the chart.
+version: 0.1.0
+# The pixeltwin version the chart deploys by default (image tag). Kept equal to src/version.ts (a test checks).
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"
+keywords:
+  - visual-regression
+  - screenshots
+  - testing

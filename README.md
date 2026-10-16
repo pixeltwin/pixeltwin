@@ -72,6 +72,27 @@ on `PORT` answers; the Docker image uses it).
 Builds older than a project's retention period (5 days by default, set per project; baselines are always kept) and images
 nothing references any more are deleted by an hourly job.
 
+### Kubernetes
+
+A Helm chart is in [`deploy/helm/pixeltwin`](deploy/helm/pixeltwin/README.md). It has two modes:
+
+- `storage: local` (default): one replica, with SQLite and the images on a ReadWriteOnce PVC.
+- `storage: postgres`: images and data live in Postgres, so you can run as many replicas as you
+  like with rolling updates, and one `pg_dump` is the whole backup.
+
+```sh
+helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --create-namespace \
+  --set image.repository=ghcr.io/<owner>/pixeltwin --set publicUrl=https://vrt.example.com \
+  --set storage=postgres --set replicaCount=3 \
+  --set database.url='postgres://pixeltwin:…@db:5432/pixeltwin'
+kubectl -n pixeltwin get secret pixeltwin -o jsonpath='{.data.SETUP_TOKEN}' | base64 -d   # first-run token
+```
+
+`publicUrl` is required. It is used for links, the `Secure` cookie flag and the CSRF origin
+check. Behind ingress-nginx, the chart raises the body size limit to 20m for uploads.
+[`deploy/examples/postgres.yaml`](deploy/examples/postgres.yaml) is a minimal Postgres for trying
+it out.
+
 ### Configuration
 
 | Variable | Default |
