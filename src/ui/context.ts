@@ -9,7 +9,7 @@ export type UiUser = Extract<Principal, { kind: 'user' }>;
 /** Per-request view of what pages need: the logged-in user and URL building under PUBLIC_URL's path. */
 export interface Ui {
   user: UiUser | null;
-  /** `/ui/p/web` → `/vrt/ui/p/web` when PUBLIC_URL is `https://host/vrt`. */
+  /** `/ui/p/web` → `/pixeltwin/ui/p/web` when PUBLIC_URL is `https://host/pixeltwin`. */
   url(path: string): string;
   /** The theme from the `pt_theme` cookie, rendered as `<html data-theme>`. */
   theme: Theme;

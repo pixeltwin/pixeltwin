@@ -33,7 +33,7 @@ export type LogLevel = (typeof LOG_LEVELS)[number];
 
 export interface Config {
   port: number;
-  /** Origin plus optional path prefix, without a trailing slash, e.g. `https://vrt.example.com`. */
+  /** Origin plus optional path prefix, without a trailing slash, e.g. `https://pixeltwin.example.com`. */
   publicUrl: string;
   logLevel: LogLevel;
   dataDir: string;

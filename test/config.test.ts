@@ -80,8 +80,12 @@ describe('loadConfig', () => {
 
   test('derives PUBLIC_URL from PORT and strips a trailing slash', () => {
     expect(loadConfig({ PORT: '9000' }).publicUrl).toBe('http://localhost:9000');
-    expect(loadConfig({ PUBLIC_URL: 'https://vrt.example.com/' }).publicUrl).toBe('https://vrt.example.com');
-    expect(loadConfig({ PUBLIC_URL: 'https://example.com/vrt/' }).publicUrl).toBe('https://example.com/vrt');
+    expect(loadConfig({ PUBLIC_URL: 'https://pixeltwin.example.com/' }).publicUrl).toBe(
+      'https://pixeltwin.example.com',
+    );
+    expect(loadConfig({ PUBLIC_URL: 'https://example.com/pixeltwin/' }).publicUrl).toBe(
+      'https://example.com/pixeltwin',
+    );
   });
 
   test('rejects a PUBLIC_URL that is not http(s) and an unknown LOG_LEVEL', () => {

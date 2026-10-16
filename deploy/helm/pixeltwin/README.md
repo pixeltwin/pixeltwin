@@ -8,16 +8,16 @@ The chart is not published to a chart repository yet; install it from a checkout
 
 ```sh
 helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --create-namespace \
-  --set publicUrl=https://vrt.example.com \
+  --set publicUrl=https://pixeltwin.example.com \
   --set ingress.enabled=true --set ingress.className=nginx \
-  --set 'ingress.hosts[0].host=vrt.example.com' --set 'ingress.hosts[0].paths[0].path=/'
+  --set 'ingress.hosts[0].host=pixeltwin.example.com' --set 'ingress.hosts[0].paths[0].path=/'
 ```
 
 The install notes show how to create the first admin. In short:
 
 ```sh
 TOKEN=$(kubectl -n pixeltwin get secret pixeltwin -o jsonpath='{.data.SETUP_TOKEN}' | base64 -d)
-open "https://vrt.example.com/ui/setup?token=$TOKEN"
+open "https://pixeltwin.example.com/ui/setup?token=$TOKEN"
 ```
 
 The chart writes a random `SETUP_TOKEN` to its Secret (or uses `setupToken`, at least 16
@@ -28,7 +28,7 @@ no `SETUP_TOKEN` key in it, each pod makes up its own token and logs it
 
 ### `publicUrl` is required
 
-Set it to the address people and CI use, for example `https://vrt.example.com`. A path prefix
+Set it to the address people and CI use, for example `https://pixeltwin.example.com`. A path prefix
 is allowed. The server needs it for three things:
 
 - **Links**: the setup link, the CI snippets in the UI, `/llms.txt`, and the prefix of every UI link
@@ -72,7 +72,7 @@ kubectl -n pixeltwin create secret generic pixeltwin-db \
   --from-literal=SETUP_TOKEN="$(openssl rand -hex 20)"
 helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin \
   --set storage=postgres --set replicaCount=3 --set existingSecret=pixeltwin-db \
-  --set publicUrl=https://vrt.example.com
+  --set publicUrl=https://pixeltwin.example.com
 ```
 
 Images in Postgres grow the database at about the rate the files would grow on disk; each image is

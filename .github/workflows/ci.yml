@@ -110,8 +110,8 @@ jobs:
       - uses: azure/setup-helm@v4
       - name: Lint both storage modes
         run: |
-          helm lint deploy/helm/pixeltwin --strict --set publicUrl=https://vrt.example.com
-          helm lint deploy/helm/pixeltwin --strict --set publicUrl=https://vrt.example.com,storage=postgres \
+          helm lint deploy/helm/pixeltwin --strict --set publicUrl=https://pixeltwin.example.com
+          helm lint deploy/helm/pixeltwin --strict --set publicUrl=https://pixeltwin.example.com,storage=postgres \
             --set database.url=postgres://u:p@db:5432/pixeltwin,replicaCount=3,ingress.enabled=true
       - name: The chart refuses settings that cannot work
         run: |

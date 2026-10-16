@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-/** PUBLIC_URL's path (`""` or `/vrt`), from the layout's `<body data-base>`. */
+/** PUBLIC_URL's path (`""` or `/pixeltwin`), from the layout's `<body data-base>`. */
 export function basePath(): string {
   return document.body.dataset.base ?? '';
 }

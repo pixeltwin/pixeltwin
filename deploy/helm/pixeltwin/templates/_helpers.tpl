@@ -73,7 +73,7 @@ it), else a new random one.
 {{/* Fails the install or upgrade on settings that cannot work. */}}
 {{- define "pixeltwin.validate" -}}
 {{- if not .Values.publicUrl }}
-{{- fail "publicUrl is required: the URL users and CI reach pixeltwin at, e.g. --set publicUrl=https://vrt.example.com. The server uses it for links, the Secure cookie flag and the CSRF origin check." }}
+{{- fail "publicUrl is required: the URL users and CI reach pixeltwin at, e.g. --set publicUrl=https://pixeltwin.example.com. The server uses it for links, the Secure cookie flag and the CSRF origin check." }}
 {{- end }}
 {{- if not (regexMatch "^https?://[^/]+" .Values.publicUrl) }}
 {{- fail (printf "publicUrl must start with http:// or https://, got %q" .Values.publicUrl) }}

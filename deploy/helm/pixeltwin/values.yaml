@@ -13,7 +13,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 # REQUIRED. The URL people and CI use to reach pixeltwin, without a trailing slash, for example
-# https://vrt.example.com (a path prefix is allowed). The server uses it for:
+# https://pixeltwin.example.com (a path prefix is allowed). The server uses it for:
 #   - links: the setup link in the log, the CI snippets in the UI, /llms.txt, and the path prefix
 #     of every UI link and redirect;
 #   - cookies: the session cookie gets the Secure flag when it starts with https://;
@@ -115,14 +115,14 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
     # cert-manager.io/cluster-issuer: letsencrypt
   hosts:
-    - host: vrt.example.com
+    - host: pixeltwin.example.com
       paths:
         - path: /
           pathType: Prefix
   tls: []
   #  - secretName: pixeltwin-tls
   #    hosts:
-  #      - vrt.example.com
+  #      - pixeltwin.example.com
 
 # Probes call GET /healthz, which checks the database and the storage.
 probes:

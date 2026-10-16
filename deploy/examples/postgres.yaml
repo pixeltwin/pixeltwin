@@ -4,7 +4,7 @@
 #   kubectl -n pixeltwin apply -f deploy/examples/postgres.yaml
 #   kubectl -n pixeltwin rollout status statefulset/pixeltwin-postgres
 #   helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --set storage=postgres \
-#     --set replicaCount=3 --set publicUrl=https://vrt.example.com \
+#     --set replicaCount=3 --set publicUrl=https://pixeltwin.example.com \
 #     --set database.url='postgres://pixeltwin:change-me@pixeltwin-postgres:5432/pixeltwin'
 #
 # Not for production: one instance, no replication, no backups, password in plain text. Use a

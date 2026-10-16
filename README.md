@@ -68,7 +68,7 @@ volumes:
 ```
 
 ```sh
-export POSTGRES_PASSWORD='a long random password' PUBLIC_URL=https://vrt.example.com
+export POSTGRES_PASSWORD='a long random password' PUBLIC_URL=https://pixeltwin.example.com
 docker compose -f deploy/docker-compose.postgres.yml up -d
 docker compose -f deploy/docker-compose.postgres.yml logs pixeltwin      # shows the setup link
 docker compose -f deploy/docker-compose.postgres.yml exec -T db \
@@ -133,7 +133,7 @@ A Helm chart is in [`deploy/helm/pixeltwin`](deploy/helm/pixeltwin/README.md). I
 
 ```sh
 helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --create-namespace \
-  --set publicUrl=https://vrt.example.com \
+  --set publicUrl=https://pixeltwin.example.com \
   --set storage=postgres --set replicaCount=3 \
   --set database.url='postgres://pixeltwin:…@db:5432/pixeltwin'
 kubectl -n pixeltwin get secret pixeltwin -o jsonpath='{.data.SETUP_TOKEN}' | base64 -d   # first-run token
