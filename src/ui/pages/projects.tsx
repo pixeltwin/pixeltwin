@@ -77,16 +77,20 @@ function NewProjectForm({
           {...describedBy('project-name', undefined, errors.name)}
         />
       </Field>
-      <Field id="project-slug" label="Slug (optional)" hint={slugHint} error={errors.slug}>
-        <input
-          name="slug"
-          type="text"
-          autocomplete="off"
-          pattern="[a-z0-9][a-z0-9-]{1,62}"
-          value={values.slug ?? ''}
-          {...describedBy('project-slug', slugHint, errors.slug)}
-        />
-      </Field>
+      {/* Only the name is needed; the slug comes from it. A custom one hides here (open when it has a value or an error). */}
+      <details class="advanced" open={Boolean(values.slug || errors.slug)}>
+        <summary>Custom slug</summary>
+        <Field id="project-slug" label="Slug" hint={slugHint} error={errors.slug}>
+          <input
+            name="slug"
+            type="text"
+            autocomplete="off"
+            pattern="[a-z0-9][a-z0-9-]{1,62}"
+            value={values.slug ?? ''}
+            {...describedBy('project-slug', slugHint, errors.slug)}
+          />
+        </Field>
+      </details>
       <div class="dialog-actions">
         {inDialog ? (
           <button type="button" data-dialog-close>

@@ -75,7 +75,12 @@ describe('UI projects', () => {
       const named = await postForm(t, '/ui/projects', { name: 'Docs site', slug: '' }, admin);
       expect(location(named)).toBe('/ui/p/docs-site?done=project-created');
       const form = await html(await t.request('GET', '/ui/projects/new', { as: admin }));
-      expect(form).toContain('<label for="project-slug">Slug (optional)</label>');
+      // Only the name is asked; a custom slug hides under a closed "Custom slug".
+      expect(form).toContain('<details class="advanced"><summary>Custom slug</summary>');
+      expect(form).toContain('<label for="project-slug">Slug</label>');
+      // A bad slug opens it, so the error is seen.
+      const bad = await html(await postForm(t, '/ui/projects', { name: 'Bad', slug: 'Bad Slug' }, admin));
+      expect(bad).toContain('<details class="advanced" open="">');
       expect(form).not.toMatch(/name="slug"[^>]*required/);
       const invalid = await postForm(t, '/ui/projects', { name: 'Bad', slug: 'Bad Slug' }, admin);
       expect(invalid.status).toBe(422);
