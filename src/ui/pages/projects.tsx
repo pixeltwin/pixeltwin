@@ -20,6 +20,7 @@ import {
   ProjectTabs,
   toneOf,
   VERDICT_LABELS,
+  VerdictPill,
 } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { Layout } from '../layout';
@@ -118,13 +119,29 @@ function NewProjectButton({ ui }: { ui: Ui }) {
   );
 }
 
+/**
+ * One status beside a card's name: a running build is a quiet pulsing dot; a finished one shows
+ * its verdict, except "needs review", which the card's "N to review" already says.
+ */
+function CardStatus({ build }: { build: BuildView }) {
+  if (build.state === 'open') {
+    return (
+      <span class="running-indicator">
+        <span class="pulse" aria-hidden="true" />
+        running
+      </span>
+    );
+  }
+  return build.verdict === 'pending' ? null : <VerdictPill verdict={build.verdict} />;
+}
+
 function ProjectCardView({ ui, card }: { ui: Ui; card: ProjectCard }) {
   const { project, latest } = card;
   return (
     <a class="project-card" href={ui.url(`/ui/p/${project.slug}`)}>
       <div class="project-card-head">
         <span class="project-name">{project.name}</span>
-        {latest && <BuildStatus build={latest} />}
+        {latest && <CardStatus build={latest} />}
       </div>
       <span class="mono muted">{project.slug}</span>
       <div class="project-card-foot">

@@ -53,6 +53,21 @@ describe('UI projects', () => {
       expect(page).toContain('No builds yet');
     });
 
+    test('a running project shows one quiet indicator, not a stack of pills', async () => {
+      const { cartBuild } = await seedWeb();
+      // Make the running build the newest on main: its card shows it.
+      const running = await openBuild(t.deps, 'web', { branch: 'main' });
+      await submit(t.deps, running, withSquare, { name: 'home' });
+      const page = await html(await t.request('GET', '/ui', { as: viewer }));
+      const card = page.slice(page.indexOf('href="/ui/p/web"'), page.indexOf('</a>', page.indexOf('href="/ui/p/web"')));
+      expect(card).toContain(
+        '<span class="running-indicator"><span class="pulse" aria-hidden="true"></span>running</span>',
+      );
+      expect(card).not.toContain('needs review');
+      expect(card).toContain('to review</span>');
+      expect(cartBuild).toBeDefined();
+    });
+
     test('the project list watches for new builds and projects', async () => {
       await createProject(t.deps, { slug: 'web', name: 'Web shop' });
       const page = await html(await t.request('GET', '/ui', { as: viewer }));
