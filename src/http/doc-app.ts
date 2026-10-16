@@ -19,7 +19,7 @@ export function buildOpenApiDocument() {
       runDiff: async () => ({ kind: 'error', code: 'diff_failed', message: 'unused' }),
       limits: { maxImageBytes: 10 * 1024 * 1024, maxImagePixels: 40_000_000 },
     },
-    config: { publicUrl: 'http://localhost:8080', maxImageBytes: 10 * 1024 * 1024 },
+    config: { publicUrl: 'http://localhost:8080', maxImageBytes: 10 * 1024 * 1024, diffQueueMax: 0, diffWorkers: 1 },
     logger: silentLogger,
     setup: new SetupState(null),
     loginLimiter: new LoginLimiter(),

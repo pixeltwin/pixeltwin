@@ -11,8 +11,11 @@ describe('loadConfig', () => {
     expect(config.logLevel).toBe('info');
     expect(config.dataDir).toBe(resolve('./data'));
     expect(config.databaseUrl).toBe(`sqlite:${resolve('./data/pixeltwin.db')}`);
-    expect(config.diffWorkers).toBe(Math.max(1, cpus().length));
+    // One core stays free for the main thread, which takes every request.
+    expect(config.diffWorkers).toBe(Math.max(1, cpus().length - 1));
     expect(config.diffTimeoutMs).toBe(30_000);
+    expect(config.diffQueueMax).toBe(config.diffWorkers * 20);
+    expect(config.databasePoolMax).toBe(20);
     expect(config.maxImageBytes).toBe(10 * 1024 * 1024);
     expect(config.maxImagePixels).toBe(40_000_000);
   });
@@ -23,7 +26,11 @@ describe('loadConfig', () => {
       DATABASE_URL: 'postgres://u:p@db:5432/pt',
       DIFF_WORKERS: '3',
       DIFF_TIMEOUT_MS: '5000',
+      DIFF_QUEUE_MAX: '0',
+      DATABASE_POOL_MAX: '40',
     });
+    expect(config.diffQueueMax).toBe(0);
+    expect(config.databasePoolMax).toBe(40);
     expect(config.dataDir).toBe('/srv/pt');
     expect(config.databaseUrl).toBe('postgres://u:p@db:5432/pt');
     expect(config.diffWorkers).toBe(3);

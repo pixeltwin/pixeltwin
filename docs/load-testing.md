@@ -245,3 +245,20 @@ Across all runs, the server logs showed:
    default 10 workers under heavy load.
 7. **Repeat the test** on a quiet Linux host, with the load client on another machine, before
    setting capacity numbers. These results come from a shared laptop.
+
+## Changes after this test (2026-10-16)
+
+Recommendations 1-4 are in:
+
+1. Diffs are cheaper: overlap rows are copied whole, identical pixels (in other PNG bytes) skip
+   pixelmatch, and diff PNGs use one fixed filter (pngjs tried all five per row). A changed
+   1280×800 pair takes 43 ms instead of 133 ms, a re-encoded identical pair 26 ms instead of 85.
+   Diff PNGs are about 5% larger.
+2. The upload route reads the build once (it was read twice), and `DIFF_WORKERS` defaults to
+   cores − 1.
+3. `DATABASE_POOL_MAX` sets the Postgres pool, default 20 (was a fixed 10).
+4. Backpressure: while more than `DIFF_QUEUE_MAX` diffs wait (default `DIFF_WORKERS` × 20),
+   uploads get `503 server_busy` with `Retry-After`, before the body is read.
+
+Not done: caching project and token lookups (a revoked token must stop working at once) and a
+separate read pool for Postgres.

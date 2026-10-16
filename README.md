@@ -80,8 +80,10 @@ nothing references any more are deleted by an hourly job.
 | `PUBLIC_URL` | `http://localhost:$PORT` (used for links, cookies and the CSRF check) |
 | `DATA_DIR` | `./data` |
 | `DATABASE_URL` | unset → SQLite in `DATA_DIR`; `postgres://…` for Postgres |
-| `DIFF_WORKERS` | CPU count |
+| `DATABASE_POOL_MAX` | `20` (Postgres connections) |
+| `DIFF_WORKERS` | CPU count − 1 (one core stays with the main thread) |
 | `DIFF_TIMEOUT_MS` | `30000` |
+| `DIFF_QUEUE_MAX` | `DIFF_WORKERS` × 20: while more diffs wait, uploads get `503 server_busy` with `Retry-After`; `0` never refuses |
 | `MAX_IMAGE_BYTES` | `10485760` |
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |

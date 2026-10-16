@@ -19,7 +19,7 @@ export interface RunningServer {
 
 /** Wires config → database → storage → diff pool → HTTP app and starts listening. */
 export async function startServer(config: Config, logger: Logger): Promise<RunningServer> {
-  const handle = openDatabase(config.databaseUrl);
+  const handle = openDatabase(config.databaseUrl, { poolMax: config.databasePoolMax });
   const applied = await migrateToLatest(handle.db);
   if (applied.length > 0) logger.info('migrations applied', { migrations: applied });
 
@@ -28,6 +28,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     db: handle.db,
     storage: new LocalStorage(config.dataDir),
     runDiff: pool.run,
+    diffBacklog: () => pool.backlog,
     limits: { maxImageBytes: config.maxImageBytes, maxImagePixels: config.maxImagePixels },
   };
   const { state, token } = await SetupState.init(deps);

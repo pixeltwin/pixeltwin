@@ -13,4 +13,6 @@ export interface Deps {
   storage: Storage;
   runDiff: DiffRunner;
   limits: ImageLimits;
+  /** Diff jobs waiting for a worker; the upload route refuses new work while it is too long. */
+  diffBacklog?: () => number;
 }

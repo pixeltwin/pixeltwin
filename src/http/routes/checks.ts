@@ -48,6 +48,27 @@ function decodeBase64(value: string): Uint8Array {
 }
 
 /** Reads `{ meta, image }` from either content type (spec §4.3). */
+/** A diff takes well under 0.1 s on one worker; the hint errs on the long side. */
+const SECONDS_PER_QUEUED_DIFF = 0.1;
+
+/**
+ * Backpressure: while more diffs wait for a worker than `DIFF_QUEUE_MAX`, uploads get
+ * 503 server_busy with a Retry-After hint instead of joining an ever longer queue (and
+ * outliving the client's HTTP timeout).
+ */
+function refuseWhenBusy(s: Services): void {
+  const max = s.config.diffQueueMax;
+  const backlog = s.deps.diffBacklog?.() ?? 0;
+  if (max === 0 || backlog < max) return;
+  const err = new AppError(
+    'server_busy',
+    503,
+    `${backlog} screenshots are waiting to be compared; retry this upload after the Retry-After delay.`,
+  );
+  err.retryAfter = Math.min(30, Math.max(1, Math.ceil((backlog * SECONDS_PER_QUEUED_DIFF) / s.config.diffWorkers)));
+  throw err;
+}
+
 async function readUpload(c: Context<AppEnv>): Promise<{ meta: unknown; image: Uint8Array }> {
   const type = c.req.header('content-type') ?? '';
   if (type.startsWith('multipart/form-data')) {
@@ -106,7 +127,7 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     responses: {
       200: json(CheckSchema, 'The check replaced an earlier one for the same snapshot'),
       201: json(CheckSchema, 'The new check'),
-      ...problems(400, 401, 403, 404, 409, 413, 415, 422),
+      ...problems(400, 401, 403, 404, 409, 413, 415, 422, 503),
     },
   });
   // Documented with both content types, but served by a plain handler: zod-openapi would validate
@@ -114,9 +135,12 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   const { middleware: _middleware, ...submitDoc } = submit;
   app.openAPIRegistry.registerPath(submitDoc);
   app.post(`${API}/builds/:id/checks`, requirePermission('check.write'), async (c) => {
+    // Refuse before reading the body: under overload, every parsed upload costs the main thread.
+    refuseWhenBusy(s);
     const id = c.req.param('id');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
-    const { check, created } = await submitCheck(s.deps, id, await readUpload(c));
+    const build = await getBuildRow(s.deps, id);
+    allowProject(c, build.projectId);
+    const { check, created } = await submitCheck(s.deps, id, await readUpload(c), build);
     return created ? c.json(withLinks(check), 201) : c.json(withLinks(check), 200);
   });
 

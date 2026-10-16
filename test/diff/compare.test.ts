@@ -105,6 +105,38 @@ describe('compareImages', () => {
     expect(result.diff.percent).toBe(4);
   });
 
+  test('the diff image: grey where equal, red where changed or outside the overlap, white where ignored', () => {
+    // The new screenshot is 20 px wider; the right edge is new and half of it is ignored.
+    const wider = makePng(120, 100, WHITE, [{ x: 10, y: 10, width: 10, height: 10, color: BLACK }]);
+    const result = compared(
+      compareImages(job(wider, white, { ignoreRegions: [{ x: 100, y: 0, width: 20, height: 50 }] })),
+    );
+    const diff = decodePng(result.diffPng as Uint8Array);
+    expect(diff.width).toBe(120);
+    expect(pixelAt(diff, 15, 15)).toEqual([255, 0, 0, 255]);
+    expect(pixelAt(diff, 110, 25)).toEqual([255, 255, 255, 255]);
+    expect(pixelAt(diff, 110, 75)).toEqual([255, 0, 0, 255]);
+    const grey = pixelAt(diff, 50, 50);
+    expect(grey[0]).toBe(grey[1]);
+    expect(grey[0]).toBeGreaterThan(200);
+    expect(result.diff.pixels).toBe(100 + 20 * 50);
+  });
+
+  test('the same pixels in different PNG bytes are unchanged, with no diff image', () => {
+    const square = [{ x: 10, y: 10, width: 10, height: 10, color: BLACK }];
+    const reencoded = makePng(100, 100, WHITE, square, { deflateLevel: 0 });
+    expect(reencoded).not.toEqual(withSquare);
+    const result = compared(compareImages(job(reencoded, withSquare)));
+    expect(result).toMatchObject({ result: 'unchanged', diffPng: null, diff: { pixels: 0, regions: [] } });
+  });
+
+  test('a diff image stays small: a flat diff compresses well', () => {
+    const big = makePng(1280, 800);
+    const changed = makePng(1280, 800, WHITE, [{ x: 100, y: 100, width: 300, height: 40, color: BLACK }]);
+    const result = compared(compareImages(job(changed, big)));
+    expect((result.diffPng as Uint8Array).byteLength).toBeLessThan(60_000);
+  });
+
   test('accepts changes within tolerance but still reports them', () => {
     const result = compared(compareImages(job(withSquare, white, { tolerancePercent: 1.5 })));
     expect(result.result).toBe('unchanged');

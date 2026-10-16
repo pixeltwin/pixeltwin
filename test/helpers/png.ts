@@ -19,6 +19,8 @@ export function makePng(
   height: number,
   fill: Rgba = WHITE,
   rects: FilledRect[] = [],
+  /** Encoder options, e.g. another `deflateLevel` for the same pixels in different bytes. */
+  options: { deflateLevel?: number } = {},
 ): Uint8Array<ArrayBuffer> {
   const png = new PNG({ width, height });
   for (let i = 0; i < width * height; i++) png.data.set(fill, i * 4);
@@ -27,7 +29,7 @@ export function makePng(
       for (let x = r.x; x < r.x + r.width; x++) png.data.set(r.color, (y * width + x) * 4);
     }
   }
-  return new Uint8Array(PNG.sync.write(png));
+  return new Uint8Array(PNG.sync.write(png, options));
 }
 
 export function decodePng(bytes: Uint8Array): PNG {

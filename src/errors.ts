@@ -14,6 +14,8 @@ export class AppError extends Error {
   readonly status: number;
   readonly detail: string;
   readonly errors: FieldError[] | undefined;
+  /** Seconds for a `Retry-After` header (503 and 429 answers). */
+  retryAfter: number | undefined;
 
   constructor(code: string, status: number, detail: string, errors?: FieldError[]) {
     super(detail);

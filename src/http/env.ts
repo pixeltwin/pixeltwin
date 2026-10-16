@@ -11,7 +11,7 @@ export const SESSION_COOKIE = 'pt_session';
 /** Everything route handlers need besides the request. */
 export interface Services {
   deps: Deps;
-  config: Pick<Config, 'publicUrl' | 'maxImageBytes'>;
+  config: Pick<Config, 'publicUrl' | 'maxImageBytes' | 'diffQueueMax' | 'diffWorkers'>;
   logger: Logger;
   setup: SetupState;
   loginLimiter: LoginLimiter;

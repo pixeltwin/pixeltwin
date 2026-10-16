@@ -91,7 +91,11 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
       }
       return renderUiError(c, services, err, requestId);
     }
-    if (err instanceof AppError) return problemResponse(err.status, err.code, err.detail, requestId, err.errors);
+    if (err instanceof AppError) {
+      const res = problemResponse(err.status, err.code, err.detail, requestId, err.errors);
+      if (err.retryAfter !== undefined) res.headers.set('retry-after', String(err.retryAfter));
+      return res;
+    }
     if (err instanceof HTTPException && err.status < 500) {
       const code = HTTP_CODES[err.status] ?? `http_${err.status}`;
       return problemResponse(err.status, code, err.message || titleFor(code), requestId);

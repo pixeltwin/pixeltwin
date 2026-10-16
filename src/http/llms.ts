@@ -37,6 +37,9 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 
    curl ${api}/checks/<checkId> -H "Authorization: Bearer $PIXELTWIN_TOKEN"
 
+   A busy server answers 503 server_busy with Retry-After: wait that many seconds and post
+   the same screenshot again. Keep 4-8 uploads in flight per run rather than all at once.
+
 4. Finalize the build when every screenshot is posted.
 
    curl -X POST ${api}/builds/<buildId>/finalize -H "Authorization: Bearer $PIXELTWIN_TOKEN"

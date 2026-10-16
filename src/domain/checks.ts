@@ -256,8 +256,10 @@ export async function submitCheck(
   deps: Deps,
   buildId: string,
   input: SubmitCheckInput,
+  /** The build row when the caller already read it (saves a query per upload). */
+  known?: Build,
 ): Promise<{ check: CheckView; created: boolean }> {
-  const build = await getBuildRow(deps, buildId);
+  const build = known?.id === buildId ? known : await getBuildRow(deps, buildId);
   if (build.state === 'finalized') throw buildFinalized(build);
   const meta = parseInput(checkMetaSchema, input.meta);
   const header = readPngHeader(input.image, deps.limits);

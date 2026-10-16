@@ -8,10 +8,21 @@ function decode(bytes: Uint8Array): PNG {
   return PNG.sync.read(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 }
 
+/**
+ * pngjs by default tries all five PNG filters on every row and keeps the best (about 47 ms for a
+ * 1280×800 diff). One fixed filter ("sub") takes a few ms, and diff images, mostly flat grey with
+ * some red, come out barely larger.
+ */
+const DIFF_PNG_OPTIONS = { filterType: 1, deflateLevel: 6 };
+
 function encode(width: number, height: number, data: Uint8Array): Uint8Array {
   const png = new PNG({ width, height });
   png.data = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  return new Uint8Array(PNG.sync.write(png));
+  return new Uint8Array(PNG.sync.write(png, DIFF_PNG_OPTIONS));
+}
+
+function samePixels(a: PNG, b: PNG): boolean {
+  return a.width === b.width && a.height === b.height && Buffer.compare(a.data, b.data) === 0;
 }
 
 function message(err: unknown): string {
@@ -94,43 +105,58 @@ export function compareImages(job: DiffJob): DiffJobResult {
   const sizeChanged = current.width !== baseline.width || current.height !== baseline.height;
 
   const ignore = ignoreMaskFor(job.ignoreRegions, job.compareRegions ?? [], width, height);
+  // The same pixels in different PNG bytes (another encoder, metadata): nothing to compare.
+  const identical = samePixels(current, baseline);
   const overlapIgnore = ignore && sizeChanged ? cropMask(ignore, width, overlapWidth, overlapHeight) : ignore;
   const overlapDiff = new Uint8Array(overlapWidth * overlapHeight * 4);
-  pixelmatch(
-    cropRgba(baseline, overlapWidth, overlapHeight),
-    cropRgba(current, overlapWidth, overlapHeight),
-    overlapDiff,
-    overlapWidth,
-    overlapHeight,
-    {
-      threshold: job.colorThreshold,
-      includeAA: false,
-      diffColor: [255, 0, 0],
-      ...(overlapIgnore ? { ignoreMask: overlapIgnore } : {}),
-    },
-  );
+  if (!identical)
+    pixelmatch(
+      cropRgba(baseline, overlapWidth, overlapHeight),
+      cropRgba(current, overlapWidth, overlapHeight),
+      overlapDiff,
+      overlapWidth,
+      overlapHeight,
+      {
+        threshold: job.colorThreshold,
+        includeAA: false,
+        diffColor: [255, 0, 0],
+        ...(overlapIgnore ? { ignoreMask: overlapIgnore } : {}),
+      },
+    );
 
   // pixelmatch draws unchanged pixels in grey and changed ones in pure red; outside the
-  // overlap every pixel that is not ignored counts as changed.
+  // overlap every pixel that is not ignored counts as changed. Rows of the overlap are copied
+  // whole (a per-pixel copy cost about 47 ms at 1280×800); only the mask is built per pixel.
   const mask = new Uint8Array(width * height);
-  const diffImage = new Uint8Array(width * height * 4);
+  const diffImage = sizeChanged ? new Uint8Array(width * height * 4) : overlapDiff;
   let pixels = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x;
-      if (x < overlapWidth && y < overlapHeight) {
-        const o = (y * overlapWidth + x) * 4;
-        diffImage.set(overlapDiff.subarray(o, o + 4), i * 4);
-        if (overlapDiff[o] === 255 && overlapDiff[o + 1] === 0 && overlapDiff[o + 2] === 0) {
+  if (!identical) {
+    for (let y = 0; y < height; y++) {
+      if (sizeChanged && y < overlapHeight) {
+        diffImage.set(overlapDiff.subarray(y * overlapWidth * 4, (y + 1) * overlapWidth * 4), y * width * 4);
+      }
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        const d = i * 4;
+        if (x < overlapWidth && y < overlapHeight) {
+          const o = (y * overlapWidth + x) * 4;
+          if (overlapDiff[o] === 255 && overlapDiff[o + 1] === 0 && overlapDiff[o + 2] === 0) {
+            mask[i] = 1;
+            pixels += 1;
+          }
+        } else if (ignore?.[i]) {
+          diffImage[d] = 255;
+          diffImage[d + 1] = 255;
+          diffImage[d + 2] = 255;
+          diffImage[d + 3] = 255;
+        } else {
+          diffImage[d] = 255;
+          diffImage[d + 1] = 0;
+          diffImage[d + 2] = 0;
+          diffImage[d + 3] = 255;
           mask[i] = 1;
           pixels += 1;
         }
-      } else if (ignore?.[i]) {
-        diffImage.set([255, 255, 255, 255], i * 4);
-      } else {
-        diffImage.set([255, 0, 0, 255], i * 4);
-        mask[i] = 1;
-        pixels += 1;
       }
     }
   }

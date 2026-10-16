@@ -42,6 +42,17 @@ describe('DiffPool', () => {
     expect(first.diffPng).toBeInstanceOf(Uint8Array);
   });
 
+  test('reports how many jobs wait for a worker', async () => {
+    pool = new DiffPool({ size: 1, timeoutMs: 10_000 });
+    expect(pool.backlog).toBe(0);
+    const png = makePng(50, 50);
+    const jobs = [pool.run(job(png, png)), pool.run(job(png, png)), pool.run(job(png, png))];
+    // One job runs, two wait.
+    expect(pool.backlog).toBe(2);
+    await Promise.all(jobs);
+    expect(pool.backlog).toBe(0);
+  });
+
   test('times out a hung job and keeps serving', async () => {
     pool = new DiffPool({ size: 1, timeoutMs: 300, workerSpecifier: misbehaving });
     expect(await pool.run(job(new Uint8Array(), null, 0.5))).toEqual({

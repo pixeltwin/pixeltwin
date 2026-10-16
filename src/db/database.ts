@@ -21,11 +21,11 @@ export interface DatabaseHandle {
 pg.types.setTypeParser(pg.types.builtins.INT8, (value) => Number(value));
 
 /** Opens `postgres://…`, `postgresql://…` or `sqlite:<path>` (`sqlite::memory:` for tests). */
-export function openDatabase(url: string): DatabaseHandle {
+export function openDatabase(url: string, options: { poolMax?: number } = {}): DatabaseHandle {
   const plugins = [new CamelCasePlugin()];
 
   if (/^postgres(ql)?:\/\//.test(url)) {
-    const pool = new pg.Pool({ connectionString: url, max: 10 });
+    const pool = new pg.Pool({ connectionString: url, max: options.poolMax ?? 20 });
     const db = new Kysely<DB>({ dialect: new PostgresDialect({ pool }), plugins });
     return { db, kind: 'postgres', close: () => db.destroy() };
   }

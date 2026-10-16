@@ -51,6 +51,11 @@ export class DiffPool {
     }
   }
 
+  /** Jobs waiting for a free worker (not counting those running). */
+  get backlog(): number {
+    return this.#queue.length;
+  }
+
   run = (job: DiffJob): Promise<DiffJobResult> =>
     new Promise((resolve) => {
       if (this.#closed) {

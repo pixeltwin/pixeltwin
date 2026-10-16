@@ -37,13 +37,18 @@ export interface TestApp {
 }
 
 export async function createTestApp(
-  options: { setupToken?: string | null; maxImageBytes?: number; logger?: Logger } = {},
+  options: { setupToken?: string | null; maxImageBytes?: number; diffQueueMax?: number; logger?: Logger } = {},
 ): Promise<TestApp> {
   const deps = await createTestDeps();
   const setup = new SetupState(options.setupToken ?? null);
   const app = createApp({
     deps,
-    config: { publicUrl: PUBLIC_URL, maxImageBytes: options.maxImageBytes ?? deps.limits.maxImageBytes },
+    config: {
+      publicUrl: PUBLIC_URL,
+      maxImageBytes: options.maxImageBytes ?? deps.limits.maxImageBytes,
+      diffQueueMax: options.diffQueueMax ?? 0,
+      diffWorkers: 1,
+    },
     logger: options.logger ?? silentLogger,
     setup,
     loginLimiter: new LoginLimiter(),

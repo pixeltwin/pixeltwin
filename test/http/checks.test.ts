@@ -124,6 +124,50 @@ describe('build and check routes', () => {
     expect(await problemOf(await postJson(build, white))).toMatchObject({ status: 409, code: 'build_finalized' });
   });
 
+  test('a server with too many diffs waiting answers 503 with Retry-After, and takes uploads again later', async () => {
+    const busy = await createTestApp({ diffQueueMax: 40 });
+    try {
+      await createProject(busy.deps, { slug: 'web', name: 'Web' });
+      const token = await busy.tokenAs('web', ['write']);
+      const res = await busy.request('POST', '/api/v1/projects/web/builds', { as: token, json: {} });
+      const { id } = (await res.json()) as { id: string };
+      const post = () =>
+        busy.request('POST', `/api/v1/builds/${id}/checks`, {
+          as: token,
+          json: { name: 'home', imageBase64: b64(white) },
+        });
+
+      let backlog = 40;
+      busy.deps.diffBacklog = () => backlog;
+      const refused = await post();
+      expect(await problemOf(refused)).toMatchObject({ status: 503, code: 'server_busy' });
+      expect(Number(refused.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
+
+      backlog = 39;
+      expect((await post()).status).toBe(201);
+    } finally {
+      await busy.close();
+    }
+  });
+
+  test('DIFF_QUEUE_MAX=0 never refuses uploads', async () => {
+    const open = await createTestApp({ diffQueueMax: 0 });
+    try {
+      await createProject(open.deps, { slug: 'web', name: 'Web' });
+      const token = await open.tokenAs('web', ['write']);
+      const res = await open.request('POST', '/api/v1/projects/web/builds', { as: token, json: {} });
+      const { id } = (await res.json()) as { id: string };
+      open.deps.diffBacklog = () => 10_000;
+      const posted = await open.request('POST', `/api/v1/builds/${id}/checks`, {
+        as: token,
+        json: { name: 'home', imageBase64: b64(white) },
+      });
+      expect(posted.status).toBe(201);
+    } finally {
+      await open.close();
+    }
+  });
+
   test('an oversized upload is refused before it is parsed', async () => {
     const small = await createTestApp({ maxImageBytes: 2048 });
     try {

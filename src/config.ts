@@ -15,6 +15,8 @@ const envSchema = z.object({
     .optional(),
   DIFF_WORKERS: z.coerce.number().int().min(1).max(64).optional(),
   DIFF_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
+  DIFF_QUEUE_MAX: z.coerce.number().int().min(0).optional(),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(500).default(20),
   MAX_IMAGE_BYTES: z.coerce
     .number()
     .int()
@@ -35,6 +37,10 @@ export interface Config {
   databaseUrl: string;
   diffWorkers: number;
   diffTimeoutMs: number;
+  /** Uploads get 503 + Retry-After while this many diffs wait for a worker; 0 never refuses. */
+  diffQueueMax: number;
+  /** Connections in the Postgres pool (ignored for SQLite). */
+  databasePoolMax: number;
   maxImageBytes: number;
   maxImagePixels: number;
 }
@@ -58,14 +64,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   const e = parsed.data;
   const dataDir = resolve(e.DATA_DIR);
+  // One core stays free for the main thread, which parses every request and runs every query.
+  const diffWorkers = e.DIFF_WORKERS ?? Math.max(1, cpus().length - 1);
   return {
     port: e.PORT,
     publicUrl: (e.PUBLIC_URL ?? `http://localhost:${e.PORT}`).replace(/\/+$/, ''),
     logLevel: e.LOG_LEVEL,
     dataDir,
     databaseUrl: e.DATABASE_URL ?? `sqlite:${join(dataDir, 'pixeltwin.db')}`,
-    diffWorkers: e.DIFF_WORKERS ?? Math.max(1, cpus().length),
+    diffWorkers,
     diffTimeoutMs: e.DIFF_TIMEOUT_MS,
+    diffQueueMax: e.DIFF_QUEUE_MAX ?? diffWorkers * 20,
+    databasePoolMax: e.DATABASE_POOL_MAX,
     maxImageBytes: e.MAX_IMAGE_BYTES,
     maxImagePixels: e.MAX_IMAGE_PIXELS,
   };
