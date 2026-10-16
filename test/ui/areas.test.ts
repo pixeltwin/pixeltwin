@@ -83,6 +83,10 @@ describe('UI areas', () => {
     expect(body).toContain('<svg class="icon icon-delete"');
     expect(body).not.toMatch(/>\s*(Edit|Delete)\s*<\/button>/);
     expect(body).toContain('<div class="area-edit-bar" hidden');
+    // Instead of a sentence, a ring that counts down to the autosave (shown once the area changed).
+    expect(body).toContain('data-autosave="true" hidden=""');
+    expect(body).toContain('<span class="autosave-left" data-autosave-left="true">5s</span>');
+    expect(body).not.toContain('Editing area');
     expect(body).toContain('data-area-save');
     expect(body).toContain('data-area-cancel');
     const forViewer = await page(`/ui/checks/${check.id}`, viewer);

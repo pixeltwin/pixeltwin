@@ -158,7 +158,10 @@ test('Ignore next to a change adds an ignore area over it at once', async ({ rev
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
 });
 
-test('an edited area saves itself 10 seconds after the last change', async ({ reviewerPage: page, seeded }) => {
+test('an edited area saves itself 5 seconds after the last change, counting down in a ring', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
   await page.clock.install();
   await open(page, `/ui/checks/${seeded.changed}?filter=all`);
   const added = await seeded.ci.call<{ area: { id: string } }>('POST', `/checks/${seeded.changed}/areas`, {
@@ -173,8 +176,16 @@ test('an edited area saves itself 10 seconds after the last change', async ({ re
   await expect(page.locator('.area-editor')).toBeVisible();
   await page.keyboard.press('Shift+ArrowUp');
   await page.keyboard.press('Shift+ArrowUp');
-  await expect(page.locator('.area-edit-bar')).toContainText('Saves itself in 10 s');
-  await page.clock.runFor(9_000);
+  const countdown = page.locator('[data-autosave]');
+  await expect(countdown).toBeVisible();
+  await expect(countdown).toHaveText('5s');
+  await expect(countdown).toHaveAttribute('aria-label', 'Saves itself in 5 s');
+  await page.clock.runFor(2_000);
+  await expect(countdown).toHaveText('3s');
+  // Another change starts the countdown again.
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(countdown).toHaveText('5s');
+  await page.clock.runFor(4_000);
   await expect(page.locator('.area-editor')).toBeVisible();
   await page.clock.runFor(1_500);
   await expect(page.locator('.toast').last()).toContainText('Area updated');
@@ -183,7 +194,7 @@ test('an edited area saves itself 10 seconds after the last change', async ({ re
     'GET',
     `/checks/${seeded.changed}/areas`,
   );
-  expect(areas.items).toEqual([expect.objectContaining({ id: added.area.id, y: 190 })]);
+  expect(areas.items).toEqual([expect.objectContaining({ id: added.area.id, y: 180 })]);
 });
 
 test('an older build cannot approve a screen a newer build already approved', async ({

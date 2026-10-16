@@ -116,7 +116,16 @@ function DrawTools({ areas }: { areas: Area[] }) {
         {tool('compare', 'Compare', 'c')}
       </fieldset>
       <div class="area-edit-bar" hidden>
-        <span class="muted">Editing area</span>
+        {/* A ring that empties as the autosave nears, with the seconds left in it. */}
+        <span class="autosave" data-autosave hidden>
+          <svg class="autosave-ring" viewBox="0 0 24 24" aria-hidden="true">
+            <circle class="autosave-track" cx="12" cy="12" r="10" />
+            <circle class="autosave-progress" cx="12" cy="12" r="10" />
+          </svg>
+          <span class="autosave-left" data-autosave-left>
+            5s
+          </span>
+        </span>
         <button type="button" class="small primary" data-area-save aria-label="Save area">
           Save <kbd>↵</kbd>
         </button>

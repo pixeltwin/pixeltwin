@@ -20,7 +20,7 @@ const MIN_SIZE = 4;
 const ADDED: Record<Kind, string> = { ignore: 'Ignore area added', compare: 'Compare area added' };
 
 /** An edited area saves itself this long after its last change. */
-const AUTOSAVE_MS = 10_000;
+const AUTOSAVE_MS = 5_000;
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
 type Handle = (typeof HANDLES)[number] | 'move';
@@ -113,9 +113,36 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   let editing: Editing | null = null;
   let saving = false;
   let autosave: ReturnType<typeof setTimeout> | undefined;
-  const editNote = editBar?.querySelector<HTMLElement>('.muted');
-  const note = (text: string) => {
-    if (editNote) editNote.textContent = text;
+  // The autosave countdown: a ring that empties over AUTOSAVE_MS and the whole seconds left.
+  const countdown = editBar?.querySelector<HTMLElement>('[data-autosave]');
+  const secondsLeft = countdown?.querySelector<HTMLElement>('[data-autosave-left]');
+  let tick: ReturnType<typeof setInterval> | undefined;
+  const stopCountdown = () => {
+    clearTimeout(autosave);
+    clearInterval(tick);
+    if (countdown) {
+      countdown.hidden = true;
+      countdown.classList.remove('running');
+    }
+  };
+  const startCountdown = () => {
+    stopCountdown();
+    const ends = Date.now() + AUTOSAVE_MS;
+    const show = () => {
+      const left = Math.max(0, Math.ceil((ends - Date.now()) / 1000));
+      if (secondsLeft) secondsLeft.textContent = `${left}s`;
+      countdown?.setAttribute('aria-label', `Saves itself in ${left} s`);
+    };
+    if (countdown) {
+      countdown.hidden = false;
+      // Restart the ring's animation: drop the class, let the browser notice, add it again.
+      void countdown.offsetWidth;
+      countdown.style.setProperty('--autosave-ms', `${AUTOSAVE_MS}ms`);
+      countdown.classList.add('running');
+    }
+    show();
+    tick = setInterval(show, 250);
+    autosave = setTimeout(() => void saveEdit(), AUTOSAVE_MS);
   };
 
   const paintEdit = () => {
@@ -134,8 +161,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   };
 
   const stopEditing = (restore: boolean) => {
-    clearTimeout(autosave);
-    note('Editing area');
+    stopCountdown();
     if (!editing) return;
     if (restore) editing.rect = editing.original;
     paintEdit();
@@ -217,14 +243,12 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
 
   // Every change restarts the countdown; when it runs out the area saves itself.
   const edited = () => {
-    clearTimeout(autosave);
-    if (!editing || same(editing.rect, editing.original)) return note('Editing area');
-    note(`Saves itself in ${AUTOSAVE_MS / 1000} s`);
-    autosave = setTimeout(() => void saveEdit(), AUTOSAVE_MS);
+    if (!editing || same(editing.rect, editing.original)) return stopCountdown();
+    startCountdown();
   };
 
   const saveEdit = async () => {
-    clearTimeout(autosave);
+    stopCountdown();
     if (!editing || saving) return;
     const { id, rect, original } = editing;
     if (same(rect, original)) return stopEditing(false);
