@@ -43,7 +43,8 @@ export const createProjectSchema = z.strictObject({
   mainBranch: projectSettings.mainBranch.default('main'),
   colorThreshold: projectSettings.colorThreshold.default(0.1),
   tolerancePercent: projectSettings.tolerancePercent.default(0),
-  retentionDays: projectSettings.retentionDays.default(90),
+  // CI often runs several times a day; baselines are kept whatever the retention.
+  retentionDays: projectSettings.retentionDays.default(5),
 });
 
 export const updateProjectSchema = z.strictObject(projectSettings).partial();

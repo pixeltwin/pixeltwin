@@ -69,7 +69,7 @@ The workflow for CI and agents is in `/llms.txt`; the full contract is `/openapi
 Other commands: `migrate`, `admin reset-password <email>`, and `healthcheck` (exit 0 when the server
 on `PORT` answers; the Docker image uses it).
 
-Builds older than a project's retention period (90 days by default, set per project) and images
+Builds older than a project's retention period (5 days by default, set per project; baselines are always kept) and images
 nothing references any more are deleted by an hourly job.
 
 ### Configuration

@@ -23,7 +23,7 @@ describe('projects', () => {
       mainBranch: 'main',
       colorThreshold: 0.1,
       tolerancePercent: 0,
-      retentionDays: 90,
+      retentionDays: 5,
     });
     expect(project.id).toStartWith('prj_');
     expect(await getProjectBySlug(deps, 'web')).toEqual(project);
