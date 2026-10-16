@@ -50,18 +50,28 @@ describe('UI areas', () => {
   test('areas show on every screenshot and are listed with what they do', async () => {
     const check = await changedCheck();
     const { area } = await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', ...overClock });
-    await createArea(t.deps, check.id, reviewer.id, { kind: 'compare', x: 0, y: 0, width: 50, height: 100 });
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', x: 0, y: 60, width: 50, height: 40 });
     const body = await page(`/ui/checks/${check.id}`);
     expect(body).toContain('<rect class="area area-ignore" x="5" y="5" width="20" height="20"');
     expect(body.split('class="area-layer"').length - 1).toBeGreaterThanOrEqual(2);
     expect(body).toContain('<section class="areas" aria-label="Areas"><h3>Areas</h3>');
     expect(body).toContain('<strong>Ignored</strong>');
-    expect(body).toContain('<strong>Compared</strong>');
+    // Ignore areas are on this snapshot, so compare areas cannot be drawn (and the other way round).
+    expect(body).toMatch(/data-draw="compare"[^>]* disabled/);
+    expect(body).toContain('Delete the ignore areas first to use compare areas');
+    expect(body).not.toMatch(/data-draw="ignore"[^>]* disabled/);
     expect(body).toContain(`action="/ui/checks/${check.id}/areas/${area.id}/delete"`);
     // Pointing at an area in the list lights it up on the screenshots.
     expect(body).toContain(`height="20" data-area="${area.id}"`);
     expect(body).toContain(`<li class="area-item area-item-ignore" data-area-item="${area.id}">`);
-    expect(await page(`/ui/checks/${check.id}`, viewer)).not.toContain('/delete"');
+    // Editing needs JavaScript: the island shows Edit and the Save / Cancel bar.
+    expect(body).toContain(`<button type="button" class="small ghost" data-area-edit="${area.id}" hidden`);
+    expect(body).toContain('<div class="area-edit-bar" hidden');
+    expect(body).toContain('data-area-save');
+    expect(body).toContain('data-area-cancel');
+    const forViewer = await page(`/ui/checks/${check.id}`, viewer);
+    expect(forViewer).not.toContain('/delete"');
+    expect(forViewer).not.toContain('data-area-edit');
   });
 
   test('deleting an area works without JavaScript and compares the check again', async () => {

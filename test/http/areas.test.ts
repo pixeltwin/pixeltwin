@@ -52,9 +52,26 @@ describe('area routes', () => {
     const listed = await t.request('GET', `/api/v1/checks/${check.id}/areas`, { as: ci });
     expect(((await listed.json()) as { items: unknown[] }).items).toHaveLength(1);
 
+    const moved = await t.request('PATCH', `/api/v1/checks/${check.id}/areas/${body.area.id}`, {
+      as: reviewer,
+      json: { x: 50, y: 50, width: 20, height: 20 },
+    });
+    expect(moved.status).toBe(200);
+    const after = (await moved.json()) as { area: { id: string; x: number }; check: { result: string } };
+    expect(after.area).toMatchObject({ id: body.area.id, x: 50 });
+    expect(after.check.result).toBe('changed');
+
     const removed = await t.request('DELETE', `/api/v1/checks/${check.id}/areas/${body.area.id}`, { as: reviewer });
     expect(removed.status).toBe(200);
     expect(((await removed.json()) as { result: string }).result).toBe('changed');
+    expect(
+      (
+        await t.request('PATCH', `/api/v1/checks/${check.id}/areas/${body.area.id}`, {
+          as: reviewer,
+          json: { x: 0, y: 0, width: 5, height: 5 },
+        })
+      ).status,
+    ).toBe(404);
   });
 
   test('viewers and write-only tokens cannot draw; bad areas are 422', async () => {
@@ -76,5 +93,10 @@ describe('area routes', () => {
       paths: Record<string, Record<string, Record<string, unknown>>>;
     };
     expect(doc.paths['/api/v1/checks/{id}/areas']?.post?.['x-permission']).toBe('check.review');
+    expect(doc.paths['/api/v1/checks/{id}/areas/{areaId}']?.patch?.['x-permission']).toBe('check.review');
+    const rect = { x: 0, y: 0, width: 10, height: 10 };
+    expect(
+      (await t.request('PATCH', `/api/v1/checks/${check.id}/areas/are_x`, { as: viewer, json: rect })).status,
+    ).toBe(403);
   });
 });

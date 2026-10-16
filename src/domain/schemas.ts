@@ -65,6 +65,9 @@ export const checkMetaSchema = z.strictObject({
 /** An ignore or compare area drawn on a snapshot (Plan 6). */
 export const areaInputSchema = rectSchema.extend({ kind: z.enum(AREA_KINDS) });
 
+/** Moving or resizing an area; its kind stays (delete it and draw the other kind instead). */
+export const areaUpdateSchema = rectSchema;
+
 export const reviewInputSchema = z.strictObject({
   comment: z.string().trim().max(1000).optional(),
 });

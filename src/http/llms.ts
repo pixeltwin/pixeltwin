@@ -46,6 +46,8 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
    A screen part that always changes (a clock, an ad) can be skipped for good: POST
    ${api}/checks/<checkId>/areas {"kind":"ignore","x":…,"y":…,"width":…,"height":…} applies
    to every later check of that snapshot; kind "compare" compares only inside such areas.
+   A snapshot has one kind of area (409 area_kind_conflict otherwise). PATCH
+   ${api}/checks/<checkId>/areas/<areaId> {"x":…,"y":…,"width":…,"height":…} moves one.
 
 ## Values
 

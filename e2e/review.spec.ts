@@ -101,10 +101,70 @@ test('a reviewer draws an ignore area over the change; the check is compared aga
   await expect(page.locator('.area-item')).toHaveCount(1);
   await expect(page.locator('.pane-current .area-ignore')).toHaveCount(1);
 
+  // Click the area to edit it: drag it off the button, Save, and the change is back.
+  const shown = await img.boundingBox();
+  if (!shown) throw new Error('screenshot not on screen');
+  const on = (x: number, y: number) => ({
+    x: shown.x + (x / 480) * shown.width,
+    y: shown.y + (y / 300) * shown.height,
+  });
+  const grip = on(110, 235);
+  await page.mouse.click(grip.x, grip.y);
+  const editor = page.locator('.area-editor');
+  await expect(editor).toBeVisible();
+  await expect(page.locator('.area-edit-bar')).toBeVisible();
+  // Entering edit mode must not move the screenshot under the pointer.
+  expect(await img.boundingBox()).toEqual(shown);
+  const away = on(110, 110);
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(away.x, away.y, { steps: 5 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Save area' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Area updated');
+  await expect(page.locator('.review-head')).toContainText('changed');
+  await expect(page.locator('.area-editor')).toHaveCount(0);
+  await expect(page.locator('.area-item')).toHaveCount(1);
+
+  // Esc leaves editing without saving.
+  await page.locator('.area-item').getByRole('button', { name: 'Edit this area' }).click();
+  await expect(page.locator('.area-editor')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.area-editor')).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
+
   await page.locator('.area-item').getByRole('button', { name: 'Delete this area' }).click();
   await expect(page.locator('.toast').last()).toContainText('Area deleted');
   await expect(page.locator('.area-item')).toHaveCount(0);
   await expect(page.locator('.review-head')).toContainText('changed');
+});
+
+test('an edited area saves itself 10 seconds after the last change', async ({ reviewerPage: page, seeded }) => {
+  await page.clock.install();
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  const added = await seeded.ci.call<{ area: { id: string } }>('POST', `/checks/${seeded.changed}/areas`, {
+    kind: 'ignore',
+    x: 30,
+    y: 210,
+    width: 160,
+    height: 50,
+  });
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await page.locator('.area-item').getByRole('button', { name: 'Edit this area' }).click();
+  await expect(page.locator('.area-editor')).toBeVisible();
+  await page.keyboard.press('Shift+ArrowUp');
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(page.locator('.area-edit-bar')).toContainText('Saves itself in 10 s');
+  await page.clock.runFor(9_000);
+  await expect(page.locator('.area-editor')).toBeVisible();
+  await page.clock.runFor(1_500);
+  await expect(page.locator('.toast').last()).toContainText('Area updated');
+  await expect(page.locator('.area-editor')).toHaveCount(0);
+  const areas = await seeded.ci.call<{ items: Array<{ id: string; y: number }> }>(
+    'GET',
+    `/checks/${seeded.changed}/areas`,
+  );
+  expect(areas.items).toEqual([expect.objectContaining({ id: added.area.id, y: 190 })]);
 });
 
 test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {

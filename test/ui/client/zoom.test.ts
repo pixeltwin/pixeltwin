@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type * as Zoom from '../../../src/ui/client/zoom';
 import { clientModule } from '../../helpers/client';
 
-const { fitView, actualView, zoomAt, panBy, regionView, clampPan, MAX_SCALE } = await clientModule<typeof Zoom>('zoom');
+const { fitView, actualView, zoomAt, panBy, clampPan, MAX_SCALE } = await clientModule<typeof Zoom>('zoom');
 
 const box = { width: 800, height: 600 };
 
@@ -47,14 +47,5 @@ describe('zoom math', () => {
       x: 200,
       y: 150,
     });
-  });
-
-  test('a region is shown enlarged and centred, with room around it', () => {
-    const image = { width: 1600, height: 1200 };
-    const view = regionView({ x: 700, y: 500, width: 100, height: 50 }, image, box, 50);
-    // (100 + 2·50) wide fits 800 at 4×, (50 + 2·50) high fits 600 at 4×.
-    expect(view.scale).toBe(4);
-    expect((400 - view.x) / view.scale).toBe(750);
-    expect((300 - view.y) / view.scale).toBe(525);
   });
 });

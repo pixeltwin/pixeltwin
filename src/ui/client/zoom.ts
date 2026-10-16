@@ -60,15 +60,3 @@ export function zoomAt(view: View, factor: number, point: Point, image: Size, bo
 export function panBy(view: View, dx: number, dy: number, image: Size, box: Size): View {
   return clampPan({ scale: view.scale, x: view.x + dx, y: view.y + dy }, image, box);
 }
-
-/** Enlarges `region` (image pixels) with `padding` around it and centres it in the box. */
-export function regionView(region: Rect, image: Size, box: Size, padding = 24): View {
-  const scale = clampScale(
-    Math.min(box.width / (region.width + 2 * padding), box.height / (region.height + 2 * padding)),
-    image,
-    box,
-  );
-  const cx = region.x + region.width / 2;
-  const cy = region.y + region.height / 2;
-  return clampPan({ scale, x: box.width / 2 - cx * scale, y: box.height / 2 - cy * scale }, image, box);
-}

@@ -1,7 +1,7 @@
 // Focus-mode compare viewer (UI spec §5.1): Side, Slider, Onion and Diff modes over one shared
 // zoom and pan. Mounted on the page's #review element; returns a function that unmounts it.
 import { onKey } from './keys.ts';
-import { actualView, fitView, panBy, type Rect, regionView, type Size, type View, zoomAt } from './zoom.ts';
+import { actualView, fitView, panBy, type Size, type View, zoomAt } from './zoom.ts';
 
 const MODES = ['side', 'slider', 'onion', 'diff'] as const;
 type Mode = (typeof MODES)[number];
@@ -109,13 +109,6 @@ export function mountViewer(root: HTMLElement): () => void {
     render();
   }
 
-  function showRegion(rect: Rect): void {
-    if (available.includes('diff')) setMode('diff');
-    fit = false;
-    view = regionView(rect, image(), box());
-    render();
-  }
-
   // Mode buttons and keys 1-4.
   for (const b of buttons) listen(b, 'click', () => setMode(b.dataset.modeButton as Mode));
   available.forEach((m, i) => {
@@ -144,10 +137,28 @@ export function mountViewer(root: HTMLElement): () => void {
   const zoomButton = stage.querySelector<HTMLElement>('[data-zoom="toggle"]');
   if (zoomButton) listen(zoomButton, 'click', toggleZoom);
   if (onion) listen(onion, 'input', render);
-  for (const button of root.querySelectorAll<HTMLElement>('[data-region]')) {
+  // Changes in the info strip: pointing at one (or tabbing to it) lights it up on every
+  // screenshot; a click keeps it lit until clicked again. The view does not move.
+  const changeButtons = [...root.querySelectorAll<HTMLButtonElement>('button[data-change]')];
+  let pinned: string | null = null;
+  const light = (button: HTMLButtonElement, on: boolean) => {
+    const id = button.dataset.change as string;
+    const lit = on || pinned === id;
+    button.classList.toggle('is-hot', lit);
+    for (const rect of stage.querySelectorAll(`rect[data-change="${id}"]`)) rect.classList.toggle('is-hot', lit);
+  };
+  for (const button of changeButtons) {
+    listen(button, 'pointerenter', () => light(button, true));
+    listen(button, 'pointerleave', () => light(button, false));
+    listen(button, 'focus', () => light(button, true));
+    listen(button, 'blur', () => light(button, false));
     listen(button, 'click', () => {
-      const [x = 0, y = 0, width = 0, height = 0] = (button.dataset.region ?? '').split(',').map(Number);
-      showRegion({ x, y, width, height });
+      const id = button.dataset.change as string;
+      pinned = pinned === id ? null : id;
+      for (const b of changeButtons) {
+        b.setAttribute('aria-pressed', String(b.dataset.change === pinned));
+        light(b, b === button);
+      }
     });
   }
 

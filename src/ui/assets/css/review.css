@@ -471,6 +471,15 @@ body.focus main {
   fill: none;
   stroke-dasharray: 4 3;
 }
+/* A change pointed at (or pinned) in the info strip. */
+.shot svg rect.is-hot {
+  fill: rgb(229 72 77 / 0.3);
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.regions button.is-hot {
+  background: var(--surface-hover);
+}
 .crosshair {
   position: absolute;
   inset: 0;
@@ -541,8 +550,92 @@ body.focus main {
   fill: rgb(28 126 214 / 0.14);
   stroke: var(--blue-dot);
 }
-.stage[data-drawing] .viewport {
+.stage[data-drawing="ignore"] .viewport,
+.stage[data-drawing="compare"] .viewport {
   cursor: crosshair;
+}
+/* Reviewers pick an area on the screenshot to move or resize it. */
+.stage[data-areas-editable]:not([data-drawing="ignore"], [data-drawing="compare"]) .area {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+.area.is-editing {
+  stroke-dasharray: none;
+}
+.area-editor {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  border: 2px solid var(--amber-dot);
+  cursor: move;
+  touch-action: none;
+}
+.area-editor-compare {
+  border-color: var(--blue-dot);
+}
+.area-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--amber-dot);
+  border-radius: 2px;
+  background: var(--surface);
+}
+.area-editor-compare .area-handle {
+  border-color: var(--blue-dot);
+}
+.area-handle-nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.area-handle-n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.area-handle-ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.area-handle-e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.area-handle-se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.area-handle-s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.area-handle-sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.area-handle-w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+.area-edit-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.area-edit-bar[hidden],
+.draw-tools[hidden] {
+  display: none;
+}
+.area-edit-bar .muted {
+  font-size: var(--text-sm);
 }
 .area-draft {
   position: fixed;
@@ -606,6 +699,10 @@ body.focus main {
 }
 .area-item-compare {
   border-left-color: var(--blue-dot);
+}
+.area-actions {
+  display: inline-flex;
+  gap: var(--space-1);
 }
 /* Pointing at an area in the list lights it up on every screenshot. */
 .area-item.is-hot {

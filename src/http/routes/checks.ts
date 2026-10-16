@@ -1,11 +1,11 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
-import { createArea, deleteArea, listAreas } from '../../domain/areas';
+import { createArea, deleteArea, listAreas, updateArea } from '../../domain/areas';
 import { getBuildRow } from '../../domain/builds';
 import { type CheckView, getCheck, listChecks, submitCheck } from '../../domain/checks';
 import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
-import { areaInputSchema, checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
+import { areaInputSchema, areaUpdateSchema, checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
@@ -216,7 +216,7 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     },
     responses: {
       201: json(z.object({ area: AreaSchema, check: CheckSchema }), 'The area and the check compared again'),
-      ...problems(401, 403, 404, 422),
+      ...problems(401, 403, 404, 409, 422),
     },
   });
   app.openapi(areaCreate, async (c) => {
@@ -224,6 +224,27 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     allowProject(c, (await getCheck(s.deps, id)).projectId);
     const { area, check } = await createArea(s.deps, id, principalOf(c).id, c.req.valid('json'));
     return c.json({ area, check: withLinks(check) }, 201);
+  });
+
+  const areaUpdate = defineRoute('check.review', {
+    method: 'patch',
+    path: `${API}/checks/{id}/areas/{areaId}`,
+    tags: ['areas'],
+    summary: 'Move or resize an area (its kind stays); the check is compared again at once',
+    request: {
+      params: z.object({ id: z.string(), areaId: z.string() }),
+      body: { required: true, content: { 'application/json': { schema: areaUpdateSchema } } },
+    },
+    responses: {
+      200: json(z.object({ area: AreaSchema, check: CheckSchema }), 'The area and the check compared again'),
+      ...problems(401, 403, 404, 422),
+    },
+  });
+  app.openapi(areaUpdate, async (c) => {
+    const { id, areaId } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const { area, check } = await updateArea(s.deps, id, areaId, c.req.valid('json'));
+    return c.json({ area, check: withLinks(check) }, 200);
   });
 
   const areaDelete = defineRoute('check.review', {

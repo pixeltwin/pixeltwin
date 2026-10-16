@@ -57,8 +57,8 @@ function Shot(props: {
           preserveAspectRatio="none"
           aria-hidden="true"
         >
-          {regions.map((r) => (
-            <rect x={r.x} y={r.y} width={r.width} height={r.height} />
+          {regions.map((r, i) => (
+            <rect x={r.x} y={r.y} width={r.width} height={r.height} data-change={i} />
           ))}
         </svg>
       )}
@@ -79,18 +79,48 @@ function AreaLayer({ areas, size }: { areas: Area[] | undefined; size: Size | un
   );
 }
 
-/** Drawing tools for reviewers (Plan 6): pick a kind, then drag over a screenshot. */
-function DrawTools() {
+const AREA_PLURAL: Record<Area['kind'], string> = { ignore: 'ignore areas', compare: 'compare areas' };
+
+/**
+ * Drawing tools for reviewers (Plan 6): pick a kind, then drag over a screenshot. A snapshot has
+ * one kind of area, so once it has some, the other kind is disabled. The edit bar shows while an
+ * area is being moved or resized (the island needs JavaScript, so it starts hidden).
+ */
+function DrawTools({ areas }: { areas: Area[] }) {
+  const present = areas[0]?.kind;
+  const tool = (kind: Area['kind'], label: string, key: string) => {
+    const blocked = present !== undefined && present !== kind;
+    return (
+      <button
+        type="button"
+        data-draw={kind}
+        data-key={key}
+        data-key-label={`Draw ${kind === 'ignore' ? 'an ignore' : 'a compare'} area`}
+        aria-pressed="false"
+        disabled={blocked}
+        title={blocked ? `Delete the ${AREA_PLURAL[present]} first to use ${AREA_PLURAL[kind]}` : undefined}
+      >
+        {label} <kbd>{key.toUpperCase()}</kbd>
+      </button>
+    );
+  };
   return (
-    <fieldset class="segmented draw-tools">
-      <legend class="visually-hidden">Draw an area</legend>
-      <button type="button" data-draw="ignore" data-key="i" data-key-label="Draw an ignore area" aria-pressed="false">
-        Ignore area <kbd>I</kbd>
-      </button>
-      <button type="button" data-draw="compare" data-key="c" data-key-label="Draw a compare area" aria-pressed="false">
-        Compare area <kbd>C</kbd>
-      </button>
-    </fieldset>
+    <>
+      <fieldset class="segmented draw-tools">
+        <legend class="visually-hidden">Draw an area</legend>
+        {tool('ignore', 'Ignore area', 'i')}
+        {tool('compare', 'Compare area', 'c')}
+      </fieldset>
+      <div class="area-edit-bar" hidden>
+        <span class="muted">Editing area</span>
+        <button type="button" class="small primary" data-area-save aria-label="Save area">
+          Save <kbd>↵</kbd>
+        </button>
+        <button type="button" class="small" data-area-cancel>
+          Cancel <kbd>Esc</kbd>
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -141,7 +171,7 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
             </button>
           ))}
         </fieldset>
-        {props.canReview && <DrawTools />}
+        {props.canReview && <DrawTools areas={areas} />}
         <label class="onion-control" hidden>
           <span class="muted">Opacity</span>
           <input type="range" min="0" max="100" value="50" data-onion />
@@ -295,16 +325,28 @@ function Areas(props: {
               <span class="muted">{` ${areaPlace(a, size)}${a.width}×${a.height} px`}</span>
             </span>
             {props.canReview && (
-              <form
-                method="post"
-                action={ui.url(`/ui/checks/${check.id}/areas/${a.id}/delete`)}
-                data-area-delete={a.id}
-              >
-                <input type="hidden" name="filter" value={props.filter.key} />
-                <button type="submit" class="small ghost" aria-label="Delete this area" title="Delete this area">
-                  Delete
+              <span class="area-actions">
+                <button
+                  type="button"
+                  class="small ghost"
+                  data-area-edit={a.id}
+                  hidden
+                  aria-label="Edit this area"
+                  title="Move or resize this area"
+                >
+                  Edit
                 </button>
-              </form>
+                <form
+                  method="post"
+                  action={ui.url(`/ui/checks/${check.id}/areas/${a.id}/delete`)}
+                  data-area-delete={a.id}
+                >
+                  <input type="hidden" name="filter" value={props.filter.key} />
+                  <button type="submit" class="small ghost" aria-label="Delete this area" title="Delete this area">
+                    Delete
+                  </button>
+                </form>
+              </span>
             )}
           </li>
         ))}
@@ -373,8 +415,9 @@ function Info(props: {
               <button
                 type="button"
                 class="small ghost"
-                data-region={`${r.x},${r.y},${r.width},${r.height}`}
-                title="Zoom to this change"
+                data-change={i}
+                aria-pressed="false"
+                title="Highlight this change on the screenshots"
               >
                 <span>{`Change ${i + 1}`}</span>
                 <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>

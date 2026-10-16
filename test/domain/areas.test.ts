@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
 import { compareImages } from '../../src/diff/compare';
-import { createArea, deleteArea, listAreas } from '../../src/domain/areas';
+import { createArea, deleteArea, listAreas, updateArea } from '../../src/domain/areas';
 import { getBuild } from '../../src/domain/builds';
 import { getCheck } from '../../src/domain/checks';
 import { approveCheck } from '../../src/domain/reviews';
@@ -78,6 +78,38 @@ describe('ignore and compare areas', () => {
     expect(await listAreas(deps, check.id)).toEqual([]);
   });
 
+  test('moving an area compares the check again; the area keeps its id', async () => {
+    const { check } = await changed();
+    const { area } = await createArea(deps, check.id, 'usr_1', { kind: 'ignore', ...overClock });
+    const moved = await updateArea(deps, check.id, area.id, { x: 50, y: 50, width: 20, height: 20 });
+    expect(moved.area).toMatchObject({ id: area.id, kind: 'ignore', x: 50, y: 50, width: 20, height: 20 });
+    expect(moved.check).toMatchObject({ result: 'changed', review: 'pending' });
+    expect(await listAreas(deps, check.id)).toEqual([moved.area]);
+
+    const back = await updateArea(deps, check.id, area.id, { x: 0, y: 0, width: 40, height: 40 });
+    expect(back.check.result).toBe('unchanged');
+  });
+
+  test('editing a missing area or with a bad rectangle is refused', async () => {
+    const { check } = await changed();
+    const { area } = await createArea(deps, check.id, 'usr_1', { kind: 'ignore', ...overClock });
+    expect((await appError(updateArea(deps, check.id, 'are_missing', overClock))).code).toBe('area_not_found');
+    expect((await appError(updateArea(deps, check.id, area.id, { ...overClock, width: 0 }))).code).toBe(
+      'validation_failed',
+    );
+    // An area keeps its kind; to change it, delete it and draw the other kind.
+    expect((await appError(updateArea(deps, check.id, area.id, { ...overClock, kind: 'compare' }))).code).toBe(
+      'validation_failed',
+    );
+    expect((await appError(updateArea(deps, check.id, area.id, { ...overClock, colour: 'red' }))).code).toBe(
+      'validation_failed',
+    );
+    // Another snapshot's check cannot reach it.
+    await seedBaseline(deps, project, white, { name: 'cart' });
+    const other = (await submit(deps, await openBuild(deps), clockOnly, { name: 'cart' })).check;
+    expect((await appError(updateArea(deps, other.id, area.id, overClock))).code).toBe('area_not_found');
+  });
+
   test('a reviewed check keeps its review; only its diff follows the areas', async () => {
     const { check } = await changed();
     await approveCheck(deps, check.id, 'usr_1');
@@ -125,6 +157,15 @@ describe('ignore and compare areas', () => {
     } finally {
       await slow.handle.close();
     }
+  });
+
+  test('a snapshot has ignore areas or compare areas, never both', async () => {
+    const { check } = await changed();
+    await createArea(deps, check.id, 'usr_1', { kind: 'ignore', ...overClock });
+    await createArea(deps, check.id, 'usr_1', { kind: 'ignore', x: 60, y: 60, width: 10, height: 10 });
+    const err = await appError(createArea(deps, check.id, 'usr_1', { kind: 'compare', ...overClock }));
+    expect(err).toMatchObject({ status: 409, code: 'area_kind_conflict' });
+    expect((await listAreas(deps, check.id)).map((a) => a.kind)).toEqual(['ignore', 'ignore']);
   });
 
   test('areas belong to their snapshot', async () => {

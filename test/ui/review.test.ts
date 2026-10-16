@@ -98,7 +98,7 @@ describe('UI focus mode', () => {
     const body = await page(`/ui/checks/${changed.id}`);
     expect(body).not.toContain('1 changed region; largest 10×10 at (10,10) in top-left');
     expect(body).not.toContain('class="summary"');
-    expect(body).toContain('data-region="10,10,10,10"');
+    expect(body).toContain('data-change="0"');
     expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('New snapshot.</p>');
   });
 
@@ -116,13 +116,15 @@ describe('UI focus mode', () => {
     expect(forNew).not.toContain('<dt>Branch</dt>');
   });
 
-  test('changed areas are named by where they are, and each zooms to itself', async () => {
+  test('changed areas are named by where they are, and each lights itself up on the screenshots', async () => {
     const { changed } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}`);
     expect(body).toContain('<dt>Changes</dt><dd>1</dd>');
     expect(body).toContain(
-      '<button type="button" class="small ghost" data-region="10,10,10,10" title="Zoom to this change"><span>Change 1</span><span class="muted">top left · 10×10 px</span></button>',
+      '<button type="button" class="small ghost" data-change="0" aria-pressed="false" title="Highlight this change on the screenshots"><span>Change 1</span><span class="muted">top left · 10×10 px</span></button>',
     );
+    expect(body).toContain('<rect x="10" y="10" width="10" height="10" data-change="0"></rect>');
+    expect(body).not.toContain('data-region=');
     expect(body).not.toContain('at (10,10)');
   });
 
