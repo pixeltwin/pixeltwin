@@ -19,6 +19,14 @@ test.beforeEach(async ({ page }) => {
   await page.setContent(html);
 });
 
+// SUITE_LIST_ATTACHMENTS=1: the test names what it attached (the list reporter prints no images).
+// biome-ignore lint/correctness/noEmptyPattern: Playwright reads fixture dependencies from this pattern.
+test.afterEach(async ({}, testInfo) => {
+  if (process.env.SUITE_LIST_ATTACHMENTS === '1') {
+    console.log(`attachments of ${testInfo.title}: ${testInfo.attachments.map((a) => a.name).join(', ')}`);
+  }
+});
+
 test('home', async ({ page, pixeltwin }) => {
   const check = await pixeltwin.check(page, 'home', { ignore: [page.locator('.clock')] });
   expect(check?.result).not.toBe('error');

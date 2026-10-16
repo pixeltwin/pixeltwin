@@ -191,7 +191,16 @@ export class PixeltwinClient {
     return Math.round(base * (0.75 + Math.random() * 0.5));
   }
 
-  async #request<T>(method: string, path: string, body?: Body): Promise<{ status: number; data: T }> {
+  /**
+   * An image of a check (`check.links.image`, `.baseline`, `.diff`) or by sha, as PNG bytes. Uses the
+   * client's token, so it works where the API needs one.
+   */
+  async fetchImage(linkOrSha: string): Promise<Uint8Array> {
+    const path = linkOrSha.startsWith('/api/v1/') ? linkOrSha.slice('/api/v1'.length) : `/images/${linkOrSha}`;
+    return (await this.#request<Uint8Array>('GET', path, undefined, true)).data;
+  }
+
+  async #request<T>(method: string, path: string, body?: Body, raw = false): Promise<{ status: number; data: T }> {
     const url = `${this.url}/api/v1${path}`;
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.#token}`,
@@ -206,6 +215,7 @@ export class PixeltwinClient {
       const last = attempt >= this.#retries;
       let res: Response;
       let text: string;
+      let bytes: Uint8Array | null = null;
       try {
         res = await this.#fetch(url, {
           method,
@@ -213,14 +223,19 @@ export class PixeltwinClient {
           body: payload,
           signal: AbortSignal.timeout(this.#timeoutMs),
         });
-        text = await res.text();
+        if (raw && res.ok) {
+          bytes = new Uint8Array(await res.arrayBuffer());
+          text = '';
+        } else {
+          text = await res.text();
+        }
       } catch (err) {
         lastError = err;
         if (last) throw new PixeltwinNetworkError(method, path, attempt + 1, lastError);
         await sleep(this.#backoff(attempt));
         continue;
       }
-      if (res.ok) return { status: res.status, data: (text ? JSON.parse(text) : {}) as T };
+      if (res.ok) return { status: res.status, data: (bytes ?? (text ? JSON.parse(text) : {})) as T };
       if (retryable(res.status) && !last) {
         await sleep(retryAfterMs(res) ?? this.#backoff(attempt));
         continue;

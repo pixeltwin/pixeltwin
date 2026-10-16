@@ -106,6 +106,17 @@ describe('Playwright Test through @pixeltwin/playwright', () => {
     const changed = await client.getBuild(third.buildId);
     expect(changed.counts.result).toEqual({ unchanged: 3, changed: 6, new: 0, error: 0 });
 
+    // failOnChange: the changed checks fail their tests at once, with the link, and the test gets
+    // the expected, actual and diff images.
+    const failing = playwright({ PIXELTWIN_FAIL_ON_CHANGE: '1', SUITE_CHANGE: '1', SUITE_LIST_ATTACHMENTS: '1' });
+    expect(failing.status).toBe(1);
+    expect(failing.output).toContain('6 failed');
+    expect(failing.output).toContain('3 passed');
+    expect(failing.output).toMatch(/PixeltwinCheckError: pixeltwin: "home" \(chromium, 800x600\) is changed/);
+    expect(failing.output).toContain(
+      'attachments of home: pixeltwin home, pixeltwin home expected, pixeltwin home actual, pixeltwin home diff',
+    );
+
     // Two shards with one externalId post to one build; neither finalizes; the CLI does.
     const shardEnv = { PIXELTWIN_EXTERNAL_ID: 'pw-shards-1', PIXELTWIN_GATE: '1' };
     const shard1 = playwright(shardEnv, ['--shard=1/2']);

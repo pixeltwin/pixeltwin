@@ -1,4 +1,4 @@
-import type { Build } from './types.js';
+import type { Build, Check } from './types.js';
 
 export interface FieldError {
   path: string;
@@ -49,6 +49,27 @@ export class PixeltwinNetworkError extends Error {
     this.name = 'PixeltwinNetworkError';
     this.method = method;
     this.path = path;
+  }
+}
+
+/**
+ * A check that is not `unchanged` while `failOnChange` is on: thrown from the check call, so the
+ * test fails right there, with the result and the link to review it.
+ */
+export class PixeltwinCheckError extends Error {
+  readonly check: Check;
+  readonly url: string;
+
+  constructor(check: Check, url: string) {
+    const values = Object.keys(check.variant)
+      .sort()
+      .map((k) => check.variant[k]);
+    const variant = values.length ? ` (${values.join(', ')})` : '';
+    const diff = check.diff && 'percent' in check.diff ? `, ${check.diff.percent}% of pixels` : '';
+    super(`pixeltwin: "${check.name}"${variant} is ${check.result}${diff}. Review: ${url}`);
+    this.name = 'PixeltwinCheckError';
+    this.check = check;
+    this.url = url;
   }
 }
 

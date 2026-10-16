@@ -4,15 +4,25 @@
 import {
   type Build,
   type Check,
+  type CheckInput,
   cssBoxToPixels,
+  PixeltwinCheckError,
   type PixeltwinClient,
   PixeltwinGateError,
   pngSize,
+  postWithRetakes,
   type Rect,
   toPixelRect,
   type Variant,
 } from '@pixeltwin/client';
-import { clientFor, finishRun, type PixeltwinOptions, resolveSettings, startRun } from '@pixeltwin/client/run';
+import {
+  clientFor,
+  finishRun,
+  type PixeltwinOptions,
+  resolveSettings,
+  runBuildId,
+  startRun,
+} from '@pixeltwin/client/run';
 
 /** A WebdriverIO element. */
 export type WdioElement = { elementId: string };
@@ -28,22 +38,56 @@ export type ElementLike =
   | PromiseLike<Iterable<WdioElement>>;
 
 export interface WdioCheckOptions {
-  /** Parts never compared: elements (`$()`, `$$()` results) or rectangles in screenshot pixels. */
+  /**
+   * Parts never compared: elements (`$()`, `$$()` results; browsers only) or rectangles in
+   * screenshot pixels.
+   */
   ignore?: (ElementLike | Rect)[];
-  /** Merged over the automatic variant (browser + viewport) and the service's `variant`. */
+  /** Merged over the automatic variant and the service's `variant`. */
   variant?: Variant;
   colorThreshold?: number;
   tolerancePercent?: number;
+  /** Override the service's `retakes` and `failOnChange` for this check. */
+  retakes?: number;
+  failOnChange?: boolean;
+}
+
+/** A session's capabilities, as WebdriverIO reports them. */
+export type Capabilities = { browserName?: string; platformName?: string; [key: string]: unknown };
+
+/** The images of a compared check, PNG bytes; `baseline` and `diff` are null when there is none. */
+export interface CheckImages {
+  baseline: Uint8Array | null;
+  current: Uint8Array;
+  diff: Uint8Array | null;
+}
+
+/** What `onResult` gets for every check: the check, its review link, and its images on demand. */
+export interface CheckResultInfo {
+  name: string;
+  check: Check;
+  url: string;
+  images(): Promise<CheckImages>;
 }
 
 export interface PixeltwinServiceOptions extends PixeltwinOptions {
-  /** Extra variant keys for every check, e.g. `{ theme: 'dark' }`. */
-  variant?: Variant;
+  /**
+   * Variant keys for every check, merged over the automatic ones (`{ theme: 'dark' }`), or a
+   * function that returns the variant from the automatic one and the capabilities (to rename keys).
+   */
+  variant?: Variant | ((auto: Variant, capabilities: Capabilities) => Variant);
+  /**
+   * Rectangles (screenshot pixels) never compared on any viewport screenshot, or a function of the
+   * session and the screenshot size: an iOS status bar, a browser toolbar.
+   */
+  ignore?: Rect[] | ((session: { capabilities: Capabilities; width: number; height: number }) => Rect[]);
+  /** Called after every check (and its retakes): attach its images to a report, log, … */
+  onResult?: (result: CheckResultInfo) => void | Promise<void>;
 }
 
 /** The parts of a WebdriverIO browser the service uses. */
 export interface BrowserLike {
-  capabilities: { browserName?: string; [key: string]: unknown };
+  capabilities: Capabilities;
   takeScreenshot(): Promise<string>;
   takeElementScreenshot(elementId: string): Promise<string>;
   // biome-ignore lint/suspicious/noExplicitAny: WebdriverIO's execute takes any script arguments.
@@ -113,6 +157,46 @@ async function elementsOf(ignore: ElementLike[]): Promise<WdioElement[]> {
 
 function decode(base64: string): Uint8Array {
   return new Uint8Array(Buffer.from(base64, 'base64'));
+}
+
+/** An Appium session on a phone (native app or mobile browser): no DOM measurement there. */
+export function isMobileSession(capabilities: Capabilities): boolean {
+  return /^(ios|android)$/i.test(String(capabilities.platformName ?? ''));
+}
+
+const capability = (capabilities: Capabilities, name: string): string | undefined => {
+  const value = capabilities[`appium:${name}`] ?? capabilities[name];
+  return value === undefined || value === null || value === '' ? undefined : String(value);
+};
+
+/**
+ * The automatic variant. A browser: `browser` and `viewport` (CSS pixels). An Appium phone: `os`
+ * (platform and version), `device` (the device name) and, in a mobile browser, `browser`.
+ */
+export function autoVariant(capabilities: Capabilities, viewport: { width: number; height: number } | null): Variant {
+  if (isMobileSession(capabilities)) {
+    const os = [capability(capabilities, 'platformName'), capability(capabilities, 'platformVersion')]
+      .filter(Boolean)
+      .join(' ');
+    return {
+      os,
+      device: capability(capabilities, 'deviceName') ?? 'unknown',
+      ...(capabilities.browserName ? { browser: String(capabilities.browserName) } : {}),
+    };
+  }
+  return {
+    browser: String(capabilities.browserName ?? 'unknown'),
+    viewport: viewport ? `${viewport.width}x${viewport.height}` : 'unknown',
+  };
+}
+
+async function imagesOf(client: PixeltwinClient, check: Check): Promise<CheckImages> {
+  const [current, baseline, diff] = await Promise.all([
+    client.fetchImage(check.links.image),
+    check.links.baseline ? client.fetchImage(check.links.baseline) : null,
+    check.links.diff ? client.fetchImage(check.links.diff) : null,
+  ]);
+  return { current, baseline, diff };
 }
 
 /** Runs in the browser: viewport size and the boxes of the target and the ignored elements. */
@@ -186,7 +270,10 @@ export class PixeltwinService {
     );
   }
 
-  /** Screenshots the viewport (`element` null) or an element and posts the check. */
+  /**
+   * Screenshots the viewport (`element` null) or an element and posts the check, retaking it while
+   * it comes back `changed` (`retakes`); then `onResult`, and with `failOnChange` a throw.
+   */
   async check(
     browser: BrowserLike | null,
     element: { elementId: string } | null,
@@ -197,49 +284,98 @@ export class PixeltwinService {
     if (settings.disabled) return null;
     const target = browser ?? this.#browser;
     if (!target) throw new Error('pixeltwin: the service has no browser yet (is it in `services`?).');
-    const buildId = process.env.PIXELTWIN_BUILD_ID;
-    if (!buildId) {
-      throw new Error('pixeltwin: no build for this run. Add [PixeltwinService, options] to `services`.');
-    }
+    const buildId = runBuildId('pixeltwin: no build for this run. Add [PixeltwinService, options] to `services`.');
     this.#client ??= clientFor(settings);
+    const client = this.#client;
 
+    const retakes = options.retakes ?? settings.retakes;
+    let variant: Variant | undefined;
+    const check = await postWithRetakes(
+      async () => {
+        const input = await this.#shoot(target, element, name, options);
+        // A retake is the same screen: keep the first screenshot's variant even if the window moved.
+        variant ??= input.variant;
+        return client.postCheck(buildId, { ...input, variant });
+      },
+      {
+        retakes,
+        intervalMs: settings.retakeIntervalMs,
+        onRetake: (changed, retake) => {
+          const percent = changed.diff && 'percent' in changed.diff ? ` (${changed.diff.percent}%)` : '';
+          console.info(`pixeltwin: "${name}" changed${percent}, retake ${retake}/${retakes}`);
+        },
+      },
+    );
+    const url = client.checkUrl(check);
+    await this.#options.onResult?.({ name, check, url, images: () => imagesOf(client, check) });
+    if ((options.failOnChange ?? settings.failOnChange) && check.result !== 'unchanged') {
+      throw new PixeltwinCheckError(check, url);
+    }
+    return check;
+  }
+
+  /** One screenshot with its ignore regions (screenshot pixels) and variant. */
+  async #shoot(
+    target: BrowserLike,
+    element: { elementId: string } | null,
+    name: string,
+    options: WdioCheckOptions,
+  ): Promise<CheckInput> {
+    const capabilities = target.capabilities;
+    const mobile = isMobileSession(capabilities);
     const ignore = options.ignore ?? [];
-    const elements = await elementsOf(ignore.filter(isElementLike));
+    const elementLikes = ignore.filter(isElementLike);
+    if (mobile && elementLikes.length > 0) {
+      throw new Error(
+        `pixeltwin: "${name}": ignoring elements needs a desktop browser; on a phone pass rectangles in screenshot ` +
+          "pixels, or the service's `ignore` option.",
+      );
+    }
     const rects = ignore.filter((r): r is Rect => !isElementLike(r));
-    const measured = await target.execute(measure, element, ...elements);
+    const elements = await elementsOf(elementLikes);
+    // A phone screenshot also shows the system bars, so DOM boxes would not line up with it.
+    const measured = mobile ? null : await target.execute(measure, element, ...elements);
     const image = decode(
       element ? await target.takeElementScreenshot(element.elementId) : await target.takeScreenshot(),
     );
     const size = pngSize(image);
-    const origin = element ? measured.target : { x: 0, y: 0, width: measured.width, height: measured.height };
-    if (!origin || origin.width <= 0)
-      throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
-    // Screenshot pixels per CSS pixel: the device pixel ratio, read from the image itself.
-    const scale = (size?.width ?? origin.width) / origin.width;
-    const mapping = { origin: element ? origin : { x: 0, y: 0 }, scale };
-    const ignoreRegions = [
-      ...rects.map((r) => toPixelRect(r, size)),
-      ...measured.boxes.map((b) => (b ? cssBoxToPixels(b, mapping, size) : null)),
-    ].filter((r) => r !== null);
+    const ignoreRegions: Rect[] = rects.map((r) => toPixelRect(r, size)).filter((r) => r !== null);
+    if (measured) {
+      const origin = element ? measured.target : { x: 0, y: 0, width: measured.width, height: measured.height };
+      if (!origin || origin.width <= 0)
+        throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
+      // Screenshot pixels per CSS pixel: the device pixel ratio, read from the image itself.
+      const scale = (size?.width ?? origin.width) / origin.width;
+      const mapping = { origin: element ? origin : { x: 0, y: 0 }, scale };
+      for (const box of measured.boxes) {
+        const region = box ? cssBoxToPixels(box, mapping, size) : null;
+        if (region) ignoreRegions.push(region);
+      }
+    }
+    const runIgnore = this.#options.ignore;
+    if (!element && runIgnore && size) {
+      const fixed = typeof runIgnore === 'function' ? runIgnore({ capabilities, ...size }) : runIgnore;
+      for (const r of fixed) {
+        const region = toPixelRect(r, size);
+        if (region) ignoreRegions.push(region);
+      }
+    }
 
-    const variant: Variant = {
-      browser: String(target.capabilities.browserName ?? 'unknown'),
-      viewport: `${measured.width}x${measured.height}`,
-      ...this.#options.variant,
-      ...options.variant,
-    };
-    return this.#client.postCheck(buildId, {
+    const auto = autoVariant(capabilities, measured ? { width: measured.width, height: measured.height } : null);
+    const own = this.#options.variant;
+    const base = typeof own === 'function' ? own(auto, capabilities) : { ...auto, ...own };
+    return {
       name,
       image,
-      variant,
+      variant: { ...base, ...options.variant },
       ignoreRegions,
       colorThreshold: options.colorThreshold,
       tolerancePercent: options.tolerancePercent,
-    });
+    };
   }
 }
 
 export default PixeltwinService;
 export type { Build, Check, Rect, Variant, Verdict } from '@pixeltwin/client';
-export { PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from '@pixeltwin/client';
+export { PixeltwinCheckError, PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from '@pixeltwin/client';
 export type { PixeltwinOptions } from '@pixeltwin/client/run';

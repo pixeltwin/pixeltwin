@@ -60,6 +60,37 @@ describe('settings', () => {
     });
   });
 
+  test('retakes, failOnChange and allowOffline come from options or the environment', () => {
+    expect(resolveSettings({}, {})).toMatchObject({
+      retakes: 0,
+      retakeIntervalMs: 1000,
+      failOnChange: false,
+      allowOffline: false,
+    });
+    const env = {
+      PIXELTWIN_RETAKES: '3',
+      PIXELTWIN_RETAKE_INTERVAL_MS: '250',
+      PIXELTWIN_FAIL_ON_CHANGE: '1',
+      PIXELTWIN_ALLOW_OFFLINE: 'true',
+    };
+    expect(resolveSettings({}, env)).toMatchObject({
+      retakes: 3,
+      retakeIntervalMs: 250,
+      failOnChange: true,
+      allowOffline: true,
+    });
+    expect(resolveSettings({ retakes: 1, failOnChange: false }, env)).toMatchObject({
+      retakes: 1,
+      failOnChange: false,
+    });
+    expect(resolveSettings({}, { PIXELTWIN_RETAKES: 'many' }).retakes).toBe(0);
+    expect(optionsToEnv({ retakes: 2, failOnChange: true, allowOffline: false })).toMatchObject({
+      PIXELTWIN_RETAKES: '2',
+      PIXELTWIN_FAIL_ON_CHANGE: '1',
+      PIXELTWIN_ALLOW_OFFLINE: '0',
+    });
+  });
+
   test('CI detection: GitHub pull request, GitLab merge request, CI_RUN_ID', () => {
     expect(
       ciInfo({

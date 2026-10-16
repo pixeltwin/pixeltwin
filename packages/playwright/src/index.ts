@@ -1,6 +1,7 @@
 import type { PixeltwinClient, Variant } from '@pixeltwin/client';
 import { clientFor, resolveSettings } from '@pixeltwin/client/run';
 import { test as base } from '@playwright/test';
+import type { CheckResultInfo } from './fixture.js';
 import { Pixeltwin } from './fixture.js';
 
 export interface PixeltwinFixtures {
@@ -8,6 +9,10 @@ export interface PixeltwinFixtures {
   pixeltwin: Pixeltwin;
   /** Extra variant keys for every check of a project, e.g. `use: { pixeltwinVariant: { theme: 'dark' } }`. */
   pixeltwinVariant: Variant;
+  /** Attach expected, actual and diff to the test when a check is not unchanged. Default true. */
+  pixeltwinAttachImages: boolean;
+  /** Called after every check (and its retakes), e.g. to send its images to another report. */
+  pixeltwinOnResult: ((result: CheckResultInfo) => void | Promise<void>) | undefined;
 }
 
 export interface PixeltwinWorkerFixtures {
@@ -18,6 +23,8 @@ export interface PixeltwinWorkerFixtures {
 /** Playwright's `test` with the `pixeltwin` fixture. Combine with your own: `mergeTests(test, yours)`. */
 export const test = base.extend<PixeltwinFixtures, PixeltwinWorkerFixtures>({
   pixeltwinVariant: [{}, { option: true }],
+  pixeltwinAttachImages: [true, { option: true }],
+  pixeltwinOnResult: [undefined, { option: true }],
 
   pixeltwinClient: [
     // biome-ignore lint/correctness/noEmptyPattern: Playwright reads fixture dependencies from this pattern.
@@ -28,12 +35,28 @@ export const test = base.extend<PixeltwinFixtures, PixeltwinWorkerFixtures>({
     { scope: 'worker' },
   ],
 
-  pixeltwin: async ({ pixeltwinClient, pixeltwinVariant, browserName }, use, testInfo) => {
-    await use(new Pixeltwin(pixeltwinClient, testInfo, browserName, pixeltwinVariant));
+  pixeltwin: async (
+    { pixeltwinClient, pixeltwinVariant, pixeltwinAttachImages, pixeltwinOnResult, browserName },
+    use,
+    testInfo,
+  ) => {
+    await use(
+      new Pixeltwin(pixeltwinClient, testInfo, browserName, pixeltwinVariant, {
+        settings: resolveSettings(),
+        attachImages: pixeltwinAttachImages,
+        onResult: pixeltwinOnResult,
+      }),
+    );
   },
 });
 
 export type { Build, Check, Rect, Variant, Verdict } from '@pixeltwin/client';
-export { PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from '@pixeltwin/client';
+export { PixeltwinCheckError, PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from '@pixeltwin/client';
 export { expect } from '@playwright/test';
-export { type CheckOptions, Pixeltwin, type ScreenshotOptions } from './fixture.js';
+export {
+  type CheckImages,
+  type CheckOptions,
+  type CheckResultInfo,
+  Pixeltwin,
+  type ScreenshotOptions,
+} from './fixture.js';

@@ -1,5 +1,7 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
-import { PixeltwinService } from '@pixeltwin/wdio';
+import { join } from 'node:path';
+import { type CheckResultInfo, PixeltwinService } from '@pixeltwin/wdio';
 import { startSite } from './serve.mjs';
 
 const port = Number(process.env.SITE_PORT ?? 19182);
@@ -47,7 +49,29 @@ export const config: WebdriverIO.Config = {
   // The launcher opens one pixeltwin build for the run and finalizes it at the end: it prints the
   // summary and, with PIXELTWIN_GATE=1, exits 1 unless the verdict is `passed`. PIXELTWIN_URL,
   // PIXELTWIN_TOKEN and PIXELTWIN_PROJECT come from the environment (or set them here).
-  services: [[PixeltwinService, {}]],
+  services: [
+    [
+      PixeltwinService,
+      {
+        // A page still loading or animating is screenshotted again, a second apart, up to twice.
+        retakes: 2,
+        // Expected, actual and diff of every check that is not unchanged, for your own report.
+        onResult: async ({ name, check, images }: CheckResultInfo) => {
+          if (check.result === 'unchanged') return;
+          const dir = join('pixeltwin-results', Object.values(check.variant).join('-'));
+          mkdirSync(dir, { recursive: true });
+          const { baseline, current, diff } = await images();
+          for (const [kind, png] of [
+            ['expected', baseline],
+            ['actual', current],
+            ['diff', diff],
+          ] as const) {
+            if (png) writeFileSync(join(dir, `${name}-${kind}.png`), png);
+          }
+        },
+      },
+    ],
+  ],
 
   before: async (capabilities) => {
     const chrome = (capabilities as { 'goog:chromeOptions'?: { mobileEmulation?: unknown } })['goog:chromeOptions'];

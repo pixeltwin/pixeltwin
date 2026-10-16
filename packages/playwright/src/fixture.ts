@@ -1,13 +1,17 @@
 import {
   type Check,
+  type CheckInput,
   type CssToPixels,
   cssBoxToPixels,
+  PixeltwinCheckError,
   type PixeltwinClient,
   pngSize,
+  postWithRetakes,
   type Rect,
   toPixelRect,
   type Variant,
 } from '@pixeltwin/client';
+import { runBuildId, type Settings } from '@pixeltwin/client/run';
 import type { Locator, Page, PageScreenshotOptions, TestInfo } from '@playwright/test';
 
 /** Screenshot options passed through to Playwright. */
@@ -32,6 +36,42 @@ export interface CheckOptions {
   tolerancePercent?: number;
   /** Other Playwright screenshot options. `animations` defaults to `disabled`, `caret` to `hide`. */
   screenshot?: ScreenshotOptions;
+  /** Override `retakes` and `failOnChange` (options or PIXELTWIN_* variables) for this check. */
+  retakes?: number;
+  failOnChange?: boolean;
+}
+
+/** The images of a compared check, PNG bytes; `baseline` and `diff` are null when there is none. */
+export interface CheckImages {
+  baseline: Uint8Array | null;
+  current: Uint8Array;
+  diff: Uint8Array | null;
+}
+
+/** What `pixeltwinOnResult` gets for every check: the check, its review link, its images on demand. */
+export interface CheckResultInfo {
+  name: string;
+  check: Check;
+  url: string;
+  testInfo: TestInfo;
+  images(): Promise<CheckImages>;
+}
+
+/** How the fixture behaves: from the run's settings and the `pixeltwin*` options. */
+export interface PixeltwinBehaviour {
+  settings: Pick<Settings, 'retakes' | 'retakeIntervalMs' | 'failOnChange'>;
+  /** Attach expected, actual and diff to the test when a check is not unchanged. Default true. */
+  attachImages: boolean;
+  onResult?: ((result: CheckResultInfo) => void | Promise<void>) | undefined;
+}
+
+async function imagesOf(client: PixeltwinClient, check: Check): Promise<CheckImages> {
+  const [current, baseline, diff] = await Promise.all([
+    client.fetchImage(check.links.image),
+    check.links.baseline ? client.fetchImage(check.links.baseline) : null,
+    check.links.diff ? client.fetchImage(check.links.diff) : null,
+  ]);
+  return { current, baseline, diff };
 }
 
 function isPage(target: Page | Locator): target is Page {
@@ -104,12 +144,23 @@ export class Pixeltwin {
   readonly #testInfo: TestInfo;
   readonly #browserName: string;
   readonly #variant: Variant;
+  readonly #behaviour: PixeltwinBehaviour;
 
-  constructor(client: PixeltwinClient | null, testInfo: TestInfo, browserName: string, variant: Variant) {
+  constructor(
+    client: PixeltwinClient | null,
+    testInfo: TestInfo,
+    browserName: string,
+    variant: Variant,
+    behaviour: PixeltwinBehaviour = {
+      settings: { retakes: 0, retakeIntervalMs: 1000, failOnChange: false },
+      attachImages: true,
+    },
+  ) {
     this.client = client;
     this.#testInfo = testInfo;
     this.#browserName = browserName;
     this.#variant = variant;
+    this.#behaviour = behaviour;
   }
 
   /** The run's build (set by `@pixeltwin/playwright/setup`); undefined when disabled. */
@@ -118,19 +169,41 @@ export class Pixeltwin {
   }
 
   /**
-   * Screenshots a page or an element and posts it as check `name`. Resolves to the compared check;
-   * a `changed` or `new` result does not fail the test (the build verdict decides at the end).
-   * Null when pixeltwin is disabled.
+   * Screenshots a page or an element and posts it as check `name`, retaking it while it comes back
+   * `changed` (`retakes`). Resolves to the compared check; a `changed` or `new` result does not fail
+   * the test (the build verdict decides at the end) unless `failOnChange` is on. Null when disabled.
    */
   async check(target: Page | Locator, name: string, options: CheckOptions = {}): Promise<Check | null> {
-    if (!this.client) return null;
-    const buildId = this.buildId;
-    if (!buildId) {
-      throw new Error(
-        "pixeltwin: no build for this run. Add globalSetup: '@pixeltwin/playwright/setup' " +
-          "(or wrap the config in withPixeltwin from '@pixeltwin/playwright/config').",
-      );
+    const client = this.client;
+    if (!client) return null;
+    const buildId = runBuildId(
+      "pixeltwin: no build for this run. Add globalSetup: '@pixeltwin/playwright/setup' " +
+        "(or wrap the config in withPixeltwin from '@pixeltwin/playwright/config').",
+    );
+    const { settings } = this.#behaviour;
+    const retakes = options.retakes ?? settings.retakes;
+    let variant: Variant | undefined;
+    const check = await postWithRetakes(
+      async () => {
+        const input = await this.#shoot(target, name, options);
+        // A retake is the same screen: keep the first screenshot's variant.
+        variant ??= input.variant;
+        return client.postCheck(buildId, { ...input, variant });
+      },
+      {
+        retakes,
+        intervalMs: settings.retakeIntervalMs,
+      },
+    );
+    await this.#report(client, check, name);
+    if ((options.failOnChange ?? settings.failOnChange) && check.result !== 'unchanged') {
+      throw new PixeltwinCheckError(check, client.checkUrl(check));
     }
+    return check;
+  }
+
+  /** One screenshot with its ignore regions (screenshot pixels) and variant. */
+  async #shoot(target: Page | Locator, name: string, options: CheckOptions): Promise<CheckInput> {
     const page = isPage(target) ? target : target.page();
     const shot = {
       animations: 'disabled' as const,
@@ -190,22 +263,45 @@ export class Pixeltwin {
       ...this.#variant,
       ...options.variant,
     };
-    const check = await this.client.postCheck(buildId, {
+    return {
       name,
       image,
       variant,
       ignoreRegions,
       colorThreshold: options.colorThreshold,
       tolerancePercent: options.tolerancePercent,
-    });
+    };
+  }
 
-    const link = this.client.checkUrl(check);
+  /** The annotation and text attachment, the images when it changed, then `pixeltwinOnResult`. */
+  async #report(client: PixeltwinClient, check: Check, name: string): Promise<void> {
+    const link = client.checkUrl(check);
     const summary = check.diff && 'summary' in check.diff ? ` — ${check.diff.summary}` : '';
     this.#testInfo.annotations.push({ type: 'pixeltwin', description: `${name}: ${check.result} ${link}` });
     await this.#testInfo.attach(`pixeltwin ${name}`, {
       body: `${check.result}${summary}\n${link}`,
       contentType: 'text/plain',
     });
-    return check;
+    let images: Promise<CheckImages> | null = null;
+    const load = () => {
+      images ??= imagesOf(client, check);
+      return images;
+    };
+    if (this.#behaviour.attachImages && check.result !== 'unchanged') {
+      const { baseline, current, diff } = await load();
+      const parts: Array<[string, Uint8Array | null]> = [
+        ['expected', baseline],
+        ['actual', current],
+        ['diff', diff],
+      ];
+      for (const [kind, body] of parts) {
+        if (body)
+          await this.#testInfo.attach(`pixeltwin ${name} ${kind}`, {
+            body: Buffer.from(body),
+            contentType: 'image/png',
+          });
+      }
+    }
+    await this.#behaviour.onResult?.({ name, check, url: link, testInfo: this.#testInfo, images: load });
   }
 }

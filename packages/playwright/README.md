@@ -70,6 +70,20 @@ the test and added as a `pixeltwin` annotation (visible in the HTML report).
 | `variant` | extra variant keys for this check |
 | `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
 | `screenshot` | other Playwright screenshot options (`animations` defaults to `disabled`, `caret` to `hide`) |
+| `retakes`, `failOnChange` | override the run's settings (below) for this check |
+
+**Retakes.** With `retakes` (or `PIXELTWIN_RETAKES`), a check that comes back `changed` is
+screenshotted again, `retakeIntervalMs` apart, until it is unchanged or the retakes run out: a page
+still loading or animating settles. The build keeps one check per screen.
+
+**Failing at once.** By default a `changed` or `new` check does not fail its test: the build's
+verdict and the gate decide at the end. With `failOnChange` (`PIXELTWIN_FAIL_ON_CHANGE=1`) the check
+throws `PixeltwinCheckError` instead, naming the result, the share of changed pixels and the review link.
+
+**Images in the report.** A check that is not unchanged attaches its expected, actual and diff images
+to the test, so the Playwright HTML report shows them (`use: { pixeltwinAttachImages: false }` to
+skip). For another report, `use: { pixeltwinOnResult: async ({ name, check, url, images }) => … }`
+gets every check; `images()` loads its PNGs.
 
 **Variants.** The same name in another browser or viewport is another snapshot with its own
 baseline: every check gets `{ browser: 'chromium', viewport: '1280x800' }`. Add keys per project
@@ -100,6 +114,10 @@ export default withPixeltwin(defineConfig({ /* … */ }), { project: 'shop', gat
 | `PIXELTWIN_EXTERNAL_ID` | `externalId` | see Sharding |
 | `PIXELTWIN_FINALIZE=0` | `finalize` | on (off for a shard) |
 | `PIXELTWIN_DISABLED=1` | `disabled` | off; checks take no screenshot and return `null` |
+| `PIXELTWIN_RETAKES` | `retakes` | `0`; screenshots again while a check comes back `changed` |
+| `PIXELTWIN_RETAKE_INTERVAL_MS` | `retakeIntervalMs` | `1000` |
+| `PIXELTWIN_FAIL_ON_CHANGE=1` | `failOnChange` | off; a check that is not unchanged throws `PixeltwinCheckError` |
+| `PIXELTWIN_ALLOW_OFFLINE=1` | `allowOffline` | off: a build that cannot be opened stops the run; on: the tests run and each check fails with the reason |
 
 Requests are retried (network errors, timeouts, 429, 5xx) with backoff; errors from the server are
 `PixeltwinError` with a stable `code`.

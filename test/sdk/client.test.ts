@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
+  type Check,
   cssBoxToPixels,
   PixeltwinClient,
   PixeltwinError,
   PixeltwinNetworkError,
   pngSize,
+  postWithRetakes,
   toPixelRect,
 } from '@pixeltwin/client';
 import { makePng, WHITE } from '../helpers/png';
@@ -237,6 +239,48 @@ describe('retries', () => {
     const err = await c.getBuild('bld_1').catch((e) => e);
     expect(err).toBeInstanceOf(PixeltwinNetworkError);
     expect(err.message).toContain('2 attempt(s)');
+  });
+});
+
+describe('postWithRetakes', () => {
+  const check = (result: Check['result']) => ({ result }) as Check;
+  const noWait = async () => {};
+
+  test('retakes while changed, up to the count, and stops at the first other result', async () => {
+    const results: Check['result'][] = ['changed', 'changed', 'unchanged', 'changed'];
+    let posts = 0;
+    const seen: number[] = [];
+    const final = await postWithRetakes(async () => check(results[posts++] ?? 'changed'), {
+      retakes: 5,
+      intervalMs: 1,
+      sleep: noWait,
+      onRetake: (_c, n) => seen.push(n),
+    });
+    expect(final.result).toBe('unchanged');
+    expect(posts).toBe(3);
+    expect(seen).toEqual([1, 2]);
+  });
+
+  test('new and error are final; the count and the deadline end the retakes', async () => {
+    for (const result of ['new', 'error'] as const) {
+      let posts = 0;
+      const once = async () => {
+        posts++;
+        return check(result);
+      };
+      await postWithRetakes(once, { retakes: 3, intervalMs: 1, sleep: noWait });
+      expect(posts).toBe(1);
+    }
+    let posts = 0;
+    const always = async () => {
+      posts++;
+      return check('changed');
+    };
+    expect((await postWithRetakes(always, { retakes: 2, intervalMs: 1, sleep: noWait })).result).toBe('changed');
+    expect(posts).toBe(3);
+    posts = 0;
+    await postWithRetakes(always, { retakes: 5, intervalMs: 1000, deadline: Date.now() + 500, sleep: noWait });
+    expect(posts).toBe(1);
   });
 });
 

@@ -35,6 +35,22 @@ export interface PixeltwinOptions {
   /** Request retries (default 3) and per-attempt timeout (default 60 s). */
   retries?: number;
   timeoutMs?: number;
+  /**
+   * `PIXELTWIN_RETAKES`: further screenshots, `retakeIntervalMs` apart (`PIXELTWIN_RETAKE_INTERVAL_MS`,
+   * default 1000), while a check comes back `changed` (the page may still be loading). Default 0.
+   */
+  retakes?: number;
+  retakeIntervalMs?: number;
+  /**
+   * `PIXELTWIN_FAIL_ON_CHANGE=1`: a check that is not `unchanged` throws PixeltwinCheckError, so its
+   * test fails at once (by default the build verdict and the gate decide at the end).
+   */
+  failOnChange?: boolean;
+  /**
+   * `PIXELTWIN_ALLOW_OFFLINE=1`: when the build cannot be opened (server down, bad token), the run
+   * goes on and each check fails with the reason, instead of the run stopping before any test.
+   */
+  allowOffline?: boolean;
 }
 
 export interface Settings {
@@ -52,6 +68,10 @@ export interface Settings {
   disabled: boolean;
   retries: number | undefined;
   timeoutMs: number | undefined;
+  retakes: number;
+  retakeIntervalMs: number;
+  failOnChange: boolean;
+  allowOffline: boolean;
 }
 
 export interface CiInfo {
@@ -125,6 +145,10 @@ export function gitBranch(cwd: string = process.cwd()): string | undefined {
 export function resolveSettings(options: PixeltwinOptions = {}, env: Env = process.env, cwd?: string): Settings {
   const ci = ciInfo(env);
   const wait = options.waitSeconds ?? Number(text(env.PIXELTWIN_WAIT) ?? 0);
+  const count = (value: number | undefined, envValue: string | undefined, fallback: number) => {
+    const n = value ?? Number(text(envValue) ?? fallback);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+  };
   return {
     url: (options.url ?? text(env.PIXELTWIN_URL) ?? 'http://localhost:8080').replace(/\/+$/, ''),
     token: options.token ?? text(env.PIXELTWIN_TOKEN) ?? '',
@@ -139,6 +163,10 @@ export function resolveSettings(options: PixeltwinOptions = {}, env: Env = proce
     disabled: options.disabled ?? flag(env.PIXELTWIN_DISABLED) ?? false,
     retries: options.retries,
     timeoutMs: options.timeoutMs,
+    retakes: count(options.retakes, env.PIXELTWIN_RETAKES, 0),
+    retakeIntervalMs: count(options.retakeIntervalMs, env.PIXELTWIN_RETAKE_INTERVAL_MS, 1000),
+    failOnChange: options.failOnChange ?? flag(env.PIXELTWIN_FAIL_ON_CHANGE) ?? false,
+    allowOffline: options.allowOffline ?? flag(env.PIXELTWIN_ALLOW_OFFLINE) ?? false,
   };
 }
 
@@ -158,6 +186,10 @@ export function optionsToEnv(options: PixeltwinOptions): Record<string, string> 
   set('PIXELTWIN_BRANCH', options.branch);
   set('PIXELTWIN_BASE_BRANCH', options.baseBranch);
   set('PIXELTWIN_COMMIT_SHA', options.commitSha);
+  set('PIXELTWIN_RETAKES', options.retakes);
+  set('PIXELTWIN_RETAKE_INTERVAL_MS', options.retakeIntervalMs);
+  set('PIXELTWIN_FAIL_ON_CHANGE', options.failOnChange);
+  set('PIXELTWIN_ALLOW_OFFLINE', options.allowOffline);
   set('PIXELTWIN_EXTERNAL_ID', options.externalId);
   set('PIXELTWIN_GATE', options.gate);
   set('PIXELTWIN_WAIT', options.waitSeconds);
@@ -218,6 +250,20 @@ export interface StartedRun {
   restoreEnv(): void;
 }
 
+/** Set by `startRun` with `allowOffline` when no build could be opened: the reason. */
+const OFFLINE_ENV = 'PIXELTWIN_OFFLINE';
+
+/**
+ * The run's build id, for a check in a worker. Without one it throws: the reason the build could
+ * not be opened (`allowOffline`), else `hint` (how to set the integration up).
+ */
+export function runBuildId(hint: string, env: Env = process.env): string {
+  const id = text(env.PIXELTWIN_BUILD_ID);
+  if (id) return id;
+  const offline = text(env[OFFLINE_ENV]);
+  throw new Error(offline ? `pixeltwin: no build for this run: ${offline}` : hint);
+}
+
 /** Opens (or reuses) the run's build and publishes its id in `env.PIXELTWIN_BUILD_ID`. */
 export async function startRun(settings: Settings, context: RunContext = {}): Promise<StartedRun> {
   const env = context.env ?? process.env;
@@ -239,6 +285,26 @@ export async function startRun(settings: Settings, context: RunContext = {}): Pr
     log('pixeltwin: disabled (PIXELTWIN_DISABLED); no screenshots are posted.');
     return { build: null, restoreEnv };
   }
+  try {
+    return await openRun(settings, context, env, log, setEnv, restoreEnv);
+  } catch (err) {
+    if (!settings.allowOffline) throw err;
+    // The run goes on without a build; every check then fails with this reason.
+    const reason = err instanceof Error ? err.message : String(err);
+    setEnv(OFFLINE_ENV, reason);
+    log(`pixeltwin: could not open a build, so checks will fail (allowOffline): ${reason}`);
+    return { build: null, restoreEnv };
+  }
+}
+
+async function openRun(
+  settings: Settings,
+  context: RunContext,
+  env: Env,
+  log: (line: string) => void,
+  setEnv: (key: string, value: string) => void,
+  restoreEnv: () => void,
+): Promise<StartedRun> {
   const client = clientFor(settings);
   const existing = text(env.PIXELTWIN_BUILD_ID);
   let build: Build;
