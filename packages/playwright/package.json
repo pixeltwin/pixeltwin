@@ -1,0 +1,42 @@
+{
+  "name": "@pixeltwin/playwright",
+  "version": "0.1.0",
+  "description": "Playwright Test fixture and global setup for pixeltwin visual regression checks",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./setup": {
+      "types": "./dist/setup.d.ts",
+      "default": "./dist/setup.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@pixeltwin/client": "0.1.0"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.49.0"
+  },
+  "keywords": [
+    "pixeltwin",
+    "playwright",
+    "visual regression",
+    "screenshot testing"
+  ]
+}
