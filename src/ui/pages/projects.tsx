@@ -387,7 +387,7 @@ function BuildsTable({ ui, builds, watch }: { ui: Ui; builds: BuildView[]; watch
             </td>
             <td class={b.externalId ? undefined : 'empty-on-phone'}>{b.externalId ?? <span class="muted">—</span>}</td>
             <td>
-              <BuildStatus build={b} />
+              <VerdictCell build={b} />
             </td>
             <td class="muted">{countsText(b.counts)}</td>
             <td>
@@ -398,6 +398,16 @@ function BuildsTable({ ui, builds, watch }: { ui: Ui; builds: BuildView[]; watch
       </tbody>
     </table>
   );
+}
+
+/**
+ * The Verdict column: a finished build's verdict. A running build has its pulsing dot by the
+ * number, so here it shows only what already needs attention (pending, rejected, error).
+ */
+function VerdictCell({ build }: { build: BuildView }) {
+  if (build.state !== 'open') return <VerdictPill verdict={build.verdict} />;
+  if (build.verdict === 'passed' || build.verdict === 'empty') return <span class="muted">—</span>;
+  return <VerdictPill verdict={build.verdict} />;
 }
 
 function AllBuildsPage(props: {
