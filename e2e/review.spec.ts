@@ -103,7 +103,7 @@ test('a reviewer draws an ignore area over the change; the check is compared aga
   await page.mouse.move(to.x, to.y, { steps: 5 });
   await page.mouse.up();
   await expect(page.locator('.toast').last()).toContainText('Ignore area added');
-  await expect(page.locator('.review-head')).toContainText('unchanged');
+  await expect(page.locator('.review-head .status')).toHaveText('ok');
   await expect(page.locator('.area-item')).toHaveCount(1);
   await expect(page.locator('.pane-current .area-ignore')).toHaveCount(1);
 
@@ -153,7 +153,7 @@ test('Ignore next to a change adds an ignore area over it at once', async ({ rev
   await expect(page.locator('.review-head')).toContainText('changed');
   await page.getByRole('button', { name: 'Ignore change 1' }).click();
   await expect(page.locator('.toast').last()).toContainText('Ignore area added');
-  await expect(page.locator('.review-head')).toContainText('unchanged');
+  await expect(page.locator('.review-head .status')).toHaveText('ok');
   await expect(page.locator('.area-item')).toHaveCount(1);
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
 });

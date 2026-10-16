@@ -293,11 +293,19 @@ const REVIEW_LABELS = {
   outdated: 'outdated',
 } as const;
 
+/** A check's result as its pill says it: an unchanged screenshot is simply `ok`. */
+const RESULT_LABELS: Record<CheckView['result'], string> = {
+  unchanged: 'ok',
+  changed: 'changed',
+  new: 'new',
+  error: 'error',
+};
+
 /** Result and review state of a check: `changed` `unresolved`, `new` `approved`, … */
 export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
   return (
     <span class="status">
-      <Pill tone={toneOf(check.result)}>{check.result}</Pill>
+      <Pill tone={toneOf(check.result)}>{RESULT_LABELS[check.result]}</Pill>
       {check.review !== 'none' && <Pill tone={toneOf(check.review)}>{REVIEW_LABELS[check.review]}</Pill>}
     </span>
   );

@@ -87,12 +87,21 @@ describe('UI build page', () => {
     const { buildId, same } = await seedBuild();
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
     expect(all).toMatch(/aria-current="page">All <span class="count">3<\/span>/);
-    expect(all).toContain('To review <span class="count">2</span>');
+    expect(all).toContain('Unresolved <span class="count">2</span>');
     expect(all).toContain('Changed <span class="count">1</span>');
+    expect(all).toContain('OK <span class="count">1</span>');
     expect(all).not.toContain('Errors <span');
+    // All, New, Unresolved first, then the rest.
+    const order = ['All', 'New', 'Unresolved', 'Changed', 'OK'].map((label) =>
+      all.indexOf(`>${label} <span class="count">`),
+    );
+    expect(order.every((at) => at > 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // An unchanged check's pill says "ok".
+    expect(all).toContain('<span class="pill tone-green">ok</span>');
 
     const pending = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
-    expect(pending).toMatch(/aria-current="page">To review <span class="count">2<\/span>/);
+    expect(pending).toMatch(/aria-current="page">Unresolved <span class="count">2<\/span>/);
     expect(pending).not.toContain(`/ui/checks/${same.id}`);
     // Links from before the redesign keep working.
     const old = await html(await t.request('GET', `/ui/builds/${buildId}?review=pending`, { as: viewer }));

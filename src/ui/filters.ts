@@ -9,14 +9,15 @@ export interface CheckFilter {
   review?: CheckReview;
 }
 
+/** In the order the build page shows them; the keys stay what links already use. */
 export const CHECK_FILTERS: CheckFilter[] = [
-  { key: 'pending', label: 'To review', review: 'pending' },
-  { key: 'changed', label: 'Changed', result: 'changed' },
-  { key: 'new', label: 'New', result: 'new' },
-  { key: 'error', label: 'Errors', result: 'error' },
-  { key: 'unchanged', label: 'Unchanged', result: 'unchanged' },
-  { key: 'rejected', label: 'Rejected', review: 'rejected' },
   { key: 'all', label: 'All' },
+  { key: 'new', label: 'New', result: 'new' },
+  { key: 'pending', label: 'Unresolved', review: 'pending' },
+  { key: 'changed', label: 'Changed', result: 'changed' },
+  { key: 'error', label: 'Errors', result: 'error' },
+  { key: 'unchanged', label: 'OK', result: 'unchanged' },
+  { key: 'rejected', label: 'Rejected', review: 'rejected' },
 ];
 
 const ALL = CHECK_FILTERS.find((f) => f.key === 'all') as CheckFilter;
