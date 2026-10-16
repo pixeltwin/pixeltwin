@@ -44,9 +44,15 @@ describe('palette ranking', () => {
 });
 
 describe('live polling', () => {
-  test('polls every 5 s, slowing to 30 s after 10 polls without a change', () => {
+  test('a running build polls every 5 s, slowing to 30 s after 10 polls without a change', () => {
     expect(pollDelay(0)).toBe(5000);
     expect(pollDelay(9)).toBe(5000);
     expect(pollDelay(10)).toBe(30_000);
+  });
+
+  test('a page that only watches for new builds polls every 10 s, then every 30 s after 5 quiet minutes', () => {
+    expect(pollDelay(0, 'watch')).toBe(10_000);
+    expect(pollDelay(29, 'watch')).toBe(10_000);
+    expect(pollDelay(30, 'watch')).toBe(30_000);
   });
 });

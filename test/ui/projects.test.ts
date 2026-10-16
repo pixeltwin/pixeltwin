@@ -53,6 +53,13 @@ describe('UI projects', () => {
       expect(page).toContain('No builds yet');
     });
 
+    test('the project list watches for new builds and projects', async () => {
+      await createProject(t.deps, { slug: 'web', name: 'Web shop' });
+      const page = await html(await t.request('GET', '/ui', { as: viewer }));
+      expect(page).toContain('data-islands="live"');
+      expect(page).toContain('<div class="project-grid" data-live="projects" data-live-watch="">');
+    });
+
     test('with no projects, admins are invited to create one and others to ask an admin', async () => {
       expect(await html(await t.request('GET', '/ui', { as: admin }))).toContain('Create your first project');
       expect(await html(await t.request('GET', '/ui', { as: viewer }))).toContain('Ask an admin');
@@ -130,7 +137,9 @@ describe('UI projects', () => {
       await finalizeBuild(t.deps, cartBuild);
       const settled = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
       expect(settled).not.toContain('data-live-open');
-      expect(settled).not.toContain('data-islands="live"');
+      // Nothing runs, but a new build may arrive any time: the page keeps watching, more slowly.
+      expect(settled).toContain('data-islands="live"');
+      expect(settled).toContain('data-live="lanes" data-live-watch=""');
     });
 
     test('a lane whose latest build waits for review links straight to it', async () => {
@@ -206,6 +215,10 @@ describe('UI projects', () => {
       expect(page).toContain('tone-blue">running</span>');
       expect(page).toContain('aria-current="page">All builds</a>');
       expect(page).toContain('data-live="builds" data-live-open=""');
+      // A later page of the list never changes by itself; only the first one watches.
+      const first = await html(await t.request('GET', '/ui/p/web/builds?branch=main', { as: viewer }));
+      expect(first).toContain('data-live-watch=""');
+      expect(first).toContain('data-islands="live"');
     });
 
     test('filters by branch from a list of the project branches', async () => {

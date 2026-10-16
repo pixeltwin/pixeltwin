@@ -105,6 +105,16 @@ describe('UI build page', () => {
     expect((await postForm(t, `/ui/builds/${buildId}/approve`, {}, viewer)).status).toBe(403);
   });
 
+  test('a finalized build still watches, so reviews by others show up', async () => {
+    const { buildId } = await seedBuild();
+    await postForm(t, `/ui/builds/${buildId}/approve`, {}, reviewer);
+    const { finalizeBuild } = await import('../../src/domain/builds');
+    await finalizeBuild(t.deps, buildId);
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
+    expect(page).toContain('data-islands="search live"');
+    expect(page).toContain('data-live="build-head" data-live-watch=""');
+  });
+
   test('an open build updates itself while it runs', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));

@@ -39,6 +39,18 @@ test('the role hint follows the chosen role', async ({ adminPage: page }) => {
   await expect(hint).toContainText('Manages everything');
 });
 
+test('a new build shows up on the project page without a reload', async ({ reviewerPage: page, seeded }) => {
+  await open(page, `/ui/p/${seeded.slug}`);
+  await page.evaluate(() => {
+    (window as unknown as { stayed: boolean }).stayed = true;
+  });
+  await expect(page.locator('.lanes')).not.toContainText('feature/live');
+  await seeded.ci.call('POST', `/projects/${seeded.slug}/builds`, { branch: 'feature/live' });
+  // The page watches every 10 s when nothing runs; the new build is running, so it shows.
+  await expect(page.locator('.lanes')).toContainText('feature/live', { timeout: 15_000 });
+  expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
+});
+
 test('the theme switch applies at once and survives a reload', async ({ reviewerPage: page }) => {
   await open(page, '/ui');
   await page.locator('.menu summary').click();

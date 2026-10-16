@@ -27,7 +27,12 @@ export function rank<T extends Rankable>(items: T[], query: string, limit = 20):
     .map((x) => x.item);
 }
 
-/** Every 5 s; after 10 polls in a row without a change, every 30 s. */
-export function pollDelay(unchangedPolls: number): number {
+/**
+ * A page with a running build (`open`) polls every 5 s, and every 30 s after 10 polls in a row
+ * without a change. A page that only watches for new builds (`watch`) polls every 10 s, and every
+ * 30 s after 5 quiet minutes.
+ */
+export function pollDelay(unchangedPolls: number, mode: 'open' | 'watch' = 'open'): number {
+  if (mode === 'watch') return unchangedPolls < 30 ? 10_000 : 30_000;
   return unchangedPolls < 10 ? 5000 : 30_000;
 }

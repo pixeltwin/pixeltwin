@@ -148,7 +148,7 @@ function ProjectCardView({ ui, card }: { ui: Ui; card: ProjectCard }) {
 function ProjectsPage({ ui, cards, notice }: { ui: Ui; cards: ProjectCard[]; notice?: string | undefined }) {
   const isAdmin = ui.user?.role === 'admin';
   return (
-    <Layout ui={ui} title="Projects" notice={notice}>
+    <Layout ui={ui} title="Projects" notice={notice} islands={['live']}>
       <div class="page-head">
         <div>
           <h1>Projects</h1>
@@ -161,7 +161,7 @@ function ProjectsPage({ ui, cards, notice }: { ui: Ui; cards: ProjectCard[]; not
         )}
       </div>
       {cards.length === 0 ? (
-        <div class="empty">
+        <div class="empty" data-live="projects" data-live-watch="">
           <h2>{isAdmin ? 'Create your first project' : 'No projects yet'}</h2>
           <p>
             {isAdmin
@@ -171,7 +171,7 @@ function ProjectsPage({ ui, cards, notice }: { ui: Ui; cards: ProjectCard[]; not
           {isAdmin && <NewProjectButton ui={ui} />}
         </div>
       ) : (
-        <div class="project-grid">
+        <div class="project-grid" data-live="projects" data-live-watch="">
           {cards.map((card) => (
             <ProjectCardView ui={ui} card={card} />
           ))}
@@ -265,7 +265,8 @@ function BranchesPage(props: {
       project={project.slug}
       islands={[
         ...(props.onboarding && props.canManage ? ['tokens'] : []),
-        ...(props.onboarding || running ? ['live'] : []),
+        // Live always: running builds update every 5 s, new ones show up within 10 s.
+        'live',
       ]}
     >
       <div class="page-head">
@@ -295,7 +296,12 @@ function BranchesPage(props: {
           canManage={props.canManage}
         />
       ) : (
-        <div class="lanes" data-live="lanes" data-live-open={running ? '' : undefined}>
+        <div
+          class="lanes"
+          data-live="lanes"
+          data-live-open={running ? '' : undefined}
+          data-live-watch={running ? undefined : ''}
+        >
           {summaries.map((summary) => (
             <Lane ui={ui} slug={project.slug} summary={summary} reviewHref={props.laneReviews.get(summary.branch)} />
           ))}
@@ -305,7 +311,8 @@ function BranchesPage(props: {
   );
 }
 
-function BuildsTable({ ui, builds }: { ui: Ui; builds: BuildView[] }) {
+/** `watch`: the first page, where new builds appear; a later page never changes by itself. */
+function BuildsTable({ ui, builds, watch }: { ui: Ui; builds: BuildView[]; watch: boolean }) {
   const running = builds.some((b) => b.state === 'open');
   return (
     <table class="builds stack-on-phone">
@@ -320,7 +327,11 @@ function BuildsTable({ ui, builds }: { ui: Ui; builds: BuildView[] }) {
           <th>Created</th>
         </tr>
       </thead>
-      <tbody data-live="builds" data-live-open={running ? '' : undefined}>
+      <tbody
+        data-live="builds"
+        data-live-open={running ? '' : undefined}
+        data-live-watch={!running && watch ? '' : undefined}
+      >
         {builds.map((b) => (
           <tr>
             <td>
@@ -368,7 +379,7 @@ function AllBuildsPage(props: {
       title={`${project.name} builds`}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'All builds' }]}
       project={project.slug}
-      islands={builds.some((b) => b.state === 'open') ? ['live'] : undefined}
+      islands={builds.some((b) => b.state === 'open') || !props.newer ? ['live'] : undefined}
     >
       <div class="page-head">
         <div>
@@ -395,7 +406,7 @@ function AllBuildsPage(props: {
           <h3>{branch ? `No builds on ${branch}` : 'No builds yet'}</h3>
         </div>
       ) : (
-        <BuildsTable ui={ui} builds={builds} />
+        <BuildsTable ui={ui} builds={builds} watch={!props.newer} />
       )}
       <div class="pager">
         <span>{props.newer && <a href={props.newer}>← Newest</a>}</span>

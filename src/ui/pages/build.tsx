@@ -73,9 +73,15 @@ function BuildPage(props: {
         { label: `#${build.number}` },
       ]}
       project={project.slug}
-      islands={open ? ['search', 'live'] : ['search']}
+      islands={['search', 'live']}
     >
-      <div class="page-head" data-live="build-head" data-live-open={open ? '' : undefined}>
+      {/* Running: every 5 s. Finalized: still watched (10 s), so reviews by others show up. */}
+      <div
+        class="page-head"
+        data-live="build-head"
+        data-live-open={open ? '' : undefined}
+        data-live-watch={open ? undefined : ''}
+      >
         <div>
           <div class="title-row">
             <h1>{`Build #${build.number}`}</h1>

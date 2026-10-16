@@ -1,6 +1,7 @@
-// Live updates (UI spec §4.4): while a page shows an open build, it re-fetches itself and swaps
-// every changed `[data-live]` element. Polls every 5 s while the tab is visible, every 30 s after
-// 10 unchanged polls, and stops once nothing on the page is `data-live-open` any more.
+// Live updates (UI spec §4.4): a page re-fetches itself and swaps every changed `[data-live]`
+// element while the tab is visible. While it shows a running build (`data-live-open`) it polls
+// every 5 s; a page where new builds or reviews may appear (`data-live-watch`) polls every 10 s.
+// Both slow down to 30 s when nothing changes for a while (rank.ts pollDelay).
 import { fetchPage } from './api.ts';
 import { pollDelay } from './rank.ts';
 
@@ -10,9 +11,9 @@ export function init(): void {
 
   const schedule = () => {
     clearTimeout(timer);
-    if (document.visibilityState === 'visible' && document.querySelector('[data-live-open]')) {
-      timer = setTimeout(tick, pollDelay(unchanged));
-    }
+    if (document.visibilityState !== 'visible') return;
+    if (document.querySelector('[data-live-open]')) timer = setTimeout(tick, pollDelay(unchanged, 'open'));
+    else if (document.querySelector('[data-live-watch]')) timer = setTimeout(tick, pollDelay(unchanged, 'watch'));
   };
 
   async function tick(): Promise<void> {
