@@ -1,6 +1,7 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Child } from 'hono/jsx';
 import type { Project } from '../../db/schema';
+import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Region, Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, getBuild } from '../../domain/builds';
@@ -171,7 +172,13 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
   );
 }
 
-function Info({ check, branch, reviewer }: { check: CheckView; branch: string; reviewer: string | null }) {
+/** “top left · ” for an area of an image of known size; empty when the size is unknown. */
+function areaPlace(region: Region, size: Size | undefined): string {
+  return size ? `${positionOf(region, size.width, size.height).replace('-', ' ')} · ` : '';
+}
+
+function Info(props: { check: CheckView; branch: string; reviewer: string | null; size: Size | undefined }) {
+  const { check, branch, reviewer, size } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
   const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
   const dims = diff?.dimensions;
@@ -191,6 +198,12 @@ function Info({ check, branch, reviewer }: { check: CheckView; branch: string; r
             <dd>{`${check.tolerancePercent}%`}</dd>
           </>
         )}
+        {diff && diff.regions.length > 0 && (
+          <>
+            <dt>Changes</dt>
+            <dd>{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''} area${diff.regions.length === 1 && !diff.regionsTruncated ? '' : 's'}`}</dd>
+          </>
+        )}
         {check.baseline && (
           <>
             <dt>Branch</dt>
@@ -208,15 +221,21 @@ function Info({ check, branch, reviewer }: { check: CheckView; branch: string; r
         )}
       </dl>
       {diff && diff.regions.length > 0 && (
-        <ul class="regions" aria-label="Changed regions">
+        <ul class="regions" aria-label="Changed areas">
           {diff.regions.map((r, i) => (
             <li>
-              <button type="button" class="small ghost" data-region={`${r.x},${r.y},${r.width},${r.height}`}>
-                {`${i + 1}. ${r.width}×${r.height} at (${r.x},${r.y})`}
+              <button
+                type="button"
+                class="small ghost"
+                data-region={`${r.x},${r.y},${r.width},${r.height}`}
+                title="Zoom to this area"
+              >
+                <span>{`Area ${i + 1}`}</span>
+                <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
               </button>
             </li>
           ))}
-          {diff.regionsTruncated && <li class="muted">and more</li>}
+          {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
         </ul>
       )}
       {check.reviewedAt !== null && reviewer && (
@@ -400,7 +419,7 @@ function CheckPage(props: {
         </div>
         <div class="review-body">
           <Stage ui={ui} check={check} sizes={props.sizes} />
-          <Info check={check} branch={build.branch} reviewer={props.reviewer} />
+          <Info check={check} branch={build.branch} reviewer={props.reviewer} size={props.sizes.get(check.imageSha)} />
         </div>
         <ActionBar ui={ui} check={check} filter={filter} next={next} canReview={props.canReview} />
         <Filmstrip ui={ui} checks={strip} current={check.id} filter={filter} sizes={props.sizes} />
