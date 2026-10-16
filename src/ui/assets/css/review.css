@@ -680,6 +680,26 @@ body.focus main {
   display: inline-flex;
   gap: var(--space-1);
 }
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.danger-hover:hover,
+.danger-hover:focus-visible {
+  color: var(--red);
+}
 /* Pointing at an area in the list lights it up on every screenshot. */
 .area-item.is-hot {
   background: var(--surface-hover);

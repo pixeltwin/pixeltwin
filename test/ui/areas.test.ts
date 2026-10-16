@@ -65,7 +65,11 @@ describe('UI areas', () => {
     expect(body).toContain(`height="20" data-area="${area.id}"`);
     expect(body).toContain(`<li class="area-item area-item-ignore" data-area-item="${area.id}">`);
     // Editing needs JavaScript: the island shows Edit and the Save / Cancel bar.
-    expect(body).toContain(`<button type="button" class="small ghost" data-area-edit="${area.id}" hidden`);
+    expect(body).toContain(`<button type="button" class="small ghost icon-button" data-area-edit="${area.id}" hidden`);
+    // Edit and Delete are icons, named for screen readers and in a tooltip.
+    expect(body).toContain('<svg class="icon icon-edit"');
+    expect(body).toContain('<svg class="icon icon-delete"');
+    expect(body).not.toMatch(/>\s*(Edit|Delete)\s*<\/button>/);
     expect(body).toContain('<div class="area-edit-bar" hidden');
     expect(body).toContain('data-area-save');
     expect(body).toContain('data-area-cancel');

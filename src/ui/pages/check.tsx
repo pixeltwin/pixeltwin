@@ -301,6 +301,28 @@ function History({ check, history }: { check: CheckView; history: HistoryEntry[]
   );
 }
 
+/** A pencil: edit. Drawn with `currentColor`, so it follows the button's colour. */
+function EditIcon() {
+  return (
+    <svg class="icon icon-edit" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z" />
+      <path d="M9.5 4l2.5 2.5" />
+    </svg>
+  );
+}
+
+/** A bin: delete. */
+function DeleteIcon() {
+  return (
+    <svg class="icon icon-delete" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 4h11" />
+      <path d="M6 4V2.5h4V4" />
+      <path d="M4 4l.75 9.5h6.5L12 4" />
+      <path d="M6.75 6.5v4.5M9.25 6.5v4.5" />
+    </svg>
+  );
+}
+
 const AREA_VERB: Record<Area['kind'], string> = { ignore: 'Ignored', compare: 'Compared' };
 
 /** The snapshot's drawn areas, each with what it does and, for reviewers, Delete. */
@@ -328,13 +350,13 @@ function Areas(props: {
               <span class="area-actions">
                 <button
                   type="button"
-                  class="small ghost"
+                  class="small ghost icon-button"
                   data-area-edit={a.id}
                   hidden
                   aria-label="Edit this area"
                   title="Move or resize this area"
                 >
-                  Edit
+                  <EditIcon />
                 </button>
                 <form
                   method="post"
@@ -342,8 +364,13 @@ function Areas(props: {
                   data-area-delete={a.id}
                 >
                   <input type="hidden" name="filter" value={props.filter.key} />
-                  <button type="submit" class="small ghost" aria-label="Delete this area" title="Delete this area">
-                    Delete
+                  <button
+                    type="submit"
+                    class="small ghost icon-button danger-hover"
+                    aria-label="Delete this area"
+                    title="Delete this area"
+                  >
+                    <DeleteIcon />
                   </button>
                 </form>
               </span>
