@@ -201,6 +201,14 @@ describe('UI projects', () => {
       const diffUrl = `/ui/p/shop/promote/diff.png?branch=feature%2Fnew&amp;key=${encodeURIComponent(home.snapshotKey)}`;
       expect(page).toContain(`src="${diffUrl}"`);
       expect(page).toContain('<summary>Compare</summary>');
+      // Compare zooms all three images together (the promote island).
+      expect(page).toContain('data-islands="promote"');
+      expect(page).toContain('<div class="promote-viewport">');
+      expect(page).toContain('Scroll to zoom, drag to move, double-click to fit.');
+      // A slider lays the branch over main (JavaScript switches to it; side by side is the default).
+      expect(page).toContain('data-promote-mode="slider"');
+      expect(page).toContain('<div class="promote-viewport promote-slider">');
+      expect(page).toContain('<div class="promote-divider" aria-hidden="true"></div>');
       expect(page).toContain('new on main');
 
       const png = await t.request('GET', diffUrl.replace('&amp;', '&'), { as: admin });

@@ -21,6 +21,8 @@ import live from './client/live.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import palette from './client/palette.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import promote from './client/promote.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import queue from './client/queue.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import rank from './client/rank.ts' with { type: 'text' };
@@ -49,6 +51,7 @@ const SOURCES: Record<string, string> = {
   keys,
   live,
   palette,
+  promote,
   queue,
   rank,
   review,

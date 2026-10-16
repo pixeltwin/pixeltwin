@@ -51,6 +51,52 @@ test('a new build shows up on the project page without a reload', async ({ revie
   expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
 });
 
+test('Compare on the promote page zooms main, the branch and the diff together', async ({
+  adminPage: page,
+  seeded,
+}) => {
+  // The changed home screen, approved on a branch: main's baseline differs from it.
+  const build = await seeded.ci.call<{ id: string }>('POST', `/projects/${seeded.slug}/builds`, {
+    branch: 'feature/z',
+  });
+  const old = await seeded.ci.call<{ links: { image: string } }>('GET', `/checks/${seeded.changed}`);
+  const image = await (await page.request.get(old.links.image)).body();
+  const check = await seeded.ci.call<{ id: string }>('POST', `/builds/${build.id}/checks`, {
+    name: 'home',
+    variant: { browser: 'chromium' },
+    imageBase64: image.toString('base64'),
+  });
+  await seeded.ci.call('POST', `/checks/${check.id}/approve`);
+
+  await open(page, `/ui/p/${seeded.slug}/promote?branch=feature%2Fz`);
+  await page.locator('summary', { hasText: 'Compare' }).first().click();
+  const viewport = page.locator('.promote-viewport').first();
+  const box = await viewport.boundingBox();
+  if (!box) throw new Error('compare not open');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -600);
+  const images = page.locator('.promote-large > figure:not(.promote-slider-pane) img');
+  await expect(images).toHaveCount(3);
+  for (const i of [0, 1, 2]) await expect(images.nth(i)).toHaveAttribute('style', /scale\((?!1\))/);
+  await viewport.dblclick();
+  for (const i of [0, 1, 2]) await expect(images.nth(i)).not.toHaveAttribute('style', /scale/);
+
+  // The slider: the branch over main, cut where the divider is.
+  await page.getByRole('button', { name: 'Slider' }).first().click();
+  const slider = page.locator('.promote-slider').first();
+  await expect(slider).toBeVisible();
+  await expect(viewport).toBeHidden();
+  const top = slider.locator('.promote-top-layer');
+  const before = await top.evaluate((el) => (el as HTMLElement).style.clipPath);
+  const area = await slider.boundingBox();
+  if (!area) throw new Error('slider not on screen');
+  await page.mouse.move(area.x + area.width * 0.5, area.y + area.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(area.x + area.width * 0.2, area.y + area.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(top).not.toHaveAttribute('style', before ? new RegExp(before.replace(/[()%.]/g, '\\$&')) : /^$/);
+});
+
 test('the theme switch applies at once and survives a reload', async ({ reviewerPage: page }) => {
   await open(page, '/ui');
   await page.locator('.menu summary').click();

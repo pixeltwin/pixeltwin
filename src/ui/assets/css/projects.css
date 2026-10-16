@@ -363,13 +363,75 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+.promote-viewport {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--stage-bg);
+  cursor: zoom-in;
+  touch-action: none;
+}
+.promote-viewport.zoomed {
+  cursor: grab;
+}
+.promote-viewport.zoomed:active {
+  cursor: grabbing;
+}
 .promote-full {
   display: block;
   width: 100%;
   height: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--stage-bg);
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.promote-viewport.zoomed .promote-full {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  transform-origin: 0 0;
+}
+.promote-compare .hint {
+  margin: var(--space-2) 0 0;
+}
+.promote-modes {
+  margin-top: var(--space-2);
+}
+.promote-modes[hidden] {
+  display: none;
+}
+/* Side by side shows the separate images; the slider shows only its own pane, full width. */
+.promote-large[data-mode="side"] .promote-slider-pane,
+.promote-large[data-mode="slider"] > figure:not(.promote-slider-pane) {
+  display: none;
+}
+.promote-large[data-mode="slider"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.promote-slider-pane figcaption {
+  display: flex;
+  justify-content: space-between;
+}
+.promote-slider {
+  cursor: ew-resize;
+  user-select: none;
+}
+.promote-top-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  clip-path: inset(0 0 0 50%);
+}
+.promote-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--focus);
+  pointer-events: none;
 }
 @media (max-width: 760px) {
   .promote-row {

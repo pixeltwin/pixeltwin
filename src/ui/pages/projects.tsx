@@ -484,6 +484,7 @@ function PromotePage(props: {
       title={`Promote ${branch}`}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: `Promote ${branch}` }]}
       project={project.slug}
+      islands={['promote']}
     >
       <div class="page-head">
         <div>
@@ -539,23 +540,54 @@ function PromotePage(props: {
                   </span>
                   <details class="promote-compare">
                     <summary>Compare</summary>
-                    <div class={showDiff ? 'promote-large three' : 'promote-large'}>
+                    {c.mainImageSha && (
+                      <fieldset class="segmented promote-modes" hidden>
+                        <legend class="visually-hidden">Compare mode</legend>
+                        <button type="button" data-promote-mode="side" aria-pressed="true">
+                          Side by side
+                        </button>
+                        <button type="button" data-promote-mode="slider" aria-pressed="false">
+                          Slider
+                        </button>
+                      </fieldset>
+                    )}
+                    <p class="hint">Scroll to zoom, drag to move, double-click to fit.</p>
+                    <div class={showDiff ? 'promote-large three' : 'promote-large'} data-mode="side">
                       <figure>
                         <figcaption>{`${main} now`}</figcaption>
                         {c.mainImageSha ? (
-                          image(imageUrl(c.mainImageSha), `${main} now`, 'promote-full')
+                          <div class="promote-viewport">
+                            {image(imageUrl(c.mainImageSha), `${main} now`, 'promote-full')}
+                          </div>
                         ) : (
                           <span class="promote-none muted">{`no baseline on ${main} yet`}</span>
                         )}
                       </figure>
                       <figure>
                         <figcaption>{branch}</figcaption>
-                        {image(imageUrl(c.branchImageSha), branch, 'promote-full')}
+                        <div class="promote-viewport">{image(imageUrl(c.branchImageSha), branch, 'promote-full')}</div>
                       </figure>
                       {showDiff && (
                         <figure>
                           <figcaption>Changes in red</figcaption>
-                          {image(diffUrl(c.snapshotKey), 'changes in red', 'promote-full')}
+                          <div class="promote-viewport">
+                            {image(diffUrl(c.snapshotKey), 'changes in red', 'promote-full')}
+                          </div>
+                        </figure>
+                      )}
+                      {c.mainImageSha && (
+                        <figure class="promote-slider-pane">
+                          <figcaption>
+                            <span>{`${main} now`}</span>
+                            <span>{branch}</span>
+                          </figcaption>
+                          <div class="promote-viewport promote-slider">
+                            {image(imageUrl(c.mainImageSha), `${main} now`, 'promote-full')}
+                            <div class="promote-top-layer">
+                              {image(imageUrl(c.branchImageSha), branch, 'promote-full')}
+                            </div>
+                            <div class="promote-divider" aria-hidden="true" />
+                          </div>
                         </figure>
                       )}
                     </div>
