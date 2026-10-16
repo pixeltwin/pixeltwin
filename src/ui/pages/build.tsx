@@ -3,7 +3,7 @@ import type { Project } from '../../db/schema';
 import type { Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, getBuild } from '../../domain/builds';
-import { type CheckView, firstPendingCheckId, listChecks } from '../../domain/checks';
+import { type CheckView, firstPendingCheckId, listChecks, type VariantTag, variantTags } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
@@ -67,6 +67,57 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
         </form>
       )}
     </div>
+  );
+}
+
+/** A tag picked in `?tag=key:value` (repeatable). */
+interface PickedTag {
+  key: string;
+  value: string;
+}
+
+/** `?tag=device:pixel_7&tag=os:ios_17` → the picked tags; malformed ones are skipped. */
+function tagsFromQuery(values: string[] | undefined): PickedTag[] {
+  return (values ?? []).slice(0, 20).flatMap((raw) => {
+    const at = raw.indexOf(':');
+    return at > 0 && at < raw.length - 1 ? [{ key: raw.slice(0, at), value: raw.slice(at + 1) }] : [];
+  });
+}
+
+const tagQuery = (tags: PickedTag[]) => tags.map((t) => `&tag=${encodeURIComponent(`${t.key}:${t.value}`)}`).join('');
+
+const sameTag = (a: PickedTag, b: PickedTag) => a.key === b.key && a.value === b.value;
+
+/**
+ * The build's variant values as chips with their counts: a chip turns its tag on or off (values of
+ * one key add up, keys narrow), Clear drops them all. Links, so it works without JavaScript.
+ */
+function TagFilter(props: { ui: Ui; build: BuildView; base: string; tags: VariantTag[]; picked: PickedTag[] }) {
+  const { ui, build, base, tags, picked } = props;
+  if (tags.length === 0) return null;
+  const href = (next: PickedTag[]) => ui.url(`/ui/builds/${build.id}?${base}${tagQuery(next)}`);
+  return (
+    <nav class="tag-filter" aria-label="Filter by tag" data-live="tags">
+      {tags.map((tag) => {
+        const on = picked.some((p) => sameTag(p, tag));
+        const next = on ? picked.filter((p) => !sameTag(p, tag)) : [...picked, { key: tag.key, value: tag.value }];
+        return (
+          <a
+            class={on ? 'tag-chip on' : 'tag-chip'}
+            href={href(next)}
+            aria-current={on ? 'true' : undefined}
+            title={`${tag.key}: ${tag.value}`}
+          >
+            {tag.value.replaceAll('_', ' ')} <span class="count">{tag.count}</span>
+          </a>
+        );
+      })}
+      {picked.length > 0 && (
+        <a class="tag-clear" href={href([])}>
+          Clear
+        </a>
+      )}
+    </nav>
   );
 }
 
@@ -142,11 +193,15 @@ function BuildPage(props: {
   canReview: boolean;
   /** The search, empty when none. */
   q: string;
+  /** The build's variant tags, and those picked in the address. */
+  tags: VariantTag[];
+  picked: PickedTag[];
   older?: string | undefined;
   notice?: string | undefined;
 }) {
-  const { ui, project, build, checks, filter, q } = props;
-  const search = q ? `&q=${encodeURIComponent(q)}` : '';
+  const { ui, project, build, checks, filter, q, picked } = props;
+  const narrowed = q !== '' || picked.length > 0;
+  const search = (q ? `&q=${encodeURIComponent(q)}` : '') + tagQuery(picked);
   const pending = build.counts.review.pending;
   // An open build still receives checks; the live island refreshes the header, chips and grid.
   const open = build.state === 'open';
@@ -228,6 +283,9 @@ function BuildPage(props: {
         {/* Newest first; the search island narrows the grid as you type, the form searches without it. */}
         <form class="check-search" method="get" action={ui.url(`/ui/builds/${build.id}`)}>
           <input type="hidden" name="filter" value={filter.key} />
+          {picked.map((t) => (
+            <input type="hidden" name="tag" value={`${t.key}:${t.value}`} />
+          ))}
           <input
             type="search"
             name="q"
@@ -239,12 +297,19 @@ function BuildPage(props: {
           />
         </form>
       </div>
+      <TagFilter
+        ui={ui}
+        build={build}
+        base={`filter=${filter.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+        tags={props.tags}
+        picked={picked}
+      />
       <div data-live="checks">
         {/* The search island shows this when typing hides every card. */}
-        <div class="empty" data-search-empty hidden={!(q && checks.length === 0)}>
+        <div class="empty" data-search-empty hidden={!(narrowed && checks.length === 0)}>
           <h3>No checks match this search.</h3>
         </div>
-        {checks.length === 0 && !q && <EmptyChecks ui={ui} build={build} filter={filter} />}
+        {checks.length === 0 && !narrowed && <EmptyChecks ui={ui} build={build} filter={filter} />}
         {checks.length > 0 && (
           <div class="check-grid">
             {checks.map((check) => (
@@ -282,15 +347,25 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     });
     const cursor = c.req.query('cursor') || undefined;
     const q = (c.req.query('q') ?? '').trim().slice(0, 200);
-    const [page, firstPending] = await Promise.all([
-      listChecks(s.deps, id, { result: filter.result, review: filter.review, q, order: 'desc', cursor, limit: 200 }),
+    const picked = tagsFromQuery(c.req.queries('tag'));
+    const [page, firstPending, tags] = await Promise.all([
+      listChecks(s.deps, id, {
+        result: filter.result,
+        review: filter.review,
+        q,
+        tags: picked,
+        order: 'desc',
+        cursor,
+        limit: 200,
+      }),
       firstPendingCheckId(s.deps, id),
+      variantTags(s.deps, id),
     ]);
     const sizes = await imageSizes(
       s.deps,
       page.items.flatMap((c) => [thumbnailSha(c), c.imageSha]),
     );
-    const search = q ? `&q=${encodeURIComponent(q)}` : '';
+    const search = (q ? `&q=${encodeURIComponent(q)}` : '') + tagQuery(picked);
     const older = page.nextCursor
       ? ui.url(`/ui/builds/${id}?filter=${filter.key}${search}&cursor=${encodeURIComponent(page.nextCursor)}`)
       : undefined;
@@ -305,6 +380,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         firstPending={firstPending}
         canReview={hasPermission(userOf(c), 'check.review')}
         q={q}
+        tags={tags}
+        picked={picked}
         older={older}
         notice={noticeOf(c)}
       />,

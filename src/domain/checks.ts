@@ -214,16 +214,54 @@ function containsPattern(text: string): string {
   return `%${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
+/** A variant value present in a build, and how many of its checks have it. */
+export interface VariantTag {
+  key: string;
+  value: string;
+  count: number;
+}
+
+/** Every variant key and value of a build's checks, with counts, by key then value. */
+export async function variantTags(deps: Pick<Deps, 'db'>, buildId: string): Promise<VariantTag[]> {
+  const rows = await deps.db
+    .selectFrom('checks')
+    .select((eb) => ['variant', eb.fn.countAll<number>().as('count')])
+    .where('buildId', '=', buildId)
+    .groupBy('variant')
+    .execute();
+  const tags = new Map<string, VariantTag>();
+  for (const row of rows) {
+    for (const [key, value] of Object.entries(JSON.parse(row.variant) as Record<string, string>)) {
+      const tag = tags.get(`${key}\0${value}`) ?? { key, value, count: 0 };
+      tag.count += Number(row.count);
+      tags.set(`${key}\0${value}`, tag);
+    }
+  }
+  return [...tags.values()].sort((a, b) => a.key.localeCompare(b.key) || a.value.localeCompare(b.value));
+}
+
+/** LIKE pattern for `"key":"value"` inside a stored variant (JSON text). */
+function tagPattern(key: string, value: string): string {
+  return `%${`${JSON.stringify(key)}:${JSON.stringify(value)}`.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
 /**
  * Checks of a build, oldest first (the API's order) or newest first (`order: 'desc'`, the UI's).
- * `q` finds checks whose name or variant contains it, ignoring case.
+ * `q` finds checks whose name or variant contains it, ignoring case. `tags` keeps checks with one
+ * of the given values for every key named (values of one key add up, keys narrow).
  */
 export async function listChecks(
   deps: Pick<Deps, 'db'>,
   buildId: string,
-  options: { result?: CheckResult; review?: CheckReview; q?: string; order?: 'asc' | 'desc' } & PageInput = {},
+  options: {
+    result?: CheckResult;
+    review?: CheckReview;
+    q?: string;
+    tags?: Array<{ key: string; value: string }>;
+    order?: 'asc' | 'desc';
+  } & PageInput = {},
 ): Promise<Page<CheckView>> {
-  const { result, review, q, order = 'asc', ...pageOptions } = options;
+  const { result, review, q, tags = [], order = 'asc', ...pageOptions } = options;
   const page = parseInput(pageInputSchema, pageOptions);
   await getBuildRow(deps, buildId);
   let query = checksWithJoins(deps).where('checks.buildId', '=', buildId);
@@ -237,6 +275,13 @@ export async function listChecks(
         eb(sql`lower(${sql.ref('checks.name')})`, 'like', sql`${pattern} escape '\\'`),
         eb(sql`lower(${sql.ref('checks.variant')})`, 'like', sql`${pattern} escape '\\'`),
       ]),
+    );
+  }
+  const byKey = new Map<string, string[]>();
+  for (const { key, value } of tags) byKey.set(key, [...(byKey.get(key) ?? []), value]);
+  for (const [key, values] of byKey) {
+    query = query.where((eb) =>
+      eb.or(values.map((value) => eb('checks.variant', 'like', sql<string>`${tagPattern(key, value)} escape '\\'`))),
     );
   }
   if (page.cursor) query = query.where('checks.id', order === 'asc' ? '>' : '<', page.cursor);

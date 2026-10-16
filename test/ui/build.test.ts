@@ -41,6 +41,49 @@ describe('UI build page', () => {
     return { buildId, changed, fresh, same };
   }
 
+  describe('filtering by tag', () => {
+    /** Four checks: two devices × two OS versions. */
+    async function seedVariants() {
+      const buildId = await openBuild(t.deps, 'web');
+      const ids: Record<string, string> = {};
+      for (const device of ['iphone_13', 'pixel_7']) {
+        for (const os of ['ios_16', 'ios_17']) {
+          ids[`${device} ${os}`] = (
+            await submit(t.deps, buildId, white, { name: 'home', variant: { device, os } })
+          ).check.id;
+        }
+      }
+      return { buildId, ids };
+    }
+    const shown = (body: string, ids: Record<string, string>) =>
+      Object.entries(ids)
+        .filter(([, id]) => body.includes(`id="${id}"`))
+        .map(([k]) => k)
+        .sort();
+
+    test('the tags of the build are offered with their counts, each a link that turns it on', async () => {
+      const { buildId } = await seedVariants();
+      const body = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: viewer }));
+      expect(body).toContain('<nav class="tag-filter" aria-label="Filter by tag" data-live="tags">');
+      expect(body).toContain(
+        `<a class="tag-chip" href="/ui/builds/${buildId}?filter=all&amp;tag=device%3Apixel_7" title="device: pixel_7">pixel 7 <span class="count">2</span></a>`,
+      );
+    });
+
+    test('a tag narrows the grid; tags of one key add up, tags of different keys narrow further', async () => {
+      const { buildId, ids } = await seedVariants();
+      const page = async (query: string) =>
+        html(await t.request('GET', `/ui/builds/${buildId}?filter=all&${query}`, { as: viewer }));
+      expect(shown(await page('tag=device:pixel_7'), ids)).toEqual(['pixel_7 ios_16', 'pixel_7 ios_17']);
+      expect(shown(await page('tag=device:pixel_7&tag=device:iphone_13'), ids)).toHaveLength(4);
+      expect(shown(await page('tag=device:pixel_7&tag=os:ios_17'), ids)).toEqual(['pixel_7 ios_17']);
+      const on = await page('tag=device:pixel_7');
+      // The chip that is on turns it off again; Clear drops every tag, keeping the filter.
+      expect(on).toContain(`<a class="tag-chip on" href="/ui/builds/${buildId}?filter=all" aria-current="true"`);
+      expect(on).toContain(`<a class="tag-clear" href="/ui/builds/${buildId}?filter=all">Clear</a>`);
+    });
+  });
+
   describe('approving a new screenshot from its card', () => {
     const approveForm = (id: string) => `<form class="card-approve" method="post" action="/ui/checks/${id}/approve">`;
 
