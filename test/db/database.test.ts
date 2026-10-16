@@ -110,6 +110,7 @@ describe('openDatabase', () => {
         '0002_retention_indexes',
         '0003_build_numbers',
         '0004_review_events',
+        '0005_snapshot_areas',
       ]);
       await handle.close();
     } finally {

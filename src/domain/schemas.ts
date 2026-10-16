@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AREA_KINDS } from '../db/schema';
 import { validationError } from '../errors';
 
 // Input schemas shared by the domain and (in Plan 2) the HTTP layer. Objects are strict:
@@ -57,6 +58,9 @@ export const checkMetaSchema = z.strictObject({
   colorThreshold: colorThreshold.optional(),
   tolerancePercent: tolerancePercent.optional(),
 });
+
+/** An ignore or compare area drawn on a snapshot (Plan 6). */
+export const areaInputSchema = rectSchema.extend({ kind: z.enum(AREA_KINDS) });
 
 export const reviewInputSchema = z.strictObject({
   comment: z.string().trim().max(1000).optional(),

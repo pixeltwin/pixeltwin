@@ -43,6 +43,9 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 
 5. Act on \`verdict\`. Only \`passed\` is success. Changes wait for a human (or a token with the
    \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject. /reset undoes either.
+   A screen part that always changes (a clock, an ad) can be skipped for good: POST
+   ${api}/checks/<checkId>/areas {"kind":"ignore","x":…,"y":…,"width":…,"height":…} applies
+   to every later check of that snapshot; kind "compare" compares only inside such areas.
 
 ## Values
 

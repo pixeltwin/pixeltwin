@@ -1,15 +1,16 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
+import { createArea, deleteArea, listAreas } from '../../domain/areas';
 import { getBuildRow } from '../../domain/builds';
 import { type CheckView, getCheck, listChecks, submitCheck } from '../../domain/checks';
 import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
-import { checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
+import { areaInputSchema, checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
-import { CheckSchema, json, PageQuerySchema, pageOf, problems, ReviewEventSchema } from '../schemas';
+import { AreaSchema, CheckSchema, json, PageQuerySchema, pageOf, problems, ReviewEventSchema } from '../schemas';
 
 const CheckPageSchema = pageOf(CheckSchema, 'CheckPage');
 const idParam = z.object({ id: z.string() });
@@ -188,6 +189,55 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     const { id } = c.req.valid('param');
     allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json(withLinks(await resetReview(s.deps, id, principalOf(c).id)), 200);
+  });
+
+  const areasList = defineRoute('project.read', {
+    method: 'get',
+    path: `${API}/checks/{id}/areas`,
+    tags: ['areas'],
+    summary: "Ignore and compare areas drawn on the check's snapshot (they apply to every check of it)",
+    request: { params: idParam },
+    responses: { 200: json(z.object({ items: z.array(AreaSchema) }), 'The areas'), ...problems(401, 403, 404) },
+  });
+  app.openapi(areasList, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    return c.json({ items: await listAreas(s.deps, id) }, 200);
+  });
+
+  const areaCreate = defineRoute('check.review', {
+    method: 'post',
+    path: `${API}/checks/{id}/areas`,
+    tags: ['areas'],
+    summary: "Draw an area on the check's snapshot; the check is compared again at once",
+    request: {
+      params: idParam,
+      body: { required: true, content: { 'application/json': { schema: areaInputSchema } } },
+    },
+    responses: {
+      201: json(z.object({ area: AreaSchema, check: CheckSchema }), 'The area and the check compared again'),
+      ...problems(401, 403, 404, 422),
+    },
+  });
+  app.openapi(areaCreate, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const { area, check } = await createArea(s.deps, id, principalOf(c).id, c.req.valid('json'));
+    return c.json({ area, check: withLinks(check) }, 201);
+  });
+
+  const areaDelete = defineRoute('check.review', {
+    method: 'delete',
+    path: `${API}/checks/{id}/areas/{areaId}`,
+    tags: ['areas'],
+    summary: 'Delete an area; the check is compared again at once',
+    request: { params: z.object({ id: z.string(), areaId: z.string() }) },
+    responses: { 200: json(CheckSchema, 'The check compared again'), ...problems(401, 403, 404) },
+  });
+  app.openapi(areaDelete, async (c) => {
+    const { id, areaId } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    return c.json(withLinks(await deleteArea(s.deps, id, areaId)), 200);
   });
 
   const history = defineRoute('project.read', {

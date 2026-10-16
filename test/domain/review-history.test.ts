@@ -95,7 +95,7 @@ describe('review history', () => {
 
     const migrator = new Migrator({ db: deps.db, provider: migrationProvider });
     expect((await migrator.migrateTo('0003_build_numbers')).error).toBeUndefined();
-    expect(await migrateToLatest(deps.db)).toEqual(['0004_review_events']);
+    expect(await migrateToLatest(deps.db)).toEqual(['0004_review_events', '0005_snapshot_areas']);
 
     expect(await listReviews(deps, check.id)).toEqual([
       {

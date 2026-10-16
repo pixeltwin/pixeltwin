@@ -69,7 +69,11 @@ describe('build numbers', () => {
                   values (${id}, ${projectId}, 'main', 'main', 'open', ${createdAt})`.execute(deps.db);
       }
     } finally {
-      expect(await migrateToLatest(deps.db)).toEqual(['0003_build_numbers', '0004_review_events']);
+      expect(await migrateToLatest(deps.db)).toEqual([
+        '0003_build_numbers',
+        '0004_review_events',
+        '0005_snapshot_areas',
+      ]);
     }
     const numbers = await deps.db.selectFrom('builds').select(['id', 'number']).orderBy('id').execute();
     expect(numbers).toEqual([

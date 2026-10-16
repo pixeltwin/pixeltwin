@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
+import { AREA_KINDS, BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
 // Response schemas. They document the API in openapi.json and type-check every handler's output.
@@ -111,6 +111,23 @@ export const DiffSchema = z
 export const DiffErrorSchema = z
   .object({ error: z.object({ code: z.enum(['diff_timeout', 'diff_failed']), message: z.string() }) })
   .openapi('DiffError');
+
+export const AreaSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    snapshotKey: z.string(),
+    kind: z.enum(AREA_KINDS).openapi({
+      description: 'ignore: skip these pixels; compare: compare only inside the compare areas.',
+    }),
+    x: z.number().int(),
+    y: z.number().int(),
+    width: z.number().int(),
+    height: z.number().int(),
+    createdBy: z.string(),
+    createdAt: z.number().int(),
+  })
+  .openapi('Area');
 
 export const ReviewEventSchema = z
   .object({
