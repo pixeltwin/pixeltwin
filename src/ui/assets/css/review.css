@@ -480,30 +480,6 @@ body.focus main {
 .regions button.is-hot {
   background: var(--surface-hover);
 }
-.crosshair {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.crosshair::before,
-.crosshair::after {
-  content: "";
-  position: absolute;
-  background: var(--focus);
-  opacity: 0.7;
-}
-.crosshair::before {
-  top: 0;
-  bottom: 0;
-  left: var(--x, 0);
-  width: 1px;
-}
-.crosshair::after {
-  left: 0;
-  right: 0;
-  top: var(--y, 0);
-  height: 1px;
-}
 /* A knob on the divider says it can be dragged. */
 .divider::after {
   content: "‹ ›";
