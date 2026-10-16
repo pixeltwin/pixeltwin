@@ -71,13 +71,19 @@ describe('UI projects', () => {
     test('an admin creates a project; mistakes are shown next to the field', async () => {
       const res = await postForm(t, '/ui/projects', { name: 'Web shop', slug: 'web' }, admin);
       expect(location(res)).toBe('/ui/p/web?done=project-created');
+      // The slug is optional: left empty it comes from the name.
+      const named = await postForm(t, '/ui/projects', { name: 'Docs site', slug: '' }, admin);
+      expect(location(named)).toBe('/ui/p/docs-site?done=project-created');
+      const form = await html(await t.request('GET', '/ui/projects/new', { as: admin }));
+      expect(form).toContain('<label for="project-slug">Slug (optional)</label>');
+      expect(form).not.toMatch(/name="slug"[^>]*required/);
       const invalid = await postForm(t, '/ui/projects', { name: 'Bad', slug: 'Bad Slug' }, admin);
       expect(invalid.status).toBe(422);
       const page = await html(invalid);
       expect(page).toContain('value="Bad Slug"');
       expect(page).toContain('aria-invalid="true"');
       expect(page).toContain('class="field-error"');
-      expect((await listProjects(t.deps)).map((p) => p.slug)).toEqual(['web']);
+      expect((await listProjects(t.deps)).map((p) => p.slug).sort()).toEqual(['docs-site', 'web']);
       expect((await postForm(t, '/ui/projects', { name: 'Web', slug: 'web2' }, viewer)).status).toBe(403);
     });
 

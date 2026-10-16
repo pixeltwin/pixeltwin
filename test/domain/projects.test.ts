@@ -29,6 +29,16 @@ describe('projects', () => {
     expect(await getProjectBySlug(deps, 'web')).toEqual(project);
   });
 
+  test('without a slug, one is made from the name, unique within pixeltwin', async () => {
+    expect((await createProject(deps, { name: 'Web shop' })).slug).toBe('web-shop');
+    expect((await createProject(deps, { name: 'Web  Shop!' })).slug).toBe('web-shop-2');
+    expect((await createProject(deps, { name: 'web shop', slug: '' })).slug).toBe('web-shop-3');
+    expect((await createProject(deps, { name: 'Мій магазин' })).slug).toBe('mii-mahazyn');
+    expect((await createProject(deps, { name: 'Café Zürich' })).slug).toBe('cafe-zurich');
+    expect((await createProject(deps, { name: '!!!' })).slug).toBe('project');
+    expect((await createProject(deps, { name: 'x'.repeat(100) })).slug).toHaveLength(63);
+  });
+
   test('rejects a duplicate slug with 409', async () => {
     await createProject(deps, { slug: 'web', name: 'Web' });
     const err = await appError(createProject(deps, { slug: 'web', name: 'Other' }));

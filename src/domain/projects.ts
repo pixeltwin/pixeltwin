@@ -4,6 +4,7 @@ import { AppError } from '../errors';
 import { newId } from '../ids';
 import type { Deps } from './deps';
 import { createProjectSchema, parseInput, updateProjectSchema } from './schemas';
+import { slugCandidate, slugFromName } from './slug';
 
 type DbDeps = Pick<Deps, 'db'>;
 
@@ -20,19 +21,32 @@ const PROJECT_COLUMNS = [
   'updatedAt',
 ] as const;
 
+/**
+ * Creates a project. Without a slug, one is made from the name; when that is taken, the next free
+ * `-2`, `-3`… is used. A slug given explicitly must be free (409 project_slug_taken).
+ */
 export async function createProject(deps: DbDeps, input: unknown): Promise<Project> {
-  const data = parseInput(createProjectSchema, input);
-  const now = Date.now();
-  const project: Project = { id: newId('prj'), ...data, createdAt: now, updatedAt: now };
-  try {
-    await deps.db.insertInto('projects').values(project).execute();
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw new AppError('project_slug_taken', 409, `A project with slug "${data.slug}" already exists.`);
+  const { slug, ...data } = parseInput(createProjectSchema, input);
+  const base = slug ?? slugFromName(data.name);
+  for (let n = 1; ; n++) {
+    const now = Date.now();
+    const project: Project = {
+      id: newId('prj'),
+      slug: slugCandidate(base, n),
+      ...data,
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await deps.db.insertInto('projects').values(project).execute();
+      return project;
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      if (slug || n >= 100) {
+        throw new AppError('project_slug_taken', 409, `A project with slug "${project.slug}" already exists.`);
+      }
     }
-    throw err;
   }
-  return project;
 }
 
 export async function getProjectBySlug(deps: DbDeps, slug: string): Promise<Project> {

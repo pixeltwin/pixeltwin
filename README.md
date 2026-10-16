@@ -59,7 +59,7 @@ Admins create projects, users and CI tokens in the UI. Over the API it looks lik
 curl -c cookies -X POST http://localhost:8080/api/v1/auth/login -H 'content-type: application/json' \
   -d '{"email":"you@example.com","password":"at least 10 characters"}'
 curl -b cookies -H 'origin: http://localhost:8080' -H 'content-type: application/json' \
-  -X POST http://localhost:8080/api/v1/projects -d '{"slug":"web","name":"Web"}'
+  -X POST http://localhost:8080/api/v1/projects -d '{"slug":"web","name":"Web"}'   # slug optional: made from the name
 curl -b cookies -H 'origin: http://localhost:8080' -H 'content-type: application/json' \
   -X POST http://localhost:8080/api/v1/projects/web/tokens -d '{"name":"CI","scopes":["read","write"]}'
 ```

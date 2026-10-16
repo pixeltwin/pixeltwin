@@ -37,7 +37,8 @@ const projectSettings = {
 };
 
 export const createProjectSchema = z.strictObject({
-  slug: slugSchema,
+  /** Optional: made from the name when missing or empty. */
+  slug: z.preprocess((value) => (value === '' ? undefined : value), slugSchema.optional()),
   name: projectSettings.name,
   mainBranch: projectSettings.mainBranch.default('main'),
   colorThreshold: projectSettings.colorThreshold.default(0.1),

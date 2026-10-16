@@ -62,7 +62,8 @@ function NewProjectForm({
   errors?: Record<string, string>;
   inDialog: boolean;
 }) {
-  const slugHint = 'Lowercase letters, digits and hyphens. Used in URLs and the API.';
+  const slugHint =
+    'Leave empty to make it from the name (“Web shop” → web-shop). It is the project’s address in URLs, the API and CI (PIXELTWIN_PROJECT); unlike the name, it never changes.';
   return (
     <form method="post" action={ui.url('/ui/projects')}>
       {errors._form && <p class="flash error">{errors._form}</p>}
@@ -76,11 +77,10 @@ function NewProjectForm({
           {...describedBy('project-name', undefined, errors.name)}
         />
       </Field>
-      <Field id="project-slug" label="Slug" hint={slugHint} error={errors.slug}>
+      <Field id="project-slug" label="Slug (optional)" hint={slugHint} error={errors.slug}>
         <input
           name="slug"
           type="text"
-          required
           autocomplete="off"
           pattern="[a-z0-9][a-z0-9-]{1,62}"
           value={values.slug ?? ''}
