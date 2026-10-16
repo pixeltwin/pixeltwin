@@ -90,15 +90,16 @@ function DrawTools({ areas }: { areas: Area[] }) {
   const present = areas[0]?.kind;
   const tool = (kind: Area['kind'], label: string, key: string) => {
     const blocked = present !== undefined && present !== kind;
+    const what = `Draw ${kind === 'ignore' ? 'an ignore' : 'a compare'} area`;
     return (
       <button
         type="button"
         data-draw={kind}
         data-key={key}
-        data-key-label={`Draw ${kind === 'ignore' ? 'an ignore' : 'a compare'} area`}
+        data-key-label={what}
         aria-pressed="false"
         disabled={blocked}
-        title={blocked ? `Delete the ${AREA_PLURAL[present]} first to use ${AREA_PLURAL[kind]}` : undefined}
+        title={blocked ? `Delete the ${AREA_PLURAL[present]} first to use ${AREA_PLURAL[kind]}` : what}
       >
         {label} <kbd>{key.toUpperCase()}</kbd>
       </button>
@@ -108,8 +109,8 @@ function DrawTools({ areas }: { areas: Area[] }) {
     <>
       <fieldset class="segmented draw-tools">
         <legend class="visually-hidden">Draw an area</legend>
-        {tool('ignore', 'Ignore area', 'i')}
-        {tool('compare', 'Compare area', 'c')}
+        {tool('ignore', 'Ignore', 'i')}
+        {tool('compare', 'Compare', 'c')}
       </fieldset>
       <div class="area-edit-bar" hidden>
         <span class="muted">Editing area</span>

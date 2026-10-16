@@ -43,6 +43,9 @@ describe('UI areas', () => {
     expect(body).toContain('data-draw="ignore"');
     expect(body).toContain('data-draw="compare"');
     expect(body).toContain('data-key="i"');
+    // Short labels; the tooltip says what the tool draws.
+    expect(body).toContain('title="Draw an ignore area">Ignore <kbd>I</kbd></button>');
+    expect(body).toContain('title="Draw a compare area">Compare <kbd>C</kbd></button>');
     // Compare modes on the left; the drawing tools and zoom together on the right.
     expect(body).toContain('<div class="stage-actions">');
     expect(body.indexOf('class="segmented modes"')).toBeLessThan(body.indexOf('class="stage-actions"'));
