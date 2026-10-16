@@ -71,6 +71,27 @@ describe('UI authentication', () => {
     expect(location(await t.request('GET', '/ui/setup'))).toBe('/ui/login');
   });
 
+  test('setup opened without its link asks for the token, and says when it is missing or wrong', async () => {
+    t = await createTestApp({ setupToken: 'setup-secret' });
+    const page = await html(await t.request('GET', '/ui/setup'));
+    expect(page).toContain('<label for="setup-token">Setup token</label>');
+    expect(page).toMatch(/<input id="setup-token" [^>]*name="token" type="text"/);
+    expect(page).toContain('setupToken');
+    // With the link the token stays hidden.
+    expect(await html(await t.request('GET', '/ui/setup?token=setup-secret'))).not.toContain('id="setup-token"');
+
+    const missing = await postForm(t, '/ui/setup', { token: '', email: 'root@example.com', password: PASSWORD });
+    expect(missing.status).toBe(422);
+    const body = await html(missing);
+    expect(body).toContain('id="setup-token-error"');
+    expect(body).toContain('value="root@example.com"');
+    const wrong = await html(
+      await postForm(t, '/ui/setup', { token: 'nope', email: 'root@example.com', password: PASSWORD }),
+    );
+    expect(wrong).toContain('id="setup-token"');
+    expect(wrong).toContain('The setup token is wrong.');
+  });
+
   test('login and setup are a centred card; setup says where its link comes from and marks bad fields', async () => {
     t = await createTestApp({ setupToken: 'setup-secret' });
     const setup = await html(await t.request('GET', '/ui/setup?token=setup-secret'));

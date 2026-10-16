@@ -53,10 +53,18 @@ function LoginPage({ ui, next, email, error }: { ui: Ui; next: string; email?: s
   );
 }
 
-function SetupPage(props: { ui: Ui; token: string; email?: string | undefined; errors?: Record<string, string> }) {
+function SetupPage(props: {
+  ui: Ui;
+  token: string;
+  /** Show the token as a field: the page was opened without its link, or the token was wrong. */
+  askToken: boolean;
+  email?: string | undefined;
+  errors?: Record<string, string>;
+}) {
   const { ui, token } = props;
   const errors = props.errors ?? {};
   const passwordHint = 'At least 10 characters.';
+  const tokenHint = 'The server log prints it as setupToken when it starts with no users, with a setup link.';
   return (
     <Layout ui={ui} title="Set up pixeltwin">
       <div class="auth-card">
@@ -71,7 +79,21 @@ function SetupPage(props: { ui: Ui; token: string; email?: string | undefined; e
               {errors._form}
             </p>
           )}
-          <input type="hidden" name="token" value={token} />
+          {props.askToken ? (
+            <Field id="setup-token" label="Setup token" hint={tokenHint} error={errors.token}>
+              <input
+                {...describedBy('setup-token', tokenHint, errors.token)}
+                name="token"
+                type="text"
+                autocomplete="off"
+                spellcheck={false}
+                required
+                value={token}
+              />
+            </Field>
+          ) : (
+            <input type="hidden" name="token" value={token} />
+          )}
           <Field id="setup-email" label="Email" error={errors.email}>
             <input
               name="email"
@@ -138,7 +160,8 @@ export function registerAuthPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   app.get('/ui/setup', (c) => {
     const ui = uiOf(c, s);
     if (!s.setup.open) return c.redirect(ui.url('/ui/login'), 303);
-    return c.html(<SetupPage ui={ui} token={c.req.query('token') ?? ''} />);
+    const token = c.req.query('token') ?? '';
+    return c.html(<SetupPage ui={ui} token={token} askToken={!token} />);
   });
 
   app.post('/ui/setup', async (c) => {
@@ -153,8 +176,10 @@ export function registerAuthPages(app: OpenAPIHono<AppEnv>, s: Services): void {
     } catch (err) {
       if (!(err instanceof AppError)) throw err;
       if (err.code === 'setup_complete') return c.redirect(ui.url('/ui/login'), 303);
+      // A missing or wrong token is shown on the token field, which appears for it.
+      const errors = err.code === 'invalid_setup_token' ? { token: err.detail } : formErrors(err);
       return c.html(
-        <SetupPage ui={ui} token={token} email={email} errors={formErrors(err)} />,
+        <SetupPage ui={ui} token={token} askToken={!token || 'token' in errors} email={email} errors={errors} />,
         err.status as 403 | 422,
       );
     }
