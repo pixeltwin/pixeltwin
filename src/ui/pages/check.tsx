@@ -5,6 +5,7 @@ import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
 import { type Area, createArea, deleteArea, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
+import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
@@ -312,6 +313,107 @@ async function historyOf(s: Services, checkId: string): Promise<HistoryEntry[]> 
   }));
 }
 
+/** How many approvals of a screen the baseline history shows. */
+const BASELINE_HISTORY = 10;
+
+/** One baseline of the screen: the image, where it came from, who approved it and when. */
+interface BaselineEntry {
+  id: string;
+  imageSha: string;
+  /** The check that became this baseline and its build; null for a seeded one. */
+  checkId: string | null;
+  buildNumber: number | null;
+  who: string;
+  at: number;
+}
+
+/** The last approvals of this check's screen on its baseline's branch, newest first. */
+async function baselineHistoryOf(s: Services, project: Project, check: CheckView): Promise<BaselineEntry[]> {
+  if (!check.baseline) return [];
+  const page = await baselineHistory(s.deps, project.slug, check.snapshotKey, {
+    branch: check.baseline.branch,
+    limit: BASELINE_HISTORY,
+  });
+  const sources = page.items.map((b) => b.sourceCheckId).filter((id): id is string => !!id);
+  const builds = new Map<string, number>();
+  if (sources.length > 0) {
+    const rows = await s.deps.db
+      .selectFrom('checks')
+      .innerJoin('builds', 'builds.id', 'checks.buildId')
+      .select(['checks.id', 'builds.number'])
+      .where('checks.id', 'in', sources)
+      .execute();
+    for (const row of rows) builds.set(row.id, Number(row.number));
+  }
+  const names = new Map<string, string>();
+  for (const { approvedBy } of page.items) {
+    if (!names.has(approvedBy)) names.set(approvedBy, await reviewerName(s, approvedBy));
+  }
+  return page.items.map((b) => ({
+    id: b.id,
+    imageSha: b.imageSha,
+    checkId: b.sourceCheckId && builds.has(b.sourceCheckId) ? b.sourceCheckId : null,
+    buildNumber: b.sourceCheckId ? (builds.get(b.sourceCheckId) ?? null) : null,
+    who: names.get(b.approvedBy) ?? b.approvedBy,
+    at: b.createdAt,
+  }));
+}
+
+/**
+ * How the screen's baseline changed: the last approvals, newest (current) first, each with its
+ * image, build, approver and time. Folded under its count.
+ */
+function BaselineHistory(props: { ui: Ui; check: CheckView; entries: BaselineEntry[] }) {
+  const { ui, check, entries } = props;
+  if (entries.length === 0) return null;
+  return (
+    <details class="baselines">
+      <summary>
+        Baseline history <span class="count">{entries.length}</span>
+      </summary>
+      <ol>
+        {entries.map((e, i) => {
+          const thumb = (
+            <img
+              class="baseline-img"
+              src={ui.url(`/api/v1/images/${e.imageSha}`)}
+              alt=""
+              loading="lazy"
+              draggable="false"
+            />
+          );
+          return (
+            <li class="baseline-entry">
+              {e.checkId ? (
+                <a class="baseline-thumb" href={ui.url(`/ui/checks/${e.checkId}`)}>
+                  {thumb}
+                </a>
+              ) : (
+                <span class="baseline-thumb">{thumb}</span>
+              )}
+              <span class="baseline-meta">
+                <span class="baseline-title">
+                  {e.checkId && e.buildNumber !== null ? (
+                    <a href={ui.url(`/ui/checks/${e.checkId}`)}>{`Build #${e.buildNumber}`}</a>
+                  ) : (
+                    <span>Seeded</span>
+                  )}
+                  {i === 0 && <span class="pill tone-green">current</span>}
+                  {i > 0 && e.id === check.baseline?.id && <span class="pill tone-grey">compared</span>}
+                </span>
+                <span class="muted">
+                  {`by ${e.who} · `}
+                  <Ago at={e.at} />
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </details>
+  );
+}
+
 /** Who approved, rejected or undid, newest first. The newest entry names the current reviewer. */
 function History({ check, history }: { check: CheckView; history: HistoryEntry[] }) {
   if (history.length === 0) return null;
@@ -494,6 +596,7 @@ function Info(props: {
   check: CheckView;
   branch: string;
   history: HistoryEntry[];
+  baselines: BaselineEntry[];
   size: Size | undefined;
   areas: Area[];
   filter: CheckFilter;
@@ -579,6 +682,7 @@ function Info(props: {
           </ul>
         </details>
       )}
+      <BaselineHistory ui={props.ui} check={check} entries={props.baselines} />
       <History check={check} history={props.history} />
     </aside>
   );
@@ -706,6 +810,7 @@ function CheckPage(props: {
   sizes: Map<string, Size>;
   canReview: boolean;
   history: HistoryEntry[];
+  baselines: BaselineEntry[];
   areas: Area[];
   decidedBy: DecidedBy | null;
   notice?: string | undefined;
@@ -786,6 +891,7 @@ function CheckPage(props: {
             check={check}
             branch={build.branch}
             history={props.history}
+            baselines={props.baselines}
             size={props.sizes.get(check.imageSha)}
             areas={props.areas}
             filter={filter}
@@ -830,6 +936,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       listAreas(s.deps, check.id),
       check.supersededBy ? decidedByOf(s, check.supersededBy) : Promise.resolve(null),
     ]);
+    const baselines = await baselineHistoryOf(s, project, check);
     const sizes = await imageSizes(s.deps, [
       ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
       ...strip.items.map(thumbnailSha),
@@ -845,6 +952,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         sizes={sizes}
         canReview={hasPermission(userOf(c), 'check.review')}
         history={history}
+        baselines={baselines}
         areas={areas}
         decidedBy={decidedBy}
         notice={noticeOf(c)}

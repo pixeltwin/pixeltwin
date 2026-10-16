@@ -18,7 +18,7 @@ export function When({ at }: { at: number | null }) {
 }
 
 /**
- * A check's variant as tags, the key quiet and the value readable (`ios_16.0` → `ios 16.0`); the
+ * A check's variant as tags of their readable values (`ios_16.0` → `ios 16.0`); the keys and the
  * exact values are in the tooltip. Nothing for a check without one.
  */
 export function Variant({ variant }: { variant: Record<string, string> }) {
@@ -27,8 +27,7 @@ export function Variant({ variant }: { variant: Record<string, string> }) {
   return (
     <span class="variant" title={entries.map(([k, v]) => `${k}: ${v}`).join(' · ')}>
       {entries.map(([k, v]) => (
-        <span class="variant-tag">
-          <span class="variant-key">{k}</span>
+        <span class="variant-tag" data-key={k}>
           {v.replaceAll('_', ' ')}
         </span>
       ))}

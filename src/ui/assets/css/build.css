@@ -49,11 +49,17 @@
   flex: 1;
   min-width: 0;
 }
+/* Approve gets its own row under the status pills, clear of them and of the card's edge. */
 .card-approve {
   position: absolute;
   right: var(--space-3);
   bottom: var(--space-3);
+  left: var(--space-3);
+  display: flex;
+  justify-content: flex-end;
   margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
 }
 .thumb {
   height: 170px;
@@ -72,6 +78,9 @@
   display: grid;
   gap: var(--space-1);
   padding: var(--space-3);
+}
+.check-card-wrap.approvable .check-card-body {
+  padding-bottom: calc(var(--space-3) * 2 + 30px);
 }
 .check-name {
   font-weight: 600;

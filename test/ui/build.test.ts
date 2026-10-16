@@ -51,7 +51,7 @@ describe('UI build page', () => {
       expect(body).not.toContain(approveForm(changed.id));
       expect(body).not.toContain(approveForm(same.id));
       // The card stays a link; the form sits beside it, not inside it.
-      expect(body).toContain(`<div class="check-card-wrap" id="${fresh.id}"`);
+      expect(body).toContain(`<div class="check-card-wrap approvable" id="${fresh.id}"`);
       const forViewer = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: viewer }));
       expect(forViewer).not.toContain('class="card-approve"');
     });

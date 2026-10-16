@@ -518,7 +518,7 @@ td select {
   flex-wrap: wrap;
 }
 
-/* A check's variant: one tag per key, the key small and quiet, the value plain. */
+/* A check's variant: one tag per value (the key is in the tooltip). */
 .variant {
   display: inline-flex;
   flex-wrap: wrap;
@@ -527,8 +527,6 @@ td select {
 }
 .variant-tag {
   display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
   max-width: 100%;
   padding: 1px 7px;
   border: 1px solid var(--border);
@@ -540,11 +538,4 @@ td select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.variant-key {
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }

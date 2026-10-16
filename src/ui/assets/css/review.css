@@ -311,13 +311,15 @@ body.focus main {
 .facts {
   gap: var(--space-1) var(--space-4);
 }
-/* The change list folds under its count (open for a few changes), like a section heading. */
-.changes {
+/* The change list and the baseline history fold under their count, like a section heading. */
+.changes,
+.baselines {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.changes > summary {
+.changes > summary,
+.baselines > summary {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -329,20 +331,25 @@ body.focus main {
   text-transform: uppercase;
   color: var(--text-muted);
 }
-.changes > summary::-webkit-details-marker {
+.changes > summary::-webkit-details-marker,
+.baselines > summary::-webkit-details-marker {
   display: none;
 }
-.changes > summary::before {
+.changes > summary::before,
+.baselines > summary::before {
   content: "▸";
   transition: transform 0.15s;
 }
-.changes[open] > summary::before {
+.changes[open] > summary::before,
+.baselines[open] > summary::before {
   transform: rotate(90deg);
 }
-.changes > summary:hover {
+.changes > summary:hover,
+.baselines > summary:hover {
   color: var(--text);
 }
-.changes .count {
+.changes .count,
+.baselines .count {
   padding: 0 var(--space-2);
   border-radius: 999px;
   background: var(--surface-hover);
@@ -880,4 +887,55 @@ body.focus main {
   margin: var(--space-2) 0 0;
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* Baseline history: a thumbnail per approval, then its build, tags, approver and time. */
+.baselines ol {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.baseline-entry {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.baseline-thumb {
+  flex: none;
+  display: block;
+  width: 44px;
+  height: 64px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--stage-bg);
+}
+.baseline-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: top;
+}
+a.baseline-thumb:hover {
+  border-color: var(--border-strong);
+}
+.baseline-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.baseline-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+}
+.baseline-meta .muted {
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

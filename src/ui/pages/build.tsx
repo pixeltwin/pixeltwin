@@ -24,7 +24,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
   const approvable = props.canReview && check.result === 'new' && check.review === 'pending';
   return (
     <div
-      class="check-card-wrap"
+      class={approvable ? 'check-card-wrap approvable' : 'check-card-wrap'}
       id={check.id}
       data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
     >

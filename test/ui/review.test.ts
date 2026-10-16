@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
+import type { CheckView as Check } from '../../src/domain/checks';
 import { getCheck } from '../../src/domain/checks';
 import { createProject } from '../../src/domain/projects';
 import { approveCheck, rejectCheck, resetReview } from '../../src/domain/reviews';
@@ -115,14 +116,15 @@ describe('UI focus mode', () => {
     expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('New snapshot.</p>');
   });
 
-  test('the variant shows as tags, key quiet and value readable, in the header and on the build page', async () => {
+  test('the variant shows as tags of readable values, in the header and on the build page', async () => {
     const variant = { os: 'ios_16.0', device: 'iphone_13_pro_max' };
     await seedBaseline(t.deps, project, white, { name: 'home', variant });
     const buildId = await openBuild(t.deps, 'web');
     const check = (await submit(t.deps, buildId, withSquare, { name: 'home', variant })).check;
+    // Values only; the keys are in the tooltip.
     const tags =
-      '<span class="variant-tag"><span class="variant-key">device</span>iphone 13 pro max</span>' +
-      '<span class="variant-tag"><span class="variant-key">os</span>ios 16.0</span>';
+      '<span class="variant-tag" data-key="device">iphone 13 pro max</span>' +
+      '<span class="variant-tag" data-key="os">ios 16.0</span>';
     const header = await page(`/ui/checks/${check.id}`);
     expect(header).toContain(tags);
     // The exact values stay in the tooltip.
@@ -134,6 +136,36 @@ describe('UI focus mode', () => {
   test('a check without a variant shows no variant line', async () => {
     const { same } = await seedBuild();
     expect(await page(`/ui/checks/${same.id}`)).not.toContain('no variant');
+  });
+
+  test('baseline history lists the last approvals of the screen, newest first, with build, who and when', async () => {
+    await seedBaseline(t.deps, project, white, { name: 'home' });
+    const approved = [];
+    for (const png of [withSquare, white]) {
+      const buildId = await openBuild(t.deps, 'web');
+      const check = (await submit(t.deps, buildId, png, { name: 'home' })).check;
+      await approveCheck(t.deps, check.id, reviewer.id);
+      approved.push(check);
+    }
+    const [first, second] = approved as [Check, Check];
+    const buildId = await openBuild(t.deps, 'web');
+    const latest = (await submit(t.deps, buildId, withSquare, { name: 'home' })).check;
+    const body = await page(`/ui/checks/${latest.id}`);
+    expect(body).toContain('<summary>Baseline history <span class="count">3</span></summary>');
+    // Newest first, each linking to the check that became the baseline.
+    const at = (id: string) => body.indexOf(`<a class="baseline-thumb" href="/ui/checks/${id}`);
+    expect(at(second.id)).toBeGreaterThan(0);
+    expect(at(second.id)).toBeLessThan(at(first.id));
+    expect(body).toContain(`>Build #2</a>`);
+    expect(body).toContain('by rev@example.com');
+    // The newest is the current baseline, which this check was compared with.
+    expect(body).toContain('<span class="pill tone-green">current</span>');
+    expect(body.match(/tone-green">current</g)?.length).toBe(1);
+  });
+
+  test('a new screenshot has no baseline history', async () => {
+    const { fresh } = await seedBuild();
+    expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('Baseline history');
   });
 
   test('a long list of changes starts folded under its count', async () => {
