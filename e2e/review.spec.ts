@@ -104,7 +104,7 @@ test('a reviewer draws an ignore area over the change; the check is compared aga
   await page.mouse.move(to.x, to.y, { steps: 5 });
   await page.mouse.up();
   await expect(page.locator('.toast').last()).toContainText('Ignore area added');
-  await expect(page.locator('.review-head .status')).toHaveText('ok');
+  await expect(page.locator('.review-head .status')).toHaveText('passed');
   await expect(page.locator('.area-item')).toHaveCount(1);
   await expect(page.locator('.pane-current .area-ignore')).toHaveCount(1);
 
@@ -154,7 +154,7 @@ test('Ignore next to a change adds an ignore area over it at once', async ({ rev
   await expect(page.locator('.review-head')).toContainText('changed');
   await page.getByRole('button', { name: 'Ignore change 1' }).click();
   await expect(page.locator('.toast').last()).toContainText('Ignore area added');
-  await expect(page.locator('.review-head .status')).toHaveText('ok');
+  await expect(page.locator('.review-head .status')).toHaveText('passed');
   await expect(page.locator('.area-item')).toHaveCount(1);
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
 });
@@ -329,14 +329,18 @@ test.describe('on a short screen', () => {
     await page.evaluate(() => {
       (window as unknown as { stayed: boolean }).stayed = true;
     });
-    const before = await page.evaluate(() => window.scrollY);
+    const height = () => page.evaluate(() => document.documentElement.scrollHeight);
+    const heightBefore = await height();
+    const before = (await card.boundingBox())?.y ?? 0;
     await card.getByRole('button', { name: 'Approve' }).click();
     await expect(page.locator('.toast').last()).toContainText('Approved cart');
     await expect(card.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(card).toContainText('approved');
     expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
-    // Only the Approve row is gone: the page may end a few pixels earlier, never jump to the card.
-    expect(Math.abs((await page.evaluate(() => window.scrollY)) - before)).toBeLessThanOrEqual(4);
+    const after = (await card.boundingBox())?.y ?? 0;
+    // Scrolled to the end, the page ends earlier without the Approve row and the card moves by as
+    // much; a reload jumped it to the top of the window.
+    expect(Math.abs(after - before)).toBeLessThanOrEqual(heightBefore - (await height()) + 1);
     expect(page.url()).not.toContain('#');
     const check = await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.fresh}`);
     expect(check.review).toBe('approved');

@@ -130,7 +130,7 @@ export function countsText(counts: BuildCounts): string {
   add(counts.result.new, 'new');
   add(counts.result.error, counts.result.error === 1 ? 'error' : 'errors');
   add(counts.review.rejected, 'rejected');
-  add(counts.result.unchanged, 'ok');
+  add(counts.result.unchanged, 'passed');
   return parts.join(' · ');
 }
 
@@ -293,15 +293,15 @@ const REVIEW_LABELS = {
   outdated: 'outdated',
 } as const;
 
-/** A check's result as its pill says it: an unchanged screenshot is simply `ok`. */
+/** A check's result as its pill says it: an unchanged screenshot has `passed`. */
 const RESULT_LABELS: Record<CheckView['result'], string> = {
-  unchanged: 'ok',
+  unchanged: 'passed',
   changed: 'changed',
   new: 'new',
   error: 'error',
 };
 
-/** A check's status in words: `changed · unresolved`, `new · approved`, `ok`. */
+/** A check's status in words: `changed · unresolved`, `new · approved`, `passed`. */
 export function statusText(check: Pick<CheckView, 'result' | 'review'>): string {
   const review = REVIEW_LABELS[check.review];
   return review ? `${RESULT_LABELS[check.result]} · ${review}` : RESULT_LABELS[check.result];
@@ -310,14 +310,14 @@ export function statusText(check: Pick<CheckView, 'result' | 'review'>): string 
 /**
  * The colour a check's card takes: what someone has to do about it first. Red for an error or a
  * rejection, amber for a change and blue for a new screen waiting for review, green once approved
- * (`approved`) or unchanged (`ok`), grey when outdated.
+ * (`approved`) or unchanged (`passed`), grey when outdated.
  */
 export function cardTone(check: Pick<CheckView, 'result' | 'review'>): string {
   if (check.result === 'error' || check.review === 'rejected') return 'bad';
   if (check.review === 'outdated') return 'outdated';
   if (check.review === 'approved') return 'approved';
   if (check.review === 'pending') return check.result === 'new' ? 'new' : 'changed';
-  return 'ok';
+  return 'passed';
 }
 
 /** Result and review state of a check: `changed` `unresolved`, `new` `approved`, … */

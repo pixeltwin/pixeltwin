@@ -94,7 +94,7 @@ describe('UI build page', () => {
     };
     expect(card(changed.id)).toContain('<a class="check-card card-changed" title="changed · unresolved"');
     expect(card(fresh.id)).toContain('<a class="check-card card-new" title="new · unresolved"');
-    expect(card(same.id)).toContain('<a class="check-card card-ok" title="ok"');
+    expect(card(same.id)).toContain('<a class="check-card card-passed" title="passed"');
     for (const id of [changed.id, fresh.id, same.id]) expect(card(id)).not.toContain('class="pill');
     // Screen readers still hear the status.
     expect(card(changed.id)).toContain('<span class="visually-hidden">changed · unresolved</span>');
@@ -171,18 +171,18 @@ describe('UI build page', () => {
     expect(all).toMatch(/aria-current="page">All <span class="count">3<\/span>/);
     expect(all).toContain('Unresolved <span class="count">2</span>');
     expect(all).toContain('Changed <span class="count">1</span>');
-    expect(all).toContain('OK <span class="count">1</span>');
+    expect(all).toContain('Passed <span class="count">1</span>');
     expect(all).not.toContain('Errors <span');
     // All, New, Unresolved first, then the rest.
-    const order = ['All', 'New', 'Unresolved', 'Changed', 'OK'].map((label) =>
+    const order = ['All', 'New', 'Unresolved', 'Changed', 'Passed'].map((label) =>
       all.indexOf(`>${label} <span class="count">`),
     );
     expect(order.every((at) => at > 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    // An unchanged check says "ok" (its card's tooltip and hidden text).
-    expect(all).toContain('<span class="visually-hidden">ok</span>');
-    // The counts say "ok" for unchanged checks too.
-    expect(all).toContain('1 changed · 1 new · 1 ok');
+    // An unchanged check says "passed" (its card's tooltip and hidden text).
+    expect(all).toContain('<span class="visually-hidden">passed</span>');
+    // The counts say "passed" for unchanged checks too.
+    expect(all).toContain('1 changed · 1 new · 1 passed');
 
     const pending = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     expect(pending).toMatch(/aria-current="page">Unresolved <span class="count">2<\/span>/);

@@ -16,7 +16,7 @@ export const CHECK_FILTERS: CheckFilter[] = [
   { key: 'pending', label: 'Unresolved', review: 'pending' },
   { key: 'changed', label: 'Changed', result: 'changed' },
   { key: 'error', label: 'Errors', result: 'error' },
-  { key: 'unchanged', label: 'OK', result: 'unchanged' },
+  { key: 'unchanged', label: 'Passed', result: 'unchanged' },
   { key: 'rejected', label: 'Rejected', review: 'rejected' },
 ];
 

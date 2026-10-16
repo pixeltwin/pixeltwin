@@ -72,7 +72,36 @@ export function init(): void {
       toast('Someone else reviewed this check already', { tone: 'warning' });
     }
     unchanged = 0;
-    await tick();
+    await refreshAround(form);
+  }
+
+  /**
+   * After an in-place action: the header, the filter chips and the form's own card from a fresh
+   * copy of the page. Swapping the whole grid would let the browser re-anchor the scroll.
+   */
+  async function refreshAround(form: HTMLFormElement): Promise<void> {
+    let doc: Document;
+    try {
+      doc = await fetchPage(location.href);
+    } catch {
+      schedule();
+      return;
+    }
+    const card = form.closest<HTMLElement>('[id]');
+    const swaps = ['[data-live="build-head"]', '[data-live="chips"]', '[data-live="tags"]'];
+    for (const selector of swaps) {
+      const current = document.querySelector(selector);
+      const fresh = doc.querySelector(selector);
+      if (current && fresh && fresh.outerHTML !== current.outerHTML)
+        current.replaceWith(document.importNode(fresh, true));
+    }
+    if (card) {
+      const fresh = doc.getElementById(card.id);
+      if (fresh) card.replaceWith(document.importNode(fresh, true));
+      // Filtered out now (approved under New or Unresolved): it stays until the next visit.
+      else form.remove();
+    }
+    schedule();
   }
 
   document.addEventListener('visibilitychange', () => {
