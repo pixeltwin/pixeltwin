@@ -51,6 +51,10 @@ describe('UI areas', () => {
     expect(body.indexOf('class="segmented modes"')).toBeLessThan(body.indexOf('class="stage-actions"'));
     expect(body.indexOf('class="stage-actions"')).toBeLessThan(body.indexOf('data-draw="ignore"'));
     expect(body.indexOf('data-draw="ignore"')).toBeLessThan(body.indexOf('data-zoom="toggle"'));
+    // Fit / 100 % shows an icon, not its key (Z still works and is in the tooltip).
+    expect(body).toContain('<span data-zoom-label="true">Fit</span><svg class="icon icon-fit"');
+    expect(body).not.toContain('<kbd>Z</kbd>');
+    expect(body).toContain('title="Fit / 100% (Z)"');
     const forViewer = await page(`/ui/checks/${check.id}`, viewer);
     expect(forViewer).not.toContain('data-draw=');
   });

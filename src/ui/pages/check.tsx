@@ -179,8 +179,15 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
         <div class="stage-actions">
           {props.canReview && <DrawTools areas={areas} />}
           <div class="zoom-controls">
-            <button type="button" class="small" data-zoom="toggle" aria-label="Toggle fit and 100% (Z)">
-              <span data-zoom-label>Fit</span> <kbd>Z</kbd>
+            <button
+              type="button"
+              class="small zoom-toggle"
+              data-zoom="toggle"
+              aria-label="Toggle fit and 100% (Z)"
+              title="Fit / 100% (Z)"
+            >
+              <span data-zoom-label>Fit</span>
+              <FitIcon />
             </button>
           </div>
         </div>
@@ -310,6 +317,15 @@ function EditIcon() {
     <svg class="icon icon-edit" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z" />
       <path d="M9.5 4l2.5 2.5" />
+    </svg>
+  );
+}
+
+/** Four corners: fit the screenshot to the stage, or show it at 100 %. */
+function FitIcon() {
+  return (
+    <svg class="icon icon-fit" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />
     </svg>
   );
 }
