@@ -90,6 +90,45 @@ describe('UI areas', () => {
     expect(forViewer).not.toContain('data-area-edit');
   });
 
+  test('each change has Ignore, which adds an ignore area over it (4 px around), also without JavaScript', async () => {
+    const check = await changedCheck();
+    const body = await page(`/ui/checks/${check.id}?filter=all`);
+    // The change is 10×10 at (10,10) on a 100×100 screenshot.
+    expect(body).toContain(`<form method="post" action="/ui/checks/${check.id}/areas" data-area-add="true">`);
+    expect(body).toContain(
+      '<input type="hidden" name="kind" value="ignore"/><input type="hidden" name="x" value="6"/><input type="hidden" name="y" value="6"/><input type="hidden" name="width" value="18"/><input type="hidden" name="height" value="18"/>',
+    );
+    expect(body).toContain('aria-label="Ignore change 1"');
+    expect(await page(`/ui/checks/${check.id}`, viewer)).not.toContain('data-area-add');
+
+    const res = await postForm(
+      t,
+      `/ui/checks/${check.id}/areas`,
+      { filter: 'all', kind: 'ignore', x: '6', y: '6', width: '18', height: '18' },
+      reviewer,
+    );
+    expect(location(res)).toBe(`/ui/checks/${check.id}?filter=all&done=area-added`);
+    expect(
+      (await listAreas(t.deps, check.id)).map(({ kind, x, y, width, height }) => [kind, x, y, width, height]),
+    ).toEqual([['ignore', 6, 6, 18, 18]]);
+    expect((await getCheck(t.deps, check.id)).result).toBe('unchanged');
+    const forViewer = await postForm(
+      t,
+      `/ui/checks/${check.id}/areas`,
+      { kind: 'ignore', x: '0', y: '0', width: '5', height: '5' },
+      viewer,
+    );
+    expect(forViewer.status).toBe(403);
+  });
+
+  test('Ignore is disabled on a snapshot that has compare areas', async () => {
+    const check = await changedCheck();
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'compare', x: 0, y: 0, width: 100, height: 100 });
+    const body = await page(`/ui/checks/${check.id}`);
+    expect(body).toMatch(/aria-label="Ignore change 1"[^>]*disabled/);
+    expect(body).toContain('Delete the compare areas first to ignore a change');
+  });
+
   test('deleting an area works without JavaScript and compares the check again', async () => {
     const check = await changedCheck();
     const { area } = await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', ...overClock });

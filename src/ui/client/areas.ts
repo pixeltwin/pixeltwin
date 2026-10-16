@@ -380,6 +380,17 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     listen(item, 'focusout', () => light(false));
   }
 
+  // Ignore next to a change: the same area through the API, then the check compared again.
+  for (const form of root.querySelectorAll<HTMLFormElement>('form[data-area-add]')) {
+    listen(form, 'submit', (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      const number = (name: string) => Number(data.get(name));
+      const added = data.get('kind') === 'compare' ? 'compare' : 'ignore';
+      void save(added, { x: number('x'), y: number('y'), width: number('width'), height: number('height') });
+    });
+  }
+
   for (const form of root.querySelectorAll<HTMLFormElement>('form[data-area-delete]')) {
     listen(form, 'submit', (e) => {
       e.preventDefault();

@@ -3,7 +3,7 @@ import type { Child } from 'hono/jsx';
 import type { Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
-import { type Area, deleteArea, listAreas } from '../../domain/areas';
+import { type Area, createArea, deleteArea, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
@@ -402,6 +402,54 @@ function Areas(props: {
   );
 }
 
+/** Room an Ignore-this-change area leaves around the change, so a slightly wider change next time is still covered. */
+const CHANGE_MARGIN = 4;
+
+/** The change grown by CHANGE_MARGIN on every side, kept inside the screenshot when its size is known. */
+function aroundChange(r: Rect, size: Size | undefined): Rect {
+  const x = Math.max(0, r.x - CHANGE_MARGIN);
+  const y = Math.max(0, r.y - CHANGE_MARGIN);
+  const right = Math.min(size?.width ?? Number.POSITIVE_INFINITY, r.x + r.width + CHANGE_MARGIN);
+  const bottom = Math.min(size?.height ?? Number.POSITIVE_INFINITY, r.y + r.height + CHANGE_MARGIN);
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+/** Ignore next to a change: a form that adds an ignore area over it (works without JavaScript too). */
+function IgnoreChange(props: {
+  ui: Ui;
+  check: CheckView;
+  region: Rect;
+  index: number;
+  size: Size | undefined;
+  filter: CheckFilter;
+  blocked: boolean;
+}) {
+  const area = aroundChange(props.region, props.size);
+  return (
+    <form method="post" action={props.ui.url(`/ui/checks/${props.check.id}/areas`)} data-area-add>
+      <input type="hidden" name="filter" value={props.filter.key} />
+      <input type="hidden" name="kind" value="ignore" />
+      <input type="hidden" name="x" value={String(area.x)} />
+      <input type="hidden" name="y" value={String(area.y)} />
+      <input type="hidden" name="width" value={String(area.width)} />
+      <input type="hidden" name="height" value={String(area.height)} />
+      <button
+        type="submit"
+        class="small ignore-change"
+        aria-label={`Ignore change ${props.index + 1}`}
+        title={
+          props.blocked
+            ? 'Delete the compare areas first to ignore a change'
+            : 'Add an ignore area over this change, for every check of this snapshot'
+        }
+        disabled={props.blocked}
+      >
+        Ignore
+      </button>
+    </form>
+  );
+}
+
 function Info(props: {
   ui: Ui;
   check: CheckView;
@@ -468,6 +516,17 @@ function Info(props: {
                 <span>{`Change ${i + 1}`}</span>
                 <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
               </button>
+              {props.canReview && (
+                <IgnoreChange
+                  ui={props.ui}
+                  check={check}
+                  region={r}
+                  index={i}
+                  size={size}
+                  filter={props.filter}
+                  blocked={props.areas.some((a) => a.kind === 'compare')}
+                />
+              )}
             </li>
           ))}
           {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
@@ -734,6 +793,24 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       );
     });
   }
+
+  app.post('/ui/checks/:id/areas', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
+    }
+    const form = await c.req.parseBody();
+    const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
+    const number = (name: string) => Number(field(form, name));
+    const { check } = await createArea(s.deps, c.req.param('id'), userOf(c).id, {
+      kind: field(form, 'kind'),
+      x: number('x'),
+      y: number('y'),
+      width: number('width'),
+      height: number('height'),
+    });
+    return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=area-added`), 303);
+  });
 
   app.post('/ui/checks/:id/areas/:areaId/delete', async (c) => {
     const ui = uiOf(c, s);

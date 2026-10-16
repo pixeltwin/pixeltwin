@@ -139,6 +139,16 @@ test('a reviewer draws an ignore area over the change; the check is compared aga
   await expect(page.locator('.review-head')).toContainText('changed');
 });
 
+test('Ignore next to a change adds an ignore area over it at once', async ({ reviewerPage: page, seeded }) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.review-head')).toContainText('changed');
+  await page.getByRole('button', { name: 'Ignore change 1' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Ignore area added');
+  await expect(page.locator('.review-head')).toContainText('unchanged');
+  await expect(page.locator('.area-item')).toHaveCount(1);
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
+});
+
 test('an edited area saves itself 10 seconds after the last change', async ({ reviewerPage: page, seeded }) => {
   await page.clock.install();
   await open(page, `/ui/checks/${seeded.changed}?filter=all`);
