@@ -34,37 +34,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A running build on a card: a pulsing dot and a word, quieter than a pill. */
-.running-indicator {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--blue);
-  font-size: var(--text-sm);
-  font-weight: 550;
-}
-.running-indicator .pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--blue-dot);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgb(28 126 214 / 0.45);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgb(28 126 214 / 0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .running-indicator .pulse {
-    animation: none;
-  }
-}
 .project-card-head .pill {
   flex-shrink: 0;
 }

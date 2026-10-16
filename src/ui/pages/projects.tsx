@@ -20,6 +20,7 @@ import {
   formErrors,
   Pill,
   ProjectTabs,
+  RunningIndicator,
   toneOf,
   VERDICT_LABELS,
   VerdictPill,
@@ -126,14 +127,7 @@ function NewProjectButton({ ui }: { ui: Ui }) {
  * its verdict, except "needs review", which the card's "N to review" already says.
  */
 function CardStatus({ build }: { build: BuildView }) {
-  if (build.state === 'open') {
-    return (
-      <span class="running-indicator">
-        <span class="pulse" aria-hidden="true" />
-        running
-      </span>
-    );
-  }
+  if (build.state === 'open') return <RunningIndicator />;
   return build.verdict === 'pending' ? null : <VerdictPill verdict={build.verdict} />;
 }
 

@@ -49,7 +49,11 @@ describe('UI build page', () => {
     expect(page).toContain('vs main');
     expect(page).toContain('abcdef1');
     expect(page).toContain('ci-77');
-    expect(page).toContain('tone-blue">running</span>');
+    // The same pulsing indicator as on the project cards, not a pill.
+    expect(page).toContain(
+      '<span class="running-indicator"><span class="pulse" aria-hidden="true"></span>running</span>',
+    );
+    expect(page).not.toContain('tone-blue">running</span>');
     expect(page).toContain('<a href="/ui/p/web">Web shop</a>');
     expect(page).toContain('<a href="/ui/p/web/builds?branch=feature%2Fcart">feature/cart</a>');
   });
@@ -100,7 +104,9 @@ describe('UI build page', () => {
     expect(location(res)).toBe(`/ui/builds/${buildId}?done=approved-all`);
     const after = await html(await t.request('GET', location(res), { as: reviewer }));
     expect(after).toContain('All pending checks approved.');
-    expect(after).toContain('tone-blue">running</span>');
+    expect(after).toContain(
+      '<span class="running-indicator"><span class="pulse" aria-hidden="true"></span>running</span>',
+    );
     expect(after).not.toContain('needs review');
     expect((await postForm(t, `/ui/builds/${buildId}/approve`, {}, viewer)).status).toBe(403);
   });

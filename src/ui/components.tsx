@@ -243,6 +243,16 @@ export function formErrors(err: AppError): Record<string, string> {
   return out;
 }
 
+/** A running build: a pulsing dot and a word, quieter than a pill (cards, lists, the build page). */
+export function RunningIndicator() {
+  return (
+    <span class="running-indicator">
+      <span class="pulse" aria-hidden="true" />
+      running
+    </span>
+  );
+}
+
 /**
  * A build's status: its verdict, or `running` while it is open; a running build that already
  * needs attention (pending, rejected, error) shows that too.
@@ -252,7 +262,7 @@ export function BuildStatus({ build }: { build: Pick<BuildView, 'state' | 'verdi
   const attention = build.verdict !== 'passed' && build.verdict !== 'empty';
   return (
     <span class="status">
-      <Pill tone="blue">running</Pill>
+      <RunningIndicator />
       {attention && <VerdictPill verdict={build.verdict} />}
     </span>
   );

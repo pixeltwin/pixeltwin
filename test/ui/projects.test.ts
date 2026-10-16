@@ -298,7 +298,9 @@ describe('UI projects', () => {
       expect(page).toContain('ci-77');
       expect(page).toContain('needs review');
       // feature/cart's build is still open: it is running, and its pending check shows too.
-      expect(page).toContain('tone-blue">running</span>');
+      expect(page).toContain(
+        '<span class="running-indicator"><span class="pulse" aria-hidden="true"></span>running</span>',
+      );
       expect(page).toContain('aria-current="page">All builds</a>');
       expect(page).toContain('data-live="builds" data-live-open=""');
       // A later page of the list never changes by itself; only the first one watches.
