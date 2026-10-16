@@ -22,4 +22,6 @@ export class MemoryStorage implements Storage {
   async delete(key: string): Promise<void> {
     this.objects.delete(key);
   }
+
+  async check(): Promise<void> {}
 }

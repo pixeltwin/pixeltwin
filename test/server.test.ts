@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { loadConfig } from '../src/config';
 import { openDatabase } from '../src/db/database';
 import { createUser } from '../src/domain/auth/users';
-import { silentLogger } from '../src/log';
+import { createLogger, silentLogger } from '../src/log';
 import { main } from '../src/main';
 import { type RunningServer, startServer } from '../src/server';
 import { BLACK, makePng, WHITE } from './helpers/png';
@@ -99,6 +99,44 @@ describe('server end to end', () => {
     expect(await finalized.json()).toMatchObject({ state: 'finalized', verdict: 'pending' });
     expect(existsSync(join(dir, 'pixeltwin.db'))).toBe(true);
     expect(readdirSync(join(dir, 'images')).length).toBeGreaterThan(0);
+  });
+
+  test('stopping lets requests in flight finish instead of cutting them off', async () => {
+    const config = loadConfig({ DATA_DIR: dir, PORT: '0', DIFF_WORKERS: '1' });
+    const running = await startServer(config, silentLogger);
+    const encoder = new TextEncoder();
+    let send: ((chunk: string) => void) | undefined;
+    let finish: (() => void) | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        send = (chunk) => controller.enqueue(encoder.encode(chunk));
+        finish = () => controller.close();
+      },
+    });
+    const pending = fetch(`${running.url}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: running.url },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    send?.('{"email":"nobody@example.com",');
+    await Bun.sleep(100);
+    const stopped = running.stop();
+    await Bun.sleep(200);
+    send?.('"password":"wrong-password-1"}');
+    finish?.();
+    const res = await pending;
+    expect(res.status).toBe(401);
+    await stopped;
+  });
+
+  test('the startup log says where images live and how many diff workers run', async () => {
+    const lines: string[] = [];
+    const logger = createLogger('info', (line) => lines.push(line));
+    const config = loadConfig({ DATA_DIR: dir, PORT: '0', DIFF_WORKERS: '2' });
+    server = await startServer(config, logger);
+    const listening = JSON.parse(lines.find((l) => l.includes('"listening"')) ?? '{}');
+    expect(listening).toMatchObject({ storage: 'local', diffWorkers: 2, database: 'sqlite' });
   });
 
   test('a restarted server keeps its data and asks for no setup', async () => {

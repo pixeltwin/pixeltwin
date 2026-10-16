@@ -85,6 +85,7 @@ describe('retention job', () => {
       exists: deps.storage.exists.bind(deps.storage),
       get: deps.storage.get.bind(deps.storage),
       put: deps.storage.put.bind(deps.storage),
+      check: deps.storage.check.bind(deps.storage),
       delete: async (key: string) => {
         await Bun.sleep(300);
         await deps.storage.delete(key);

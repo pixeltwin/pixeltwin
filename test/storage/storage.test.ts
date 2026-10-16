@@ -90,6 +90,20 @@ describe('LocalStorage specifics', () => {
   });
 });
 
+test.skipIf(process.getuid?.() === 0)('a local storage that cannot write fails its health check', async () => {
+  const { chmodSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'pixeltwin-ro-'));
+  try {
+    const storage = new LocalStorage(dir);
+    await storage.check();
+    chmodSync(dir, 0o555);
+    await expect(storage.check()).rejects.toThrow();
+  } finally {
+    chmodSync(dir, 0o755);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Images in the database itself (STORAGE=postgres): replicas need no shared disk.
 contract('DatabaseStorage', async () => {
   const handle = await createTestDb();

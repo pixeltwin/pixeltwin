@@ -13,7 +13,7 @@ export function registerSystemRoutes(app: OpenAPIHono<AppEnv>, s: Services): voi
       checks.database = 'failing';
     }
     try {
-      await s.deps.storage.exists('healthz');
+      await s.deps.storage.check();
     } catch {
       checks.storage = 'failing';
     }

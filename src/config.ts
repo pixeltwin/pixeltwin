@@ -18,6 +18,7 @@ const envSchema = z.object({
   DIFF_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
   DIFF_QUEUE_MAX: z.coerce.number().int().min(0).optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(500).default(20),
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).default(20_000),
   STORAGE: z.enum(['local', 'postgres']).default('local'),
   SETUP_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   MAX_IMAGE_BYTES: z.coerce
@@ -44,6 +45,8 @@ export interface Config {
   diffQueueMax: number;
   /** Connections in the Postgres pool (ignored for SQLite). */
   databasePoolMax: number;
+  /** On SIGTERM, how long requests in flight may finish before the rest are cut off. */
+  shutdownGraceMs: number;
   /** Where image bytes live: files under DATA_DIR, or the Postgres database (no shared disk needed). */
   storage: 'local' | 'postgres';
   /** The first-run setup token, fixed (e.g. from a Kubernetes Secret); null makes a random one. */
@@ -119,6 +122,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     diffTimeoutMs: e.DIFF_TIMEOUT_MS,
     diffQueueMax: e.DIFF_QUEUE_MAX ?? diffWorkers * 20,
     databasePoolMax: e.DATABASE_POOL_MAX,
+    shutdownGraceMs: e.SHUTDOWN_GRACE_MS,
     storage: e.STORAGE,
     setupToken: e.SETUP_TOKEN ?? null,
     maxImageBytes: e.MAX_IMAGE_BYTES,

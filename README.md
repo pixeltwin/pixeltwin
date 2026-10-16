@@ -107,6 +107,7 @@ it out.
 | `DIFF_WORKERS` | CPUs − 1 (one core stays with the main thread); in a container, its CPU limit counts |
 | `DIFF_TIMEOUT_MS` | `30000` |
 | `DIFF_QUEUE_MAX` | `DIFF_WORKERS` × 20: while more diffs wait, uploads get `503 server_busy` with `Retry-After`; `0` never refuses |
+| `SHUTDOWN_GRACE_MS` | `20000`: on SIGTERM, requests in flight get this long to finish (keep it below Kubernetes' `terminationGracePeriodSeconds`) |
 | `MAX_IMAGE_BYTES` | `10485760` |
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |

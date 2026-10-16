@@ -5,6 +5,8 @@ export interface Storage {
   exists(key: string): Promise<boolean>;
   /** Deleting a missing key is not an error. */
   delete(key: string): Promise<void>;
+  /** Throws when the storage cannot be written to (for /healthz). */
+  check(): Promise<void>;
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;

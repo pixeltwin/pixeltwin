@@ -34,4 +34,9 @@ export class DatabaseStorage implements Storage {
   async delete(key: string): Promise<void> {
     await this.#db.deleteFrom('storedObjects').where('key', '=', key).execute();
   }
+
+  /** The table is reachable (writes go through the same database the health check already tests). */
+  async check(): Promise<void> {
+    await this.#db.selectFrom('storedObjects').select('key').limit(1).execute();
+  }
 }

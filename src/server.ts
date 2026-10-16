@@ -43,7 +43,15 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
   });
   const retention = startRetentionJob({ deps, handle, logger });
   const url = server.url.href.replace(/\/$/, '');
-  logger.info('listening', { url, publicUrl: config.publicUrl, database: handle.kind, dataDir: config.dataDir });
+  logger.info('listening', {
+    url,
+    publicUrl: config.publicUrl,
+    database: handle.kind,
+    ...(handle.kind === 'postgres' ? { databasePoolMax: config.databasePoolMax } : {}),
+    storage: config.storage,
+    dataDir: config.dataDir,
+    diffWorkers: config.diffWorkers,
+  });
   if (token && config.setupToken) {
     // The token came from SETUP_TOKEN (a secret): never copy it into the logs.
     logger.warn('no users yet; create the first admin with the SETUP_TOKEN value', {
@@ -61,6 +69,9 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     url,
     setupToken: token,
     async stop() {
+      // Stop accepting connections and let requests in flight (an upload mid-deploy) finish, up to
+      // the grace period; then cut off whatever is left.
+      await Promise.race([server.stop(false), Bun.sleep(config.shutdownGraceMs)]);
       await server.stop(true);
       await retention.stop();
       await pool.close();

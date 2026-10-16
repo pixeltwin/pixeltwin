@@ -41,6 +41,14 @@ export class LocalStorage implements Storage {
     await rm(this.#pathFor(key), { force: true });
   }
 
+  /** Writes and removes a probe file: a full or read-only disk fails here, not on the next upload. */
+  async check(): Promise<void> {
+    await mkdir(this.#root, { recursive: true });
+    const probe = resolve(this.#root, `.healthz-${randomUUID()}`);
+    await writeFile(probe, 'ok');
+    await rm(probe, { force: true });
+  }
+
   #pathFor(key: string): string {
     const path = resolve(this.#root, key);
     if (isAbsolute(key) || key.split(/[\\/]/).includes('..') || !path.startsWith(this.#root + sep)) {
