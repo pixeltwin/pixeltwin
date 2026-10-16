@@ -44,8 +44,16 @@ describe('settings', () => {
     const fromOptions = resolveSettings({ url: 'http://opt', branch: 'opt-branch', gate: false, waitSeconds: 0 }, env);
     expect(fromOptions).toMatchObject({ url: 'http://opt', branch: 'opt-branch', gate: false, waitSeconds: 0 });
     expect(resolveSettings({}, { ...env, PIXELTWIN_BRANCH: '' }).branch).toBe('ci-branch');
-    const defaults = resolveSettings({}, {}, mkdtempSync(join(tmpdir(), 'pixeltwin-nogit-')));
-    expect(defaults).toMatchObject({ url: 'http://localhost:8080', token: '', gate: false, waitSeconds: 0 });
+    const noRepo = mkdtempSync(join(tmpdir(), 'pixeltwin-nogit-'));
+    const defaults = resolveSettings({}, {}, noRepo);
+    rmSync(noRepo, { recursive: true, force: true });
+    expect(defaults).toMatchObject({
+      url: 'http://localhost:8080',
+      token: '',
+      branch: undefined,
+      gate: false,
+      waitSeconds: 0,
+    });
     expect(resolveSettings({}, { PIXELTWIN_FINALIZE: '0', PIXELTWIN_DISABLED: 'true' })).toMatchObject({
       finalize: false,
       disabled: true,
