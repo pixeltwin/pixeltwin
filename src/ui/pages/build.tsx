@@ -40,6 +40,67 @@ function CheckCard({ ui, check, size, filter }: { ui: Ui; check: CheckView; size
   );
 }
 
+/** A check mark in a circle with a few sparkles: shown when nothing is left to review. */
+function AllDoneArt() {
+  return (
+    <svg class="all-done-art" viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="all-done-halo" cx="60" cy="62" r="40" />
+      <circle class="all-done-disc" cx="60" cy="62" r="30" />
+      <path class="all-done-tick" d="M46 62l10 10 19-21" />
+      <path class="all-done-spark" d="M20 24v10M15 29h10M100 16v8M96 20h8M104 86v10M99 91h10" />
+    </svg>
+  );
+}
+
+const EMPTY_FILTER: Record<string, string> = {
+  changed: 'No changed checks',
+  new: 'No new checks',
+  error: 'No errors',
+  unchanged: 'No unchanged checks',
+  rejected: 'No rejected checks',
+};
+
+/** What an empty grid says: celebrate a reviewed build, otherwise name what is missing. */
+function EmptyChecks(props: { ui: Ui; build: BuildView; filter: CheckFilter }) {
+  const { ui, build, filter } = props;
+  const total = build.counts.total;
+  const all = ui.url(`/ui/builds/${build.id}?filter=all`);
+  const showAll = total > 0 && (
+    <a class="button" href={all}>
+      {total === 1 ? 'Show the check' : `Show all ${total} checks`}
+    </a>
+  );
+  if (total === 0) {
+    return (
+      <div class="empty">
+        <h3>No checks yet</h3>
+        <p class="muted">Screenshots appear here as the test run posts them.</p>
+      </div>
+    );
+  }
+  if (filter.key === 'pending') {
+    const nothingChanged = build.counts.result.changed + build.counts.result.new + build.counts.result.error === 0;
+    return (
+      <div class="empty all-done">
+        <AllDoneArt />
+        <h3>{nothingChanged ? 'No changes' : 'Nothing to review'}</h3>
+        <p class="muted">
+          {nothingChanged
+            ? 'Every screenshot matches its baseline.'
+            : `Every check in build #${build.number} is decided. Nice work.`}
+        </p>
+        {showAll}
+      </div>
+    );
+  }
+  return (
+    <div class="empty">
+      <h3>{`${EMPTY_FILTER[filter.key] ?? 'No checks'} in this build`}</h3>
+      {showAll}
+    </div>
+  );
+}
+
 function BuildPage(props: {
   ui: Ui;
   project: Project;
@@ -149,9 +210,11 @@ function BuildPage(props: {
         </form>
       </div>
       <div data-live="checks">
-        <div class="empty" data-search-empty hidden={checks.length > 0}>
-          <h3>{q ? 'No checks match this search.' : 'No checks match this filter.'}</h3>
+        {/* The search island shows this when typing hides every card. */}
+        <div class="empty" data-search-empty hidden={!(q && checks.length === 0)}>
+          <h3>No checks match this search.</h3>
         </div>
+        {checks.length === 0 && !q && <EmptyChecks ui={ui} build={build} filter={filter} />}
         {checks.length > 0 && (
           <div class="check-grid">
             {checks.map((check) => (

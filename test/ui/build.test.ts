@@ -144,9 +144,31 @@ describe('UI build page', () => {
     expect(await page(`/ui/builds/${buildId}?filter=all&q=nothing-like-this`)).toContain('No checks match');
   });
 
-  test('a filter with no checks says so', async () => {
+  test('an empty filter names what is missing and offers all checks', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=error`, { as: viewer }));
-    expect(page).toContain('No checks match this filter.');
+    expect(page).toContain('No errors in this build');
+    expect(page).toContain(`href="/ui/builds/${buildId}?filter=all"`);
+    expect(page).not.toContain('No checks match this filter.');
+  });
+
+  test('with everything decided, To review celebrates instead of looking empty', async () => {
+    const { buildId } = await seedBuild();
+    await postForm(t, `/ui/builds/${buildId}/approve`, {}, reviewer);
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
+    expect(page).toContain('<div class="empty all-done">');
+    expect(page).toContain('<svg class="all-done-art"');
+    expect(page).toContain('Nothing to review');
+    expect(page).toContain('Every check in build #1 is decided.');
+    expect(page).toContain('Show all 3 checks');
+  });
+
+  test('a build where nothing changed says so', async () => {
+    await seedBaseline(t.deps, project, white, { name: 'home' });
+    const buildId = await openBuild(t.deps, 'web');
+    await submit(t.deps, buildId, white, { name: 'home' });
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
+    expect(page).toContain('No changes');
+    expect(page).toContain('Every screenshot matches its baseline.');
   });
 });
