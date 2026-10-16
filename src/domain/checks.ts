@@ -251,23 +251,41 @@ function tagPattern(key: string, value: string): string {
  * `q` finds checks whose name or variant contains it, ignoring case. `tags` keeps checks with one
  * of the given values for every key named (values of one key add up, keys narrow).
  */
+/**
+ * A check's status as its card says it: `passed` is unchanged or approved by the project's
+ * auto-approve-new setting, `resolved` is approved by a person.
+ */
+export type CheckStatusFilter = 'passed' | 'resolved';
+
 export async function listChecks(
   deps: Pick<Deps, 'db'>,
   buildId: string,
   options: {
     result?: CheckResult;
     review?: CheckReview;
+    status?: CheckStatusFilter;
     q?: string;
     tags?: Array<{ key: string; value: string }>;
     order?: 'asc' | 'desc';
   } & PageInput = {},
 ): Promise<Page<CheckView>> {
-  const { result, review, q, tags = [], order = 'asc', ...pageOptions } = options;
+  const { result, review, status, q, tags = [], order = 'asc', ...pageOptions } = options;
   const page = parseInput(pageInputSchema, pageOptions);
   await getBuildRow(deps, buildId);
   let query = checksWithJoins(deps).where('checks.buildId', '=', buildId);
   if (result) query = query.where('checks.result', '=', result);
   if (review) query = query.where('checks.review', '=', review);
+  if (status === 'passed') {
+    query = query.where((eb) =>
+      eb.or([
+        eb('checks.result', '=', 'unchanged'),
+        eb.and([eb('checks.review', '=', 'approved'), eb('checks.reviewedBy', '=', AUTO_APPROVER)]),
+      ]),
+    );
+  }
+  if (status === 'resolved') {
+    query = query.where('checks.review', '=', 'approved').where('checks.reviewedBy', '!=', AUTO_APPROVER);
+  }
   const text = q?.trim();
   if (text) {
     const pattern = containsPattern(text);

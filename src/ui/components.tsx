@@ -1,6 +1,7 @@
 import type { Child } from 'hono/jsx';
 import type { BuildView } from '../domain/builds';
 import type { CheckView } from '../domain/checks';
+import { AUTO_APPROVER } from '../domain/reviews';
 import type { BuildCounts, Verdict } from '../domain/verdict';
 import type { AppError } from '../errors';
 import type { Ui } from './context';
@@ -327,15 +328,16 @@ export function statusText(check: Pick<CheckView, 'result' | 'review'>): string 
 }
 
 /**
- * The colour a check's card takes: what someone has to do about it first. Red for an error or a
- * rejection, amber for a change and blue for a new screen waiting for review, green once approved
- * (`approved`) or unchanged (`passed`), grey when outdated.
+ * A check's one status on its card, which is also the card's colour: `passed` (unchanged, or new
+ * and approved by the project setting), `resolved` (approved by a person), `unresolved` (waits for
+ * review), `rejected`, and the rare `error` and `outdated`.
  */
-export function cardTone(check: Pick<CheckView, 'result' | 'review'>): string {
-  if (check.result === 'error' || check.review === 'rejected') return 'bad';
+export function cardStatus(check: Pick<CheckView, 'result' | 'review' | 'reviewedBy'>): string {
+  if (check.result === 'error') return 'error';
+  if (check.review === 'rejected') return 'rejected';
   if (check.review === 'outdated') return 'outdated';
-  if (check.review === 'approved') return 'approved';
-  if (check.review === 'pending') return check.result === 'new' ? 'new' : 'changed';
+  if (check.review === 'pending') return 'unresolved';
+  if (check.review === 'approved') return check.reviewedBy === AUTO_APPROVER ? 'passed' : 'resolved';
   return 'passed';
 }
 

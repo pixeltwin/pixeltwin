@@ -1,4 +1,5 @@
 import type { CheckResult, CheckReview } from '../db/schema';
+import type { CheckStatusFilter } from '../domain/checks';
 import type { BuildCounts } from '../domain/verdict';
 
 /** The check filters of the build page and focus mode (UI spec §4.2, §5.1). */
@@ -7,6 +8,8 @@ export interface CheckFilter {
   label: string;
   result?: CheckResult;
   review?: CheckReview;
+  /** The card's status word, when it is not one result or review state (see listChecks). */
+  status?: CheckStatusFilter;
 }
 
 /** In the order the build page shows them; the keys stay what links already use. */
@@ -14,9 +17,9 @@ export const CHECK_FILTERS: CheckFilter[] = [
   { key: 'all', label: 'All' },
   { key: 'new', label: 'New', result: 'new' },
   { key: 'pending', label: 'Unresolved', review: 'pending' },
-  { key: 'changed', label: 'Changed', result: 'changed' },
+  { key: 'resolved', label: 'Resolved', status: 'resolved' },
   { key: 'error', label: 'Errors', result: 'error' },
-  { key: 'unchanged', label: 'Passed', result: 'unchanged' },
+  { key: 'unchanged', label: 'Passed', status: 'passed' },
   { key: 'rejected', label: 'Rejected', review: 'rejected' },
 ];
 
@@ -37,6 +40,8 @@ export function filterFromQuery(
 }
 
 export function countFor(filter: CheckFilter, counts: BuildCounts): number {
+  if (filter.status === 'passed') return counts.result.unchanged + counts.autoApproved;
+  if (filter.status === 'resolved') return counts.review.approved - counts.autoApproved;
   if (filter.result) return counts.result[filter.result];
   if (filter.review) return counts.review[filter.review];
   return counts.total;

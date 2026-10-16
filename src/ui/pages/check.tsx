@@ -948,7 +948,13 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const [project, build, strip, history, areas, decidedBy] = await Promise.all([
       getProjectById(s.deps, check.projectId),
       getBuild(s.deps, check.buildId),
-      listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, order: 'desc', limit: 200 }),
+      listChecks(s.deps, check.buildId, {
+        result: filter.result,
+        review: filter.review,
+        status: filter.status,
+        order: 'desc',
+        limit: 200,
+      }),
       historyOf(s, check.id),
       listAreas(s.deps, check.id),
       check.supersededBy ? decidedByOf(s, check.supersededBy) : Promise.resolve(null),

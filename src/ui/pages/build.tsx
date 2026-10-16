@@ -9,7 +9,7 @@ import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, BuildStatus, cardTone, countsText, statusText, thumbnailSha, Variant } from '../components';
+import { Ago, BuildStatus, cardStatus, countsText, statusText, thumbnailSha, Variant } from '../components';
 import { noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
@@ -33,7 +33,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
       data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
     >
       <a
-        class={`check-card card-${cardTone(check)}`}
+        class={`check-card card-${cardStatus(check)}`}
         title={statusText(check)}
         href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
       >
@@ -54,7 +54,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
           </span>
           <Variant variant={check.variant} />
           <span class="card-status">
-            <span class="visually-hidden">{statusText(check)}</span>
+            <span class="card-state">{cardStatus(check)}</span>
             {check.result === 'changed' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}
@@ -379,6 +379,7 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       listChecks(s.deps, id, {
         result: filter.result,
         review: filter.review,
+        status: filter.status,
         q,
         tags: picked,
         order: 'desc',

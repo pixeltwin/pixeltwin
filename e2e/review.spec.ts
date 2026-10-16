@@ -335,7 +335,7 @@ test.describe('on a short screen', () => {
     await card.getByRole('button', { name: 'Approve' }).click();
     await expect(page.locator('.toast').last()).toContainText('Approved cart');
     await expect(card.getByRole('button', { name: 'Approve' })).toHaveCount(0);
-    await expect(card).toContainText('approved');
+    await expect(card).toContainText('resolved');
     expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
     const after = (await card.boundingBox())?.y ?? 0;
     // Scrolled to the end, the page ends earlier without the Approve row and the card moves by as

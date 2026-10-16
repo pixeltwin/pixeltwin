@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
 import { finalizeBuild } from '../../src/domain/builds';
 import { createProject } from '../../src/domain/projects';
+import { approveCheck, rejectCheck } from '../../src/domain/reviews';
 import { createTestApp, type TestApp } from '../helpers/app';
 import { BLACK, makePng, WHITE } from '../helpers/png';
 import { openBuild, seedBaseline, submit } from '../helpers/scenario';
@@ -92,12 +93,25 @@ describe('UI build page', () => {
       const at = body.indexOf(`id="${id}"`);
       return body.slice(at, body.indexOf('</a>', at));
     };
-    expect(card(changed.id)).toContain('<a class="check-card card-changed" title="changed · unresolved"');
-    expect(card(fresh.id)).toContain('<a class="check-card card-new" title="new · unresolved"');
+    // One status per card, in words and in its colour: passed, resolved, unresolved or rejected.
+    expect(card(changed.id)).toContain('<a class="check-card card-unresolved" title="changed · unresolved"');
+    expect(card(changed.id)).toContain('<span class="card-state">unresolved</span>');
+    expect(card(fresh.id)).toContain('<span class="card-state">unresolved</span>');
     expect(card(same.id)).toContain('<a class="check-card card-passed" title="passed"');
+    expect(card(same.id)).toContain('<span class="card-state">passed</span>');
     for (const id of [changed.id, fresh.id, same.id]) expect(card(id)).not.toContain('class="pill');
-    // Screen readers still hear the status.
-    expect(card(changed.id)).toContain('<span class="visually-hidden">changed · unresolved</span>');
+
+    await approveCheck(t.deps, changed.id, reviewer.id);
+    await rejectCheck(t.deps, fresh.id, reviewer.id);
+    const after = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: reviewer }));
+    const cardAfter = (id: string) => {
+      const at = after.indexOf(`id="${id}"`);
+      return after.slice(at, after.indexOf('</a>', at));
+    };
+    expect(cardAfter(changed.id)).toContain('class="check-card card-resolved"');
+    expect(cardAfter(changed.id)).toContain('<span class="card-state">resolved</span>');
+    expect(cardAfter(fresh.id)).toContain('class="check-card card-rejected"');
+    expect(cardAfter(fresh.id)).toContain('<span class="card-state">rejected</span>');
   });
 
   describe('a parallel build', () => {
@@ -170,17 +184,16 @@ describe('UI build page', () => {
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
     expect(all).toMatch(/aria-current="page">All <span class="count">3<\/span>/);
     expect(all).toContain('Unresolved <span class="count">2</span>');
-    expect(all).toContain('Changed <span class="count">1</span>');
     expect(all).toContain('Passed <span class="count">1</span>');
     expect(all).not.toContain('Errors <span');
+    // The filters follow the card's status words; Changed is gone (a change is unresolved or resolved).
+    expect(all).not.toContain('>Changed <span');
     // All, New, Unresolved first, then the rest.
-    const order = ['All', 'New', 'Unresolved', 'Changed', 'Passed'].map((label) =>
-      all.indexOf(`>${label} <span class="count">`),
-    );
+    const order = ['All', 'New', 'Unresolved', 'Passed'].map((label) => all.indexOf(`>${label} <span class="count">`));
     expect(order.every((at) => at > 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    // An unchanged check says "passed" (its card's tooltip and hidden text).
-    expect(all).toContain('<span class="visually-hidden">passed</span>');
+    // An unchanged check says "passed" on its card.
+    expect(all).toContain('<span class="card-state">passed</span>');
     // The counts say "passed" for unchanged checks too.
     expect(all).toContain('1 changed · 1 new · 1 passed');
 
@@ -194,23 +207,42 @@ describe('UI build page', () => {
 
   test('a changed thumbnail is the screenshot with its changes marked in red, plus the diff percentage', async () => {
     const { buildId, changed } = await seedBuild();
-    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=changed`, { as: viewer }));
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     // The new screenshot, and the diff for the island that paints the changed pixels over it.
     expect(page).toContain(
       `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}"><span class="thumb-stack"><img src="/api/v1/images/${changed.imageSha}"`,
     );
     expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
     // A check waiting for review says "unresolved".
-    expect(page).toContain('<span class="visually-hidden">changed · unresolved</span>');
+    expect(page).toContain('<span class="card-state">unresolved</span>');
     expect(page).not.toContain('>to review</span>');
     expect(page).toContain('data-islands="search live thumbs"');
   });
 
+  test('Resolved lists what a person approved; Passed also has new screens the project approved itself', async () => {
+    const { buildId, changed, fresh, same } = await seedBuild();
+    await approveCheck(t.deps, changed.id, reviewer.id);
+    await t.deps.db
+      .updateTable('checks')
+      .set({ review: 'approved', reviewedBy: 'auto' })
+      .where('id', '=', fresh.id)
+      .execute();
+    const resolved = await html(await t.request('GET', `/ui/builds/${buildId}?filter=resolved`, { as: viewer }));
+    expect(resolved).toMatch(/aria-current="page">Resolved <span class="count">1<\/span>/);
+    expect(resolved).toContain(`id="${changed.id}"`);
+    expect(resolved).not.toContain(`id="${fresh.id}"`);
+    const passed = await html(await t.request('GET', `/ui/builds/${buildId}?filter=unchanged`, { as: viewer }));
+    expect(passed).toMatch(/aria-current="page">Passed <span class="count">2<\/span>/);
+    expect(passed).toContain(`id="${fresh.id}"`);
+    expect(passed).toContain(`id="${same.id}"`);
+    expect(passed).not.toContain(`id="${changed.id}"`);
+  });
+
   test('thumbnails open focus mode with the same filter', async () => {
     const { buildId, changed, same } = await seedBuild();
-    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=changed`, { as: viewer }));
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     expect(page).toContain('loading="lazy" width="100" height="100"');
-    expect(page).toContain(`href="/ui/checks/${changed.id}?filter=changed"`);
+    expect(page).toContain(`href="/ui/checks/${changed.id}?filter=pending"`);
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
     expect(all).toContain(`src="/api/v1/images/${same.imageSha}"`);
   });

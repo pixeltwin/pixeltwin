@@ -101,27 +101,27 @@
   gap: var(--space-1);
   padding: var(--space-3);
 }
-/* The card takes its status colour (cardTone): the border, and the body under the thumbnail. */
-.check-card.card-changed {
+/* The card takes the colour of its one status (cardStatus): its border, its status word and,
+   when a person has to act or acted, the body under the thumbnail. */
+.check-card.card-unresolved {
   --card-border: var(--amber-border);
   --card-bg: var(--amber-bg);
   --card-strong: var(--amber-dot);
+  --card-text: var(--amber);
 }
-.check-card.card-new {
-  --card-border: var(--blue-border);
-  --card-bg: var(--blue-bg);
-  --card-strong: var(--blue-dot);
-}
-.check-card.card-bad {
+.check-card.card-rejected,
+.check-card.card-error {
   --card-border: var(--red-border);
   --card-bg: var(--red-bg);
   --card-strong: var(--red-dot);
+  --card-text: var(--red);
 }
-.check-card.card-approved,
+.check-card.card-resolved,
 .check-card.card-passed {
   --card-border: var(--green-border);
   --card-bg: var(--green-bg);
   --card-strong: var(--green-dot);
+  --card-text: var(--green);
 }
 .check-card[class*="card-"] {
   border-color: var(--card-border, var(--border));
@@ -132,9 +132,14 @@
 .check-card[class*="card-"]:hover {
   border-color: var(--card-strong, var(--border-strong));
 }
-/* An unchanged screen is the normal case: only its border is green. */
+/* A passing screen is the normal case: only its border and word are green. */
 .check-card.card-passed .check-card-body {
   background: none;
+}
+.card-state {
+  color: var(--card-text, var(--text-muted));
+  font-size: var(--text-xs);
+  font-weight: 600;
 }
 .check-card.card-outdated {
   opacity: 0.7;

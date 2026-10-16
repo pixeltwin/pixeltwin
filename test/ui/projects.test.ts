@@ -338,7 +338,8 @@ describe('UI projects', () => {
       const { cartBuild, pendingCheck } = await seedWeb();
       // feature/cart: a new screen joins the changed one; both wait for review.
       await submit(t.deps, cartBuild, white, { name: 'footer', variant: { x: '1' } });
-      const stats = '<span class="review-stats" title="Passed automatically: unchanged, or new and approved by the project setting. Needed review: changed or new, decided by a person or still waiting.">';
+      const stats =
+        '<span class="review-stats" title="Passed automatically: unchanged, or new and approved by the project setting. Needed review: changed or new, decided by a person or still waiting.">';
       const table = await html(await t.request('GET', '/ui/p/web/builds', { as: viewer }));
       expect(table).toContain('<th>Review</th>');
       expect(table).toContain(`${stats}0 automatically · 2 needed review · 2 left</span>`);
