@@ -1,0 +1,100 @@
+# A minimal single-instance Postgres for trying pixeltwin's `storage: postgres` mode, e.g. on kind:
+#
+#   kubectl create namespace pixeltwin
+#   kubectl -n pixeltwin apply -f deploy/examples/postgres.yaml
+#   kubectl -n pixeltwin rollout status statefulset/pixeltwin-postgres
+#   helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --set storage=postgres \
+#     --set replicaCount=3 --set publicUrl=https://vrt.example.com \
+#     --set database.url='postgres://pixeltwin:change-me@pixeltwin-postgres:5432/pixeltwin'
+#
+# Not for production: one instance, no replication, no backups, password in plain text. Use a
+# managed database or an operator (CloudNativePG, Zalando, Crunchy) for real deployments.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pixeltwin-postgres
+type: Opaque
+stringData:
+  POSTGRES_USER: pixeltwin
+  POSTGRES_PASSWORD: change-me
+  POSTGRES_DB: pixeltwin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pixeltwin-postgres
+spec:
+  selector:
+    app: pixeltwin-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pixeltwin-postgres
+spec:
+  serviceName: pixeltwin-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pixeltwin-postgres
+  template:
+    metadata:
+      labels:
+        app: pixeltwin-postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:17
+          envFrom:
+            - secretRef:
+                name: pixeltwin-postgres
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          # Images are stored in the database, so it grows like the images do; the default 100
+          # connections allow 4 pods at DATABASE_POOL_MAX=20 plus headroom.
+          args: ["-c", "max_connections=100", "-c", "shared_buffers=256MB"]
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "pixeltwin", "-d", "pixeltwin"]
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+      volumes:
+        - name: run
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
