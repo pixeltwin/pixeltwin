@@ -4,6 +4,7 @@
 import {
   type Build,
   type Check,
+  cssBoxToPixels,
   type PixeltwinClient,
   PixeltwinGateError,
   pngSize,
@@ -181,19 +182,11 @@ export class PixeltwinService {
       throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
     // Screenshot pixels per CSS pixel: the device pixel ratio, read from the image itself.
     const scale = (size?.width ?? origin.width) / origin.width;
+    const mapping = { origin: element ? origin : { x: 0, y: 0 }, scale };
     const ignoreRegions = [
-      ...rects,
-      ...measured.boxes
-        .filter((b): b is Rect => b !== null && b.width > 0 && b.height > 0)
-        .map((b) => ({
-          x: (b.x - (element ? origin.x : 0)) * scale,
-          y: (b.y - (element ? origin.y : 0)) * scale,
-          width: b.width * scale,
-          height: b.height * scale,
-        })),
-    ]
-      .map((r) => toPixelRect(r, size))
-      .filter((r) => r !== null);
+      ...rects.map((r) => toPixelRect(r, size)),
+      ...measured.boxes.map((b) => (b ? cssBoxToPixels(b, mapping, size) : null)),
+    ].filter((r) => r !== null);
 
     const variant: Variant = {
       browser: String(target.capabilities.browserName ?? 'unknown'),

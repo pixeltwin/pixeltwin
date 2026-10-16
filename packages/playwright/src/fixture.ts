@@ -1,4 +1,13 @@
-import { type Check, type PixeltwinClient, pngSize, type Rect, toPixelRect, type Variant } from '@pixeltwin/client';
+import {
+  type Check,
+  type CssToPixels,
+  cssBoxToPixels,
+  type PixeltwinClient,
+  pngSize,
+  type Rect,
+  toPixelRect,
+  type Variant,
+} from '@pixeltwin/client';
 import type { Locator, Page, PageScreenshotOptions, TestInfo } from '@playwright/test';
 
 /** Screenshot options passed through to Playwright. */
@@ -43,6 +52,9 @@ interface PageMetrics {
   scrollY: number;
   width: number;
   height: number;
+  /** The document's scrollable size in CSS pixels: what a full-page screenshot covers. */
+  docWidth: number;
+  docHeight: number;
 }
 
 function metricsOf(page: Page): Promise<PageMetrics> {
@@ -54,7 +66,25 @@ function metricsOf(page: Page): Promise<PageMetrics> {
     scrollY: window.scrollY,
     width: window.innerWidth,
     height: window.innerHeight,
+    docWidth: document.documentElement.scrollWidth,
+    docHeight: document.documentElement.scrollHeight,
   }));
+}
+
+/**
+ * Screenshot pixels per CSS pixel of a full-page screenshot, from the image and the document size.
+ * When that agrees with the expected ratio (the device pixel ratio, or 1 for `scale: 'css'`) within
+ * the image's own rounding, the exact expected ratio is used.
+ */
+function fullPageScale(
+  size: { width: number; height: number } | null,
+  width: number,
+  height: number,
+  assumed: number,
+): { x: number; y: number } {
+  if (!size || !(width > 0) || !(height > 0)) return { x: assumed, y: assumed };
+  const agrees = Math.abs(size.width - width * assumed) <= 1 && Math.abs(size.height - height * assumed) <= 1;
+  return agrees ? { x: assumed, y: assumed } : { x: size.width / width, y: size.height / height };
 }
 
 async function boxesOf(locators: Locator[]): Promise<Rect[]> {
@@ -111,47 +141,47 @@ export class Pixeltwin {
     const locators = (options.ignore ?? []).filter(isLocator);
     const rects = (options.ignore ?? []).filter((r): r is Rect => !isLocator(r));
 
-    // Boxes are CSS pixels relative to the viewport; ignore regions are screenshot pixels. For the
-    // viewport and for elements the scale comes from the image (it covers the device pixel ratio,
-    // a phone zoomed out to 980 CSS pixels and `scale: 'css'`).
+    // Boxes are CSS pixels relative to the viewport; ignore regions are screenshot pixels. The scale
+    // comes from the image wherever it can: that covers the device pixel ratio, a phone zoomed out to
+    // 980 CSS pixels, `scale: 'css'` and browsers that render a full page differently.
     const metrics = await metricsOf(page);
     const boxes = await boxesOf(locators);
+    const assumed = shot.scale === 'css' ? 1 : metrics.dpr;
     let image: Uint8Array;
-    let origin: { x: number; y: number };
-    let scale: number;
+    let mapping: CssToPixels;
     if (isPage(target)) {
       image = await target.screenshot({ ...shot, fullPage: options.fullPage ?? false });
+      const size = pngSize(image);
       if (options.fullPage) {
-        // Chromium renders a full page unzoomed, at the device pixel ratio.
-        origin = { x: -metrics.scrollX, y: -metrics.scrollY };
-        scale = shot.scale === 'css' ? 1 : metrics.dpr;
+        // The image covers the whole document (or the clip, in document coordinates); boxes are
+        // relative to the viewport, so the origin is minus the scroll offset.
+        const width = shot.clip?.width ?? metrics.docWidth;
+        const height = shot.clip?.height ?? metrics.docHeight;
+        mapping = {
+          origin: { x: -metrics.scrollX + (shot.clip?.x ?? 0), y: -metrics.scrollY + (shot.clip?.y ?? 0) },
+          scale: fullPageScale(size, width, height, assumed),
+        };
       } else {
-        origin = { x: 0, y: 0 };
-        scale = (pngSize(image)?.width ?? 0) / (shot.clip?.width ?? metrics.visibleWidth);
-        scale ||= (shot.scale === 'css' ? 1 : metrics.dpr) * metrics.zoom;
+        const measured = (size?.width ?? 0) / (shot.clip?.width ?? metrics.visibleWidth);
+        mapping = {
+          origin: { x: shot.clip?.x ?? 0, y: shot.clip?.y ?? 0 },
+          scale: measured || assumed * metrics.zoom,
+        };
       }
-      if (shot.clip) origin = { x: origin.x + shot.clip.x, y: origin.y + shot.clip.y };
     } else {
       const { clip: _clip, ...locatorShot } = shot;
       const own = await target.boundingBox();
       if (!own) throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
-      origin = { x: own.x, y: own.y };
       image = await target.screenshot(locatorShot);
-      scale = (pngSize(image)?.width ?? 0) / own.width || metrics.dpr;
+      const measured = (pngSize(image)?.width ?? 0) / own.width;
+      mapping = { origin: { x: own.x, y: own.y }, scale: measured || assumed };
     }
 
     const size = pngSize(image);
     const ignoreRegions = [
-      ...rects,
-      ...boxes.map((b) => ({
-        x: (b.x - origin.x) * scale,
-        y: (b.y - origin.y) * scale,
-        width: b.width * scale,
-        height: b.height * scale,
-      })),
-    ]
-      .map((r) => toPixelRect(r, size))
-      .filter((r) => r !== null);
+      ...rects.map((r) => toPixelRect(r, size)),
+      ...boxes.map((b) => cssBoxToPixels(b, mapping, size)),
+    ].filter((r) => r !== null);
 
     const viewport = page.viewportSize() ?? { width: metrics.width, height: metrics.height };
     const variant: Variant = {
