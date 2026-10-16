@@ -301,6 +301,25 @@ const RESULT_LABELS: Record<CheckView['result'], string> = {
   error: 'error',
 };
 
+/** A check's status in words: `changed · unresolved`, `new · approved`, `ok`. */
+export function statusText(check: Pick<CheckView, 'result' | 'review'>): string {
+  const review = REVIEW_LABELS[check.review];
+  return review ? `${RESULT_LABELS[check.result]} · ${review}` : RESULT_LABELS[check.result];
+}
+
+/**
+ * The colour a check's card takes: what someone has to do about it first. Red for an error or a
+ * rejection, amber for a change and blue for a new screen waiting for review, green once approved
+ * (`approved`) or unchanged (`ok`), grey when outdated.
+ */
+export function cardTone(check: Pick<CheckView, 'result' | 'review'>): string {
+  if (check.result === 'error' || check.review === 'rejected') return 'bad';
+  if (check.review === 'outdated') return 'outdated';
+  if (check.review === 'approved') return 'approved';
+  if (check.review === 'pending') return check.result === 'new' ? 'new' : 'changed';
+  return 'ok';
+}
+
 /** Result and review state of a check: `changed` `unresolved`, `new` `approved`, … */
 export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
   return (

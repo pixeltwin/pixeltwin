@@ -9,7 +9,7 @@ import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, BuildStatus, CheckStatus, countsText, thumbnailSha, Variant } from '../components';
+import { Ago, BuildStatus, cardTone, countsText, statusText, thumbnailSha, Variant } from '../components';
 import { noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
@@ -32,7 +32,11 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
       id={check.id}
       data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
     >
-      <a class="check-card" href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}>
+      <a
+        class={`check-card card-${cardTone(check)}`}
+        title={statusText(check)}
+        href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
+      >
         <div class="thumb" data-diff={diffSrc ?? undefined}>
           <span class="thumb-stack">
             <img
@@ -50,7 +54,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
           </span>
           <Variant variant={check.variant} />
           <span class="card-status">
-            <CheckStatus check={check} />
+            <span class="visually-hidden">{statusText(check)}</span>
             {check.result === 'changed' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}

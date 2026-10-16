@@ -85,6 +85,21 @@ describe('UI build page', () => {
     });
   });
 
+  test('cards take the colour of their status instead of status pills', async () => {
+    const { buildId, changed, fresh, same } = await seedBuild();
+    const body = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: reviewer }));
+    const card = (id: string) => {
+      const at = body.indexOf(`id="${id}"`);
+      return body.slice(at, body.indexOf('</a>', at));
+    };
+    expect(card(changed.id)).toContain('<a class="check-card card-changed" title="changed · unresolved"');
+    expect(card(fresh.id)).toContain('<a class="check-card card-new" title="new · unresolved"');
+    expect(card(same.id)).toContain('<a class="check-card card-ok" title="ok"');
+    for (const id of [changed.id, fresh.id, same.id]) expect(card(id)).not.toContain('class="pill');
+    // Screen readers still hear the status.
+    expect(card(changed.id)).toContain('<span class="visually-hidden">changed · unresolved</span>');
+  });
+
   describe('a parallel build', () => {
     test('shows how many parts have finished; admins can finalize it before the rest do', async () => {
       const admin = await t.userAs('admin');
@@ -164,8 +179,8 @@ describe('UI build page', () => {
     );
     expect(order.every((at) => at > 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    // An unchanged check's pill says "ok".
-    expect(all).toContain('<span class="pill tone-green">ok</span>');
+    // An unchanged check says "ok" (its card's tooltip and hidden text).
+    expect(all).toContain('<span class="visually-hidden">ok</span>');
     // The counts say "ok" for unchanged checks too.
     expect(all).toContain('1 changed · 1 new · 1 ok');
 
@@ -186,9 +201,7 @@ describe('UI build page', () => {
     );
     expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
     // A check waiting for review says "unresolved".
-    expect(page).toContain(
-      '<span class="pill tone-amber">changed</span><span class="pill tone-amber">unresolved</span>',
-    );
+    expect(page).toContain('<span class="visually-hidden">changed · unresolved</span>');
     expect(page).not.toContain('>to review</span>');
     expect(page).toContain('data-islands="search live thumbs"');
   });

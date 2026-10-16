@@ -101,6 +101,44 @@
   gap: var(--space-1);
   padding: var(--space-3);
 }
+/* The card takes its status colour (cardTone): the border, and the body under the thumbnail. */
+.check-card.card-changed {
+  --card-border: var(--amber-border);
+  --card-bg: var(--amber-bg);
+  --card-strong: var(--amber-dot);
+}
+.check-card.card-new {
+  --card-border: var(--blue-border);
+  --card-bg: var(--blue-bg);
+  --card-strong: var(--blue-dot);
+}
+.check-card.card-bad {
+  --card-border: var(--red-border);
+  --card-bg: var(--red-bg);
+  --card-strong: var(--red-dot);
+}
+.check-card.card-approved,
+.check-card.card-ok {
+  --card-border: var(--green-border);
+  --card-bg: var(--green-bg);
+  --card-strong: var(--green-dot);
+}
+.check-card[class*="card-"] {
+  border-color: var(--card-border, var(--border));
+}
+.check-card[class*="card-"] .check-card-body {
+  background: var(--card-bg, none);
+}
+.check-card[class*="card-"]:hover {
+  border-color: var(--card-strong, var(--border-strong));
+}
+/* An unchanged screen is the normal case: only its border is green. */
+.check-card.card-ok .check-card-body {
+  background: none;
+}
+.check-card.card-outdated {
+  opacity: 0.7;
+}
 .check-card-wrap.approvable .check-card-body {
   padding-bottom: calc(var(--space-3) * 2 + 30px);
 }
