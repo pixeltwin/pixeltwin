@@ -271,6 +271,10 @@ export async function startRun(settings: Settings, context: RunContext = {}): Pr
   return { build, restoreEnv };
 }
 
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 function variantText(check: Check): string {
   const values = Object.keys(check.variant)
     .sort()
@@ -283,7 +287,7 @@ export async function summaryLines(client: PixeltwinClient, build: Build): Promi
   const { result, review } = build.counts;
   const lines = [
     `pixeltwin: build #${build.number} on ${build.branch}: verdict ${build.verdict}`,
-    `pixeltwin: ${build.counts.total} checks: ${result.unchanged} unchanged, ${result.changed} changed, ` +
+    `pixeltwin: ${plural(build.counts.total, 'check')}: ${result.unchanged} unchanged, ${result.changed} changed, ` +
       `${result.new} new, ${result.error} errors; ${review.pending} awaiting review`,
   ];
   const listed: Check[] = [];
@@ -314,9 +318,10 @@ export async function finishRun(
   const finalize = settings.finalize ?? !context.sharded;
   if (!finalize) {
     const build = await client.getBuild(buildId);
+    const why = context.sharded ? 'for the other shards' : '(finalize is off)';
     log(
-      `pixeltwin: build #${build.number} left open for other shards (${build.counts.total} checks so far). ` +
-        'After every shard, run `npx pixeltwin finalize` with the same environment.',
+      `pixeltwin: build #${build.number} left open ${why} with ${plural(build.counts.total, 'check')} so far. ` +
+        'When every part is done, run `npx pixeltwin finalize` with the same environment.',
     );
     return { build, finalized: false };
   }

@@ -159,7 +159,7 @@ describe('run lifecycle against a real server', () => {
     expect(err.build.verdict).toBe('pending');
     const summary = lines.join('\n');
     expect(summary).toContain('verdict pending');
-    expect(summary).toContain('1 checks: 0 unchanged, 0 changed, 1 new, 0 errors; 1 awaiting review');
+    expect(summary).toContain('1 check: 0 unchanged, 0 changed, 1 new, 0 errors; 1 awaiting review');
     expect(summary).toContain('new       home (chromium, 120x80)');
     expect(summary).toContain(`review at ${server.url}/ui/builds/${build.id}`);
 

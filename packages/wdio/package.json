@@ -1,0 +1,40 @@
+{
+  "name": "@pixeltwin/wdio",
+  "version": "0.1.0",
+  "description": "WebdriverIO service for pixeltwin visual regression checks",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@pixeltwin/client": "0.1.0"
+  },
+  "peerDependencies": {
+    "webdriverio": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "webdriverio": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "pixeltwin",
+    "webdriverio",
+    "wdio-service",
+    "visual regression",
+    "screenshot testing"
+  ]
+}
