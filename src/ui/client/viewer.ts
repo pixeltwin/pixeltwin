@@ -167,6 +167,9 @@ export function mountViewer(root: HTMLElement): () => void {
         mask.style.clipPath = top.style.clipPath;
         mask.style.opacity = top.style.opacity;
       }
+      // Areas too belong to this build: in Slider they stay on its side of the divider.
+      const areaLayer = layers?.querySelector<SVGElement>('.area-layer');
+      if (areaLayer) areaLayer.style.clipPath = top.style.clipPath;
     }
     if (divider) {
       divider.hidden = mode !== 'slider';

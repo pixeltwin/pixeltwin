@@ -150,14 +150,17 @@ describe('UI areas', () => {
       return (await submit(t.deps, buildId, withClock, { ignoreRegions: [statusBar] })).check;
     }
 
-    test('are drawn on the screenshot, marked as API and not editable', async () => {
+    test('are drawn on the screenshot like a drawn ignore area, without a label, and not editable', async () => {
       const check = await checkWithApiIgnore();
       const body = await page(`/ui/checks/${check.id}`);
-      expect(body).toContain('<rect class="area area-api-ignore" x="0" y="0" width="100" height="20"></rect>');
-      expect(body).toContain('class="area-api-label"');
-      expect(body).toMatch(/>(IGNORED · )?API<\/text>/);
+      // The same colour as a drawn ignore area; only the Areas list's API badge tells them apart.
+      expect(body).toContain(
+        '<rect class="area area-ignore area-from-api" x="0" y="0" width="100" height="20"></rect>',
+      );
+      // No label on the screenshot: the Areas list says where they come from.
+      expect(body).not.toContain('<text');
       // Not a drawn area: no id, so the island never picks it for editing.
-      expect(body).not.toMatch(/area-api-ignore"[^>]*data-area=/);
+      expect(body).not.toMatch(/area-from-api"[^>]*data-area=/);
     });
 
     test('are listed with an API badge, without edit or delete, and say they apply to this check only', async () => {

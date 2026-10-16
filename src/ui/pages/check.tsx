@@ -71,7 +71,7 @@ function Shot(props: {
 
 /**
  * The snapshot's ignore and compare areas, drawn over a screenshot in its own coordinates, and
- * the ignore regions the test sent through the API (grey, labelled API, never editable).
+ * the ignore regions the test sent through the API (same colour, never editable).
  */
 function AreaLayer(props: { areas: Area[] | undefined; apiIgnore?: Rect[] | undefined; size: Size | undefined }) {
   const { areas = [], apiIgnore = [], size } = props;
@@ -79,37 +79,12 @@ function AreaLayer(props: { areas: Area[] | undefined; apiIgnore?: Rect[] | unde
   return (
     <svg class="area-layer" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
       {apiIgnore.map((r) => (
-        <ApiIgnore region={r} size={size} />
+        <rect class="area area-ignore area-from-api" x={r.x} y={r.y} width={r.width} height={r.height} />
       ))}
       {areas.map((a) => (
         <rect class={`area area-${a.kind}`} x={a.x} y={a.y} width={a.width} height={a.height} data-area={a.id} />
       ))}
     </svg>
-  );
-}
-
-/** An API ignore region with an "API" label inside it, when the label fits. */
-function ApiIgnore({ region: r, size }: { region: Rect; size: Size }) {
-  // In image pixels: readable at fit on a phone screenshot, never taller than the region.
-  const font = Math.round(Math.min(r.height * 0.55, Math.max(12, size.width / 22)));
-  const fits = r.height >= 10 && r.width >= font * 2.5;
-  const label = r.width >= font * 8 ? 'IGNORED · API' : 'API';
-  return (
-    <>
-      <rect class="area area-api-ignore" x={r.x} y={r.y} width={r.width} height={r.height} />
-      {fits && (
-        <text
-          class="area-api-label"
-          x={r.x + r.width / 2}
-          y={r.y + r.height / 2}
-          font-size={font}
-          text-anchor="middle"
-          dominant-baseline="central"
-        >
-          {label}
-        </text>
-      )}
-    </>
   );
 }
 
@@ -246,16 +221,8 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
       </div>
       <div class="panes">
         <Pane kind="baseline" caption={`Baseline · ${baseline.branch}`}>
-          <Shot
-            ui={ui}
-            sha={baseline.imageSha}
-            alt="baseline"
-            size={baseSize}
-            regions={diff?.regions}
-            areas={areas}
-            apiIgnore={check.ignoreRegions}
-            soft
-          />
+          {/* No marks on the baseline: changes and areas are this build's. */}
+          <Shot ui={ui} sha={baseline.imageSha} alt="baseline" size={baseSize} />
         </Pane>
         <Pane kind="current" caption="This build">
           <Shot

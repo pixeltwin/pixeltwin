@@ -575,22 +575,6 @@ body.focus main {
   fill: rgb(28 126 214 / 0.14);
   stroke: var(--blue-dot);
 }
-/* Ignore regions the test sent through the API: grey, dotted and labelled, so they read as the
-   test's own and not as areas drawn here. */
-.area-api-ignore {
-  fill: rgb(110 110 120 / 0.35);
-  stroke: var(--text-muted);
-  stroke-dasharray: 2 3;
-}
-.area-api-label {
-  fill: #fff;
-  stroke: rgb(0 0 0 / 0.55);
-  stroke-width: 0.12em;
-  paint-order: stroke;
-  font-family: var(--font-sans, system-ui, sans-serif);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
 .stage[data-drawing="ignore"] .viewport,
 .stage[data-drawing="compare"] .viewport {
   cursor: crosshair;
@@ -746,9 +730,6 @@ body.focus main {
 }
 .area-item-compare {
   border-left-color: var(--blue-dot);
-}
-.area-item-api {
-  border-left-color: var(--text-muted);
 }
 .badge-api {
   padding: 0 var(--space-1);
