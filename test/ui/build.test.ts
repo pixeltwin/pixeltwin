@@ -99,10 +99,20 @@ describe('UI build page', () => {
     expect(old).not.toContain(`/ui/checks/${same.id}`);
   });
 
-  test('thumbnails show the diff for changed checks and open focus mode with the same filter', async () => {
+  test('a changed thumbnail is the screenshot with its changes marked in red, plus the diff percentage', async () => {
+    const { buildId, changed } = await seedBuild();
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=changed`, { as: viewer }));
+    // The new screenshot, and the diff for the island that paints the changed pixels over it.
+    expect(page).toContain(
+      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}"><span class="thumb-stack"><img src="/api/v1/images/${changed.imageSha}"`,
+    );
+    expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
+    expect(page).toContain('data-islands="search live thumbs"');
+  });
+
+  test('thumbnails open focus mode with the same filter', async () => {
     const { buildId, changed, same } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=changed`, { as: viewer }));
-    expect(page).toContain(`src="/api/v1/images/${changed.diffImageSha}"`);
     expect(page).toContain('loading="lazy" width="100" height="100"');
     expect(page).toContain(`href="/ui/checks/${changed.id}?filter=changed"`);
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
@@ -142,14 +152,14 @@ describe('UI build page', () => {
     const { finalizeBuild } = await import('../../src/domain/builds');
     await finalizeBuild(t.deps, buildId);
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="search live"');
+    expect(page).toContain('data-islands="search live thumbs"');
     expect(page).toContain('data-live="build-head" data-live-watch=""');
   });
 
   test('an open build updates itself while it runs', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="search live"');
+    expect(page).toContain('data-islands="search live thumbs"');
     expect(page).toContain('data-live="build-head" data-live-open=""');
     expect(page).toContain('data-live="chips"');
     expect(page).toContain('data-live="checks"');

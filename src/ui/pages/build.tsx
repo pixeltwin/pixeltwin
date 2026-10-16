@@ -20,7 +20,11 @@ import { Layout } from '../layout';
  */
 function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter; canReview: boolean }) {
   const { ui, check, size, filter } = props;
-  const sha = thumbnailSha(check);
+  // A changed check shows its new screenshot; the thumbs island paints the diff's changes over it.
+  const diffSrc =
+    check.result === 'changed' && check.diffImageSha ? ui.url(`/api/v1/images/${check.diffImageSha}`) : null;
+  const sha = diffSrc ? check.imageSha : thumbnailSha(check);
+  const diff = check.diff && 'percent' in check.diff ? check.diff : null;
   const approvable = props.canReview && check.result === 'new' && check.review === 'pending';
   return (
     <div
@@ -29,19 +33,28 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
       data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
     >
       <a class="check-card" href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}>
-        <div class="thumb">
-          <img
-            src={ui.url(`/api/v1/images/${sha}`)}
-            alt={check.name}
-            loading="lazy"
-            width={size?.width}
-            height={size?.height}
-          />
+        <div class="thumb" data-diff={diffSrc ?? undefined}>
+          <span class="thumb-stack">
+            <img
+              src={ui.url(`/api/v1/images/${sha}`)}
+              alt={check.name}
+              loading="lazy"
+              width={size?.width}
+              height={size?.height}
+            />
+          </span>
         </div>
         <div class="check-card-body">
-          <span class="check-name">{check.name}</span>
+          <span class="check-name" title={check.name}>
+            {check.name}
+          </span>
           <Variant variant={check.variant} />
-          <CheckStatus check={check} />
+          <span class="card-status">
+            <CheckStatus check={check} />
+            {check.result === 'changed' && diff && (
+              <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
+            )}
+          </span>
         </div>
       </a>
       {approvable && (
@@ -151,7 +164,7 @@ function BuildPage(props: {
         { label: `#${build.number}` },
       ]}
       project={project.slug}
-      islands={['search', 'live']}
+      islands={['search', 'live', 'thumbs']}
     >
       {/* Running: every 5 s. Finalized: still watched (10 s), so reviews by others show up. */}
       <div
@@ -238,7 +251,7 @@ function BuildPage(props: {
               <CheckCard
                 ui={ui}
                 check={check}
-                size={props.sizes.get(thumbnailSha(check))}
+                size={props.sizes.get(check.result === 'changed' ? check.imageSha : thumbnailSha(check))}
                 filter={filter}
                 canReview={props.canReview}
               />
@@ -273,7 +286,10 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       listChecks(s.deps, id, { result: filter.result, review: filter.review, q, order: 'desc', cursor, limit: 200 }),
       firstPendingCheckId(s.deps, id),
     ]);
-    const sizes = await imageSizes(s.deps, page.items.map(thumbnailSha));
+    const sizes = await imageSizes(
+      s.deps,
+      page.items.flatMap((c) => [thumbnailSha(c), c.imageSha]),
+    );
     const search = q ? `&q=${encodeURIComponent(q)}` : '';
     const older = page.nextCursor
       ? ui.url(`/ui/builds/${id}?filter=${filter.key}${search}&cursor=${encodeURIComponent(page.nextCursor)}`)
