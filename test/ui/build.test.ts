@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
+import { finalizeBuild } from '../../src/domain/builds';
 import { createProject } from '../../src/domain/projects';
 import { createTestApp, type TestApp } from '../helpers/app';
 import { BLACK, makePng, WHITE } from '../helpers/png';
@@ -81,6 +82,27 @@ describe('UI build page', () => {
       // The chip that is on turns it off again; Clear drops every tag, keeping the filter.
       expect(on).toContain(`<a class="tag-chip on" href="/ui/builds/${buildId}?filter=all" aria-current="true"`);
       expect(on).toContain(`<a class="tag-clear" href="/ui/builds/${buildId}?filter=all">Clear</a>`);
+    });
+  });
+
+  describe('a parallel build', () => {
+    test('shows how many parts have finished; admins can finalize it before the rest do', async () => {
+      const admin = await t.userAs('admin');
+      const buildId = await openBuild(t.deps, 'web', { externalId: 'gitlab-1', parallelTotal: 2 });
+      await finalizeBuild(t.deps, buildId, { part: 'job-1' });
+      const body = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: admin }));
+      expect(body).toContain('1 of 2 parts finished');
+      const form = `<form method="post" action="/ui/builds/${buildId}/finalize">`;
+      expect(body).toContain(form);
+      expect(await html(await t.request('GET', `/ui/builds/${buildId}`, { as: reviewer }))).not.toContain(form);
+
+      expect((await postForm(t, `/ui/builds/${buildId}/finalize`, {}, reviewer)).status).toBe(403);
+      const done = await postForm(t, `/ui/builds/${buildId}/finalize`, {}, admin);
+      expect(location(done)).toBe(`/ui/builds/${buildId}?done=finalized`);
+      const after = await html(await t.request('GET', `/ui/builds/${buildId}?done=finalized`, { as: admin }));
+      expect(after).toContain('Build finalized.');
+      expect(after).not.toContain('parts finished');
+      expect(after).not.toContain(form);
     });
   });
 

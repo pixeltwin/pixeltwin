@@ -3,7 +3,7 @@ import { listBranchSummaries } from '../../domain/branches';
 import { createBuild, deleteBuilds, finalizeBuild, getBuild, getBuildRow, listBuilds } from '../../domain/builds';
 import { getProjectBySlug } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
-import { createBuildSchema } from '../../domain/schemas';
+import { createBuildSchema, finalizeBuildSchema } from '../../domain/schemas';
 import { allowProject, principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
@@ -100,13 +100,22 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     path: `${API}/builds/{id}/finalize`,
     tags: ['builds'],
     summary: 'Finalize a build and get its verdict (CI gate: only "passed" is success)',
-    request: { params: idParam },
-    responses: { 200: json(BuildSchema, 'The finalized build'), ...problems(401, 403, 404) },
+    description:
+      'A part of a parallel build sends `{ "part": "<CI job id>" }`: the build stays open until every one of its ' +
+      '`parallelTotal` parts has finalized it. Without a body the build is finalized at once.',
+    request: {
+      params: idParam,
+      body: { required: false, content: { 'application/json': { schema: finalizeBuildSchema } } },
+    },
+    responses: {
+      200: json(BuildSchema, 'The build: finalized, or still open while parts of a parallel build run'),
+      ...problems(401, 403, 404, 422),
+    },
   });
   app.openapi(finalize, async (c) => {
     const { id } = c.req.valid('param');
     allowProject(c, (await getBuildRow(s.deps, id)).projectId);
-    return c.json(await finalizeBuild(s.deps, id), 200);
+    return c.json(await finalizeBuild(s.deps, id, c.req.valid('json') ?? {}), 200);
   });
 
   const approveAll = defineRoute('check.review', {

@@ -113,6 +113,8 @@ export default withPixeltwin(defineConfig({ /* … */ }), { project: 'shop', gat
 | `PIXELTWIN_WAIT` | `waitSeconds` | `0`; seconds to wait for reviews while the verdict is `pending` |
 | `PIXELTWIN_EXTERNAL_ID` | `externalId` | see Sharding |
 | `PIXELTWIN_FINALIZE=0` | `finalize` | on (off for a shard) |
+| `PIXELTWIN_PARALLEL_TOTAL` | `parallelTotal` | off; see Parallel CI jobs |
+| `PIXELTWIN_PARALLEL_PART` | `parallelPart` | the CI job id (GitLab), else a random id |
 | `PIXELTWIN_DISABLED=1` | `disabled` | off; checks take no screenshot and return `null` |
 | `PIXELTWIN_RETAKES` | `retakes` | `0`; screenshots again while a check comes back `changed` |
 | `PIXELTWIN_RETAKE_INTERVAL_MS` | `retakeIntervalMs` | `1000` |
@@ -136,6 +138,24 @@ step after all shards:
       - run: npx -y @pixeltwin/client finalize --gate
         env: { PIXELTWIN_URL: …, PIXELTWIN_TOKEN: …, PIXELTWIN_PROJECT: shop }
 ```
+
+## Parallel CI jobs
+
+Several CI jobs of one pipeline, each running its own part of the suite (or its own shards), can
+share one build without a finalize step: set `PIXELTWIN_PARALLEL_TOTAL` to the number of jobs in
+each of them. They find the build by the CI run id (or `PIXELTWIN_EXTERNAL_ID`); each finalizes its
+part when it ends, and the last one finalizes the build, prints the summary and applies the gate.
+
+```yaml
+# GitLab CI
+.visual: { variables: { PIXELTWIN_PARALLEL_TOTAL: '2' } }
+ui-tests-1: { extends: .visual, script: npm run test:part1 }
+ui-tests-2: { extends: .visual, script: npm run test:part2 }
+```
+
+The build page shows `1 of 2 parts finished` meanwhile. When a job never runs (a manual job left
+alone, a cancelled one), the build stays open: an admin finalizes it with **Finalize** on that page,
+or run `npx @pixeltwin/client finalize`. A retried job posts to the same build only while it is open.
 
 ## Example
 

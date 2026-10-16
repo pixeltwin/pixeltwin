@@ -6,7 +6,7 @@ import { newId } from '../ids';
 import type { Deps } from './deps';
 import { type Page, toPage } from './pagination';
 import { getProjectBySlug } from './projects';
-import { createBuildSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
+import { createBuildSchema, finalizeBuildSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
 import { type BuildCounts, deriveVerdict, emptyCounts, type Verdict } from './verdict';
 
 type DbDeps = Pick<Deps, 'db'>;
@@ -14,6 +14,8 @@ type DbDeps = Pick<Deps, 'db'>;
 export interface BuildView extends Build {
   verdict: Verdict;
   counts: BuildCounts;
+  /** Parts of a parallel build that have finalized it so far (0 for an ordinary build). */
+  partsFinished: number;
 }
 
 export async function getBuildRow(deps: DbDeps, id: string): Promise<Build> {
@@ -42,23 +44,41 @@ export async function countChecks(deps: DbDeps, buildIds: string[]): Promise<Map
   return counts;
 }
 
-function toView(build: Build, counts: BuildCounts): BuildView {
-  return { ...build, verdict: deriveVerdict(counts), counts };
+/** Finished parts per parallel build; ordinary builds are not queried. */
+async function countParts(deps: DbDeps, builds: Build[]): Promise<Map<string, number>> {
+  const ids = builds.filter((b) => b.parallelTotal !== null).map((b) => b.id);
+  const parts = new Map<string, number>();
+  if (ids.length === 0) return parts;
+  const rows = await deps.db
+    .selectFrom('buildParts')
+    .select(['buildId', (eb) => eb.fn.countAll<number>().as('n')])
+    .where('buildId', 'in', ids)
+    .groupBy('buildId')
+    .execute();
+  for (const row of rows) parts.set(row.buildId, Number(row.n));
+  return parts;
+}
+
+function toView(build: Build, counts: BuildCounts, partsFinished: number): BuildView {
+  return { ...build, verdict: deriveVerdict(counts), counts, partsFinished };
 }
 
 /** Adds verdict and counts to build rows, counting all their checks in one query. */
 export async function viewsOf(deps: DbDeps, builds: Build[]): Promise<BuildView[]> {
-  const counts = await countChecks(
-    deps,
-    builds.map((b) => b.id),
-  );
-  return builds.map((b) => toView(b, counts.get(b.id) ?? emptyCounts()));
+  const [counts, parts] = await Promise.all([
+    countChecks(
+      deps,
+      builds.map((b) => b.id),
+    ),
+    countParts(deps, builds),
+  ]);
+  return builds.map((b) => toView(b, counts.get(b.id) ?? emptyCounts(), parts.get(b.id) ?? 0));
 }
 
 export async function getBuild(deps: DbDeps, id: string): Promise<BuildView> {
-  const build = await getBuildRow(deps, id);
-  const counts = await countChecks(deps, [id]);
-  return toView(build, counts.get(id) ?? emptyCounts());
+  const [view] = await viewsOf(deps, [await getBuildRow(deps, id)]);
+  if (!view) throw new AppError('build_not_found', 404, `Build ${id} not found.`);
+  return view;
 }
 
 function findByExternalId(deps: DbDeps, projectId: string, externalId: string): Promise<Build | undefined> {
@@ -72,7 +92,7 @@ function findByExternalId(deps: DbDeps, projectId: string, externalId: string): 
 
 /**
  * Opens a build. With `externalId`, repeated calls return the existing build
- * (`created: false`), so CI retries are safe.
+ * (`created: false`), so CI retries and the other parts of a parallel build get the same one.
  */
 export async function createBuild(
   deps: DbDeps,
@@ -82,9 +102,22 @@ export async function createBuild(
   const data = parseInput(createBuildSchema, input);
   const project = await getProjectBySlug(deps, projectSlug);
 
+  // The part count is the first one named: a part that opens the build later cannot change it.
+  const existingBuild = async (existing: Build) => {
+    if (existing.parallelTotal === null && data.parallelTotal !== undefined) {
+      await deps.db
+        .updateTable('builds')
+        .set({ parallelTotal: data.parallelTotal })
+        .where('id', '=', existing.id)
+        .where('parallelTotal', 'is', null)
+        .execute();
+    }
+    return { build: await getBuild(deps, existing.id), created: false };
+  };
+
   if (data.externalId) {
     const existing = await findByExternalId(deps, project.id, data.externalId);
-    if (existing) return { build: await getBuild(deps, existing.id), created: false };
+    if (existing) return existingBuild(existing);
   }
 
   let build: Build;
@@ -109,6 +142,7 @@ export async function createBuild(
         state: 'open',
         createdAt: Date.now(),
         finalizedAt: null,
+        parallelTotal: data.parallelTotal ?? null,
       };
       await tx.insertInto('builds').values(row).execute();
       return row;
@@ -117,11 +151,11 @@ export async function createBuild(
     // A concurrent request with the same externalId won the race.
     if (data.externalId && isUniqueViolation(err)) {
       const existing = await findByExternalId(deps, project.id, data.externalId);
-      if (existing) return { build: await getBuild(deps, existing.id), created: false };
+      if (existing) return existingBuild(existing);
     }
     throw err;
   }
-  return { build: toView(build, emptyCounts()), created: true };
+  return { build: toView(build, emptyCounts(), 0), created: true };
 }
 
 /** Newest first. */
@@ -144,9 +178,24 @@ export async function listBuilds(
   return { items: await viewsOf(deps, result.items), nextCursor: result.nextCursor };
 }
 
-/** Closes the build to new checks. Idempotent: keeps the first `finalizedAt`. */
-export async function finalizeBuild(deps: DbDeps, id: string): Promise<BuildView> {
-  await getBuildRow(deps, id);
+/**
+ * Closes the build to new checks. Idempotent: keeps the first `finalizedAt`. A part of a parallel
+ * build (`{ part }`) is counted once; the build closes when every part has finalized it. Without a
+ * part it closes at once (a CI job that never ran, or an admin).
+ */
+export async function finalizeBuild(deps: DbDeps, id: string, input: unknown = {}): Promise<BuildView> {
+  const { part } = parseInput(finalizeBuildSchema, input);
+  const build = await getBuildRow(deps, id);
+  if (build.state === 'open' && build.parallelTotal !== null && part) {
+    await deps.db
+      .insertInto('buildParts')
+      .values({ buildId: id, part, finishedAt: Date.now() })
+      .onConflict((oc) => oc.columns(['buildId', 'part']).doNothing())
+      .execute();
+    // Each part counts after its own insert, so the last of parts finishing together sees them all.
+    const finished = (await countParts(deps, [build])).get(id) ?? 0;
+    if (finished < build.parallelTotal) return getBuild(deps, id);
+  }
   await deps.db
     .updateTable('builds')
     .set({ state: 'finalized', finalizedAt: Date.now() })

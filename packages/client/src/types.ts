@@ -40,6 +40,10 @@ export interface Build {
   state: 'open' | 'finalized';
   createdAt: number;
   finalizedAt: number | null;
+  /** A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build. */
+  parallelTotal: number | null;
+  /** Parts of a parallel build that have finalized it so far. */
+  partsFinished: number;
   /** Only `passed` is success. */
   verdict: Verdict;
   counts: BuildCounts;
@@ -98,6 +102,11 @@ export interface OpenBuildInput {
   commitSha?: string;
   /** Opening again with the same id returns the same build. Generated when missing. */
   externalId?: string;
+  /**
+   * A parallel build: this many parts (CI jobs, with the same `externalId`) each finalize it with
+   * their `part`; the last one closes it.
+   */
+  parallelTotal?: number;
 }
 
 export interface CheckInput {

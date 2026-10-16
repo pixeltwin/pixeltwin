@@ -2,7 +2,7 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
 import type { Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
-import { type BuildView, getBuild } from '../../domain/builds';
+import { type BuildView, finalizeBuild, getBuild, getBuildRow } from '../../domain/builds';
 import { type CheckView, firstPendingCheckId, listChecks, type VariantTag, variantTags } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
@@ -197,6 +197,7 @@ function BuildPage(props: {
   filter: CheckFilter;
   firstPending: string | null;
   canReview: boolean;
+  canAdmin: boolean;
   /** The search, empty when none. */
   q: string;
   /** The build's variant tags, and those picked in the address. */
@@ -246,9 +247,25 @@ function BuildPage(props: {
             {build.externalId && <span>{build.externalId}</span>}
             <Ago at={build.createdAt} />
             <span>{countsText(build.counts)}</span>
+            {open && build.parallelTotal !== null && (
+              <span title="A parallel build: each CI job finalizes its part; the last one closes the build">
+                {`${build.partsFinished} of ${build.parallelTotal} parts finished`}
+              </span>
+            )}
           </p>
         </div>
         <div class="page-actions">
+          {props.canAdmin && open && (
+            <form method="post" action={ui.url(`/ui/builds/${build.id}/finalize`)}>
+              <button
+                type="submit"
+                data-confirm={`Finalize build #${build.number} now? It takes no more checks, also from CI jobs still running.`}
+                data-confirm-label="Finalize"
+              >
+                Finalize
+              </button>
+            </form>
+          )}
           {props.canReview && pending > 0 && (
             <form method="post" action={ui.url(`/ui/builds/${build.id}/approve`)}>
               <button
@@ -385,6 +402,7 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         filter={filter}
         firstPending={firstPending}
         canReview={hasPermission(userOf(c), 'check.review')}
+        canAdmin={hasPermission(userOf(c), 'project.admin')}
         q={q}
         tags={tags}
         picked={picked}
@@ -392,6 +410,17 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         notice={noticeOf(c)}
       />,
     );
+  });
+
+  app.post('/ui/builds/:id/finalize', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'project.admin')) {
+      throw new AppError('forbidden', 403, 'Only admins can finalize a build here.');
+    }
+    const id = c.req.param('id');
+    await getBuildRow(s.deps, id);
+    await finalizeBuild(s.deps, id);
+    return c.redirect(ui.url(`/ui/builds/${id}?done=finalized`), 303);
   });
 
   app.post('/ui/builds/:id/approve', async (c) => {

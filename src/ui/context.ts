@@ -73,6 +73,7 @@ export const NOTICES: Record<string, string> = {
   promoted: 'Promoted to main. Main builds still waiting on those screens are outdated now.',
   'area-deleted': 'Area deleted.',
   'approved-all': 'All pending checks approved.',
+  finalized: 'Build finalized.',
   'project-created': 'Project created.',
   'project-saved': 'Settings saved.',
   'token-revoked': 'Token revoked.',

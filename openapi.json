@@ -316,6 +316,17 @@
               "null"
             ]
           },
+          "parallelTotal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build"
+          },
+          "partsFinished": {
+            "type": "integer",
+            "description": "Parts of a parallel build that have finalized it"
+          },
           "verdict": {
             "type": "string",
             "enum": [
@@ -402,6 +413,8 @@
           "state",
           "createdAt",
           "finalizedAt",
+          "parallelTotal",
+          "partsFinished",
           "verdict",
           "counts"
         ]
@@ -2520,6 +2533,11 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "parallelTotal": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
                   }
                 },
                 "additionalProperties": false
@@ -2902,6 +2920,7 @@
           "builds"
         ],
         "summary": "Finalize a build and get its verdict (CI gate: only \"passed\" is success)",
+        "description": "A part of a parallel build sends `{ \"part\": \"<CI job id>\" }`: the build stays open until every one of its `parallelTotal` parts has finalized it. Without a body the build is finalized at once.",
         "x-permission": "check.write",
         "security": [
           {
@@ -2921,9 +2940,27 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "part": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "The finalized build",
+            "description": "The build: finalized, or still open while parts of a parallel build run",
             "content": {
               "application/json": {
                 "schema": {
@@ -2953,6 +2990,16 @@
             }
           },
           "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

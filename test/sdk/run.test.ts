@@ -110,8 +110,9 @@ describe('settings', () => {
         CI_COMMIT_REF_NAME: 'feature/y',
         CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'develop',
         CI_COMMIT_SHA: 'def',
+        CI_JOB_ID: '901',
       }),
-    ).toEqual({ runId: 'gitlab-7', branch: 'feature/y', baseBranch: 'develop', commitSha: 'def' });
+    ).toEqual({ runId: 'gitlab-7', jobId: '901', branch: 'feature/y', baseBranch: 'develop', commitSha: 'def' });
     expect(ciInfo({ CI_RUN_ID: 'run-9' })).toEqual({ runId: 'run-9' });
   });
 
@@ -125,6 +126,18 @@ describe('settings', () => {
     expect(a).not.toBe(b);
     expect(externalIdFor({ externalId: undefined }, {}, false)).toStartWith('local-');
     expect(() => externalIdFor({ externalId: undefined }, {}, true)).toThrow('PIXELTWIN_EXTERNAL_ID');
+  });
+
+  test('a parallel build: part count and part id from options or the environment', () => {
+    expect(resolveSettings({}, {})).toMatchObject({ parallelTotal: undefined, parallelPart: undefined });
+    const env = { PIXELTWIN_PARALLEL_TOTAL: '2', PIXELTWIN_PARALLEL_PART: 'farm1' };
+    expect(resolveSettings({}, env)).toMatchObject({ parallelTotal: 2, parallelPart: 'farm1' });
+    expect(resolveSettings({ parallelTotal: 3 }, env).parallelTotal).toBe(3);
+    expect(resolveSettings({}, { PIXELTWIN_PARALLEL_TOTAL: 'two' }).parallelTotal).toBeUndefined();
+    expect(optionsToEnv({ parallelTotal: 2, parallelPart: 'a' })).toMatchObject({
+      PIXELTWIN_PARALLEL_TOTAL: '2',
+      PIXELTWIN_PARALLEL_PART: 'a',
+    });
   });
 
   test('the branch comes from .git/HEAD, also in a worktree; detached is undefined', () => {
@@ -234,6 +247,32 @@ describe('run lifecycle against a real server', () => {
     expect(left.finalized).toBe(false);
     expect(left.build.state).toBe('open');
     expect(lines.at(-1)).toContain('npx pixeltwin finalize');
+  });
+
+  test('a parallel build: every CI job opens the same build, the last part to finish finalizes and gates', async () => {
+    const lines: string[] = [];
+    const log = (line: string) => lines.push(line);
+    const job = (id: string) =>
+      ({ GITLAB_CI: 'true', CI_PIPELINE_ID: '5150', CI_JOB_ID: id }) as Record<string, string | undefined>;
+    const farm1 = job('11');
+    const farm2 = job('12');
+    const settings = (env: Record<string, string | undefined>) => settingsFor(env, { parallelTotal: 2, gate: true });
+    const a = await startRun(settings(farm1), { env: farm1, log });
+    const b = await startRun(settings(farm2), { env: farm2, log });
+    const id = a.build?.id ?? '';
+    expect(b.build?.id).toBe(id);
+    expect(a.build).toMatchObject({ externalId: 'gitlab-5150', parallelTotal: 2 });
+
+    await client.postCheck(id, { name: 'farm1', image: png() });
+    const first = await finishRun(settings(farm1), id, { env: farm1, log });
+    expect(first).toMatchObject({ finalized: false, build: { state: 'open', partsFinished: 1 } });
+    expect(lines.at(-1)).toContain('part 1 of 2');
+
+    // The last part gets the verdict: the new screen waits for review, so the gate fails here.
+    const err = await finishRun(settings(farm2), id, { env: farm2, log }).catch((e) => e);
+    expect(err).toBeInstanceOf(PixeltwinGateError);
+    expect(err.build).toMatchObject({ state: 'finalized', partsFinished: 2 });
+    expect(lines.join('\n')).toContain('1 check: 0 unchanged, 0 changed, 1 new');
   });
 
   test('a finalized build is refused at start and the environment is left as it was', async () => {

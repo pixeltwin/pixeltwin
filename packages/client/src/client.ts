@@ -138,8 +138,13 @@ export class PixeltwinClient {
   }
 
   /** Closes the build to new checks and returns its verdict. Idempotent. */
-  async finalize(buildId: string): Promise<Build> {
-    return (await this.#request<Build>('POST', `/builds/${encodeURIComponent(buildId)}/finalize`)).data;
+  /**
+   * Closes the build. A part of a parallel build passes its `part`: the build then stays open until
+   * every part has finalized it (the answer says how many have).
+   */
+  async finalize(buildId: string, options: { part?: string } = {}): Promise<Build> {
+    const path = `/builds/${encodeURIComponent(buildId)}/finalize`;
+    return (await this.#request<Build>('POST', path, options.part ? { json: { part: options.part } } : undefined)).data;
   }
 
   /** The branch's screens whose baseline differs from main's: what `promote` would copy. */

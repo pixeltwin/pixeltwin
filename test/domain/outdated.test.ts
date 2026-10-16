@@ -155,7 +155,11 @@ describe('checks outdated by a newer approval', () => {
       .executeTakeFirst();
     expect(before?.review).toBe('pending');
 
-    expect(await migrateToLatest(deps.db)).toEqual(['0006_outdated_checks', '0007_stored_objects']);
+    expect(await migrateToLatest(deps.db)).toEqual([
+      '0006_outdated_checks',
+      '0007_stored_objects',
+      '0008_parallel_builds',
+    ]);
     expect(await getCheck(deps, two.check.id)).toMatchObject({ review: 'outdated', supersededBy: four.check.id });
     // Everything else survived the rebuild, review history included.
     expect(await getCheck(deps, four.check.id)).toMatchObject({ review: 'approved', reviewedBy: 'usr_1' });

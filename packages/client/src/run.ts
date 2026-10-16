@@ -51,6 +51,13 @@ export interface PixeltwinOptions {
    * goes on and each check fails with the reason, instead of the run stopping before any test.
    */
   allowOffline?: boolean;
+  /**
+   * `PIXELTWIN_PARALLEL_TOTAL`: several CI jobs post to one build (same externalId, the CI run id by
+   * default). Each finalizes its part; the last one finalizes the build, prints the summary and gates.
+   */
+  parallelTotal?: number;
+  /** `PIXELTWIN_PARALLEL_PART`: this job's part id. Default: the CI job id (GitLab), else a random id. */
+  parallelPart?: string;
 }
 
 export interface Settings {
@@ -72,11 +79,15 @@ export interface Settings {
   retakeIntervalMs: number;
   failOnChange: boolean;
   allowOffline: boolean;
+  parallelTotal: number | undefined;
+  parallelPart: string | undefined;
 }
 
 export interface CiInfo {
   /** Same for every job and shard of one CI run (attempt). */
   runId?: string;
+  /** This job only (GitLab `CI_JOB_ID`). */
+  jobId?: string;
   branch?: string;
   baseBranch?: string;
   commitSha?: string;
@@ -111,6 +122,7 @@ export function ciInfo(env: Env = process.env): CiInfo {
   if (env.GITLAB_CI === 'true') {
     return {
       runId: env.CI_PIPELINE_ID ? `gitlab-${env.CI_PIPELINE_ID}` : text(env.CI_RUN_ID),
+      ...(text(env.CI_JOB_ID) ? { jobId: text(env.CI_JOB_ID) } : {}),
       branch: text(env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME) ?? text(env.CI_COMMIT_REF_NAME),
       baseBranch: text(env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME),
       commitSha: text(env.CI_COMMIT_SHA),
@@ -141,6 +153,11 @@ export function gitBranch(cwd: string = process.cwd()): string | undefined {
   }
 }
 
+function partCount(value: number | string | undefined): number | undefined {
+  const n = Number(value);
+  return value !== undefined && Number.isInteger(n) && n >= 1 ? n : undefined;
+}
+
 /** Options win over environment variables, which win over CI detection and defaults. */
 export function resolveSettings(options: PixeltwinOptions = {}, env: Env = process.env, cwd?: string): Settings {
   const ci = ciInfo(env);
@@ -167,6 +184,8 @@ export function resolveSettings(options: PixeltwinOptions = {}, env: Env = proce
     retakeIntervalMs: count(options.retakeIntervalMs, env.PIXELTWIN_RETAKE_INTERVAL_MS, 1000),
     failOnChange: options.failOnChange ?? flag(env.PIXELTWIN_FAIL_ON_CHANGE) ?? false,
     allowOffline: options.allowOffline ?? flag(env.PIXELTWIN_ALLOW_OFFLINE) ?? false,
+    parallelTotal: partCount(options.parallelTotal ?? text(env.PIXELTWIN_PARALLEL_TOTAL)),
+    parallelPart: options.parallelPart ?? text(env.PIXELTWIN_PARALLEL_PART),
   };
 }
 
@@ -195,6 +214,8 @@ export function optionsToEnv(options: PixeltwinOptions): Record<string, string> 
   set('PIXELTWIN_WAIT', options.waitSeconds);
   set('PIXELTWIN_FINALIZE', options.finalize);
   set('PIXELTWIN_DISABLED', options.disabled);
+  set('PIXELTWIN_PARALLEL_TOTAL', options.parallelTotal);
+  set('PIXELTWIN_PARALLEL_PART', options.parallelPart);
   return out;
 }
 
@@ -311,12 +332,14 @@ async function openRun(
   if (existing) {
     build = await client.getBuild(existing);
   } else {
-    const externalId = externalIdFor(settings, env, context.sharded ?? false);
+    // The parts of a parallel build find each other by the CI run id, like shards.
+    const externalId = externalIdFor(settings, env, (context.sharded ?? false) || isParallel(settings));
     build = await client.openBuild(settings.project, {
       branch: settings.branch,
       baseBranch: settings.baseBranch,
       commitSha: settings.commitSha,
       externalId,
+      ...(settings.parallelTotal ? { parallelTotal: settings.parallelTotal } : {}),
     });
     setEnv('PIXELTWIN_EXTERNAL_ID', externalId);
   }
@@ -370,9 +393,14 @@ export async function summaryLines(client: PixeltwinClient, build: Build): Promi
   return lines;
 }
 
+function isParallel(settings: Pick<Settings, 'parallelTotal'>): boolean {
+  return (settings.parallelTotal ?? 0) > 1;
+}
+
 /**
  * Ends the run: finalizes the build (unless this is one shard of several, or `finalize` is off),
  * waits for reviews if asked, prints the summary and applies the gate (throws `PixeltwinGateError`).
+ * A part of a parallel build finalizes its part; only the last one gets the verdict and gates.
  */
 export async function finishRun(
   settings: Settings,
@@ -381,6 +409,18 @@ export async function finishRun(
 ): Promise<{ build: Build; finalized: boolean }> {
   const log = context.log ?? console.log;
   const client = clientFor(settings);
+  if (isParallel(settings) && settings.finalize !== false) {
+    const part = settings.parallelPart ?? ciInfo(context.env ?? process.env).jobId ?? random();
+    const build = await client.finalize(buildId, { part });
+    if (build.state === 'open') {
+      log(
+        `pixeltwin: build #${build.number}: part ${build.partsFinished} of ${build.parallelTotal ?? '?'} finished ` +
+          `(${part}); the last part prints the verdict. ${client.buildUrl(buildId)}`,
+      );
+      return { build, finalized: false };
+    }
+    return verdictOf(settings, client, build, log);
+  }
   const finalize = settings.finalize ?? !context.sharded;
   if (!finalize) {
     const build = await client.getBuild(buildId);
@@ -391,12 +431,22 @@ export async function finishRun(
     );
     return { build, finalized: false };
   }
-  let build = await client.finalize(buildId);
+  return verdictOf(settings, client, await client.finalize(buildId), log);
+}
+
+/** After the build is finalized: waits for reviews if asked, prints the summary, applies the gate. */
+async function verdictOf(
+  settings: Settings,
+  client: PixeltwinClient,
+  finalized: Build,
+  log: (line: string) => void,
+): Promise<{ build: Build; finalized: boolean }> {
+  let build = finalized;
   if (settings.waitSeconds > 0 && build.verdict === 'pending') {
-    log(`pixeltwin: waiting up to ${settings.waitSeconds} s for reviews at ${client.buildUrl(buildId)}`);
-    build = await client.waitForVerdict(buildId, { timeoutMs: settings.waitSeconds * 1000 });
+    log(`pixeltwin: waiting up to ${settings.waitSeconds} s for reviews at ${client.buildUrl(build.id)}`);
+    build = await client.waitForVerdict(build.id, { timeoutMs: settings.waitSeconds * 1000 });
   }
   for (const line of await summaryLines(client, build)) log(line);
-  if (settings.gate && build.verdict !== 'passed') throw new PixeltwinGateError(build, client.buildUrl(buildId));
+  if (settings.gate && build.verdict !== 'passed') throw new PixeltwinGateError(build, client.buildUrl(build.id));
   return { build, finalized: true };
 }

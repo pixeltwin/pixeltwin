@@ -54,6 +54,13 @@ export const createBuildSchema = z.strictObject({
   baseBranch: branchSchema.optional(),
   externalId: z.string().trim().min(1).max(200).optional(),
   commitSha: z.string().trim().min(1).max(64).optional(),
+  /** A parallel build: this many parts (CI jobs) each finalize it; the last one closes it. */
+  parallelTotal: z.number().int().min(1).max(1000).optional(),
+});
+
+export const finalizeBuildSchema = z.strictObject({
+  /** The part (CI job) of a parallel build that is done; without it the build is finalized at once. */
+  part: z.string().trim().min(1).max(200).optional(),
 });
 
 export const checkMetaSchema = z.strictObject({

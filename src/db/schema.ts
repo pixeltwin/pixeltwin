@@ -50,6 +50,15 @@ export interface BuildsTable {
   state: BuildState;
   createdAt: number;
   finalizedAt: number | null;
+  /** A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build. */
+  parallelTotal: number | null;
+}
+
+/** A finished part of a parallel build. */
+export interface BuildPartsTable {
+  buildId: string;
+  part: string;
+  finishedAt: number;
 }
 
 export interface ChecksTable {
@@ -150,6 +159,7 @@ export interface DB {
   projects: ProjectsTable;
   images: ImagesTable;
   builds: BuildsTable;
+  buildParts: BuildPartsTable;
   checks: ChecksTable;
   baselines: BaselinesTable;
   users: UsersTable;

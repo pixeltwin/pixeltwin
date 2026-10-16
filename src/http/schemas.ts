@@ -65,6 +65,12 @@ export const BuildSchema = z
     state: z.enum(BUILD_STATES),
     createdAt: z.number().int(),
     finalizedAt: z.number().int().nullable(),
+    parallelTotal: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build' }),
+    partsFinished: z.number().int().openapi({ description: 'Parts of a parallel build that have finalized it' }),
     verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'outdated', 'passed']),
     counts: z.object({ total: z.number().int(), result: countsBy(CHECK_RESULTS), review: countsBy(CHECK_REVIEWS) }),
   })

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { CheckResult, CheckReview } from '../../src/db/schema';
-import { createBuild, finalizeBuild, getBuild, listBuilds } from '../../src/domain/builds';
+import { createBuild, finalizeBuild, getBuild, listBuilds, removeBuilds } from '../../src/domain/builds';
 import { createProject } from '../../src/domain/projects';
 import { newId } from '../../src/ids';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
@@ -85,6 +85,54 @@ describe('builds', () => {
     expect(first.finalizedAt).toBeNumber();
     const second = await finalizeBuild(deps, build.id);
     expect(second.finalizedAt).toBe(first.finalizedAt);
+  });
+
+  test('a parallel build stays open until each of its parts has finalized it', async () => {
+    const { build } = await createBuild(deps, 'web', { externalId: 'ci-9', parallelTotal: 2 });
+    expect(build).toMatchObject({ parallelTotal: 2, partsFinished: 0 });
+
+    const one = await finalizeBuild(deps, build.id, { part: 'job-1' });
+    expect(one).toMatchObject({ state: 'open', partsFinished: 1, finalizedAt: null });
+    // The same part again (a retried request) counts once.
+    expect(await finalizeBuild(deps, build.id, { part: 'job-1' })).toMatchObject({ state: 'open', partsFinished: 1 });
+
+    const two = await finalizeBuild(deps, build.id, { part: 'job-2' });
+    expect(two).toMatchObject({ state: 'finalized', partsFinished: 2 });
+    expect(two.finalizedAt).toBeNumber();
+  });
+
+  test('parts finishing at once finalize the build once', async () => {
+    const { build } = await createBuild(deps, 'web', { parallelTotal: 3 });
+    await Promise.all(['a', 'b', 'c'].map((part) => finalizeBuild(deps, build.id, { part })));
+    expect(await getBuild(deps, build.id)).toMatchObject({ state: 'finalized', partsFinished: 3 });
+  });
+
+  test('finalize without a part closes a parallel build at once (a part never ran)', async () => {
+    const { build } = await createBuild(deps, 'web', { parallelTotal: 2 });
+    await finalizeBuild(deps, build.id, { part: 'job-1' });
+    expect(await finalizeBuild(deps, build.id)).toMatchObject({ state: 'finalized', partsFinished: 1 });
+  });
+
+  test('a part finalizes a build that is not parallel at once', async () => {
+    const { build } = await createBuild(deps, 'web', {});
+    expect(build).toMatchObject({ parallelTotal: null, partsFinished: 0 });
+    expect((await finalizeBuild(deps, build.id, { part: 'job-1' })).state).toBe('finalized');
+  });
+
+  test('the first open that names a part count sets it; later opens keep it', async () => {
+    const first = await createBuild(deps, 'web', { externalId: 'ci-10' });
+    const second = await createBuild(deps, 'web', { externalId: 'ci-10', parallelTotal: 2 });
+    expect(second.build.parallelTotal).toBe(2);
+    const third = await createBuild(deps, 'web', { externalId: 'ci-10', parallelTotal: 5 });
+    expect(third.build).toMatchObject({ id: first.build.id, parallelTotal: 2 });
+    expect((await appError(createBuild(deps, 'web', { parallelTotal: 0 }))).code).toBe('validation_failed');
+  });
+
+  test('deleting a parallel build deletes its finished parts', async () => {
+    const { build } = await createBuild(deps, 'web', { parallelTotal: 2 });
+    await finalizeBuild(deps, build.id, { part: 'job-1' });
+    await removeBuilds(deps.db, [build.id]);
+    expect(await deps.db.selectFrom('buildParts').selectAll().execute()).toEqual([]);
   });
 
   test('lists newest first with branch filter and cursor', async () => {

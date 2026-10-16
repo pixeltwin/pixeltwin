@@ -70,4 +70,31 @@ describe('build routes', () => {
     expect((await t.request('DELETE', `/api/v1/builds/${id}`, { as: admin })).status).toBe(204);
     expect((await t.request('GET', `/api/v1/builds/${id}`, { as: admin })).status).toBe(404);
   });
+
+  test('a parallel build: each part finalizes it, the last one closes it; no body still closes at once', async () => {
+    const { token } = await t.tokenAs('web', ['write']);
+    const as = { token };
+    const open = await t.request('POST', '/api/v1/projects/web/builds', {
+      as,
+      json: { externalId: 'gitlab-77', parallelTotal: 2 },
+    });
+    const build = (await open.json()) as { id: string; parallelTotal: number; partsFinished: number };
+    expect(build).toMatchObject({ parallelTotal: 2, partsFinished: 0 });
+    const finalize = async (json?: unknown) =>
+      (await (await t.request('POST', `/api/v1/builds/${build.id}/finalize`, { as, json })).json()) as {
+        state: string;
+        partsFinished: number;
+      };
+    expect(await finalize({ part: 'job-1' })).toMatchObject({ state: 'open', partsFinished: 1 });
+    expect(await finalize({ part: 'job-2' })).toMatchObject({ state: 'finalized', partsFinished: 2 });
+
+    const plain = (await (await t.request('POST', '/api/v1/projects/web/builds', { as, json: {} })).json()) as {
+      id: string;
+    };
+    const closed = await t.request('POST', `/api/v1/builds/${plain.id}/finalize`, { as });
+    expect(closed.status).toBe(200);
+    expect(((await closed.json()) as { state: string }).state).toBe('finalized');
+    const bad = await t.request('POST', `/api/v1/builds/${plain.id}/finalize`, { as, json: { part: '' } });
+    expect(bad.status).toBe(422);
+  });
 });

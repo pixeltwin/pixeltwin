@@ -43,7 +43,9 @@ How it runs: the launcher's `onPrepare` opens the build and hands its id to the 
 `onComplete` finalizes it, prints the verdict, the counts and what waits for review, and with the
 gate on stops the launcher with exit code 1 unless the verdict is `passed`. A `changed` or `new`
 check does not fail its test. With `--shard`, no shard finalizes; run
-`npx @pixeltwin/client finalize --gate` after all of them.
+`npx @pixeltwin/client finalize --gate` after all of them. Several CI jobs, each with its own
+launcher, share one build with `PIXELTWIN_PARALLEL_TOTAL` (see
+[Parallel CI jobs](../playwright/README.md#parallel-ci-jobs)): the last one to end finalizes it.
 
 ## `pixeltwinCheck(name, options?)`
 
