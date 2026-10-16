@@ -107,6 +107,9 @@ test('a reviewer draws an ignore area over the change; the check is compared aga
   await expect(page.locator('.area-item')).toHaveCount(1);
   await expect(page.locator('.pane-current .area-ignore')).toHaveCount(1);
 
+  // Areas are this build's: in Slider they show on its side of the divider only, so move the
+  // divider all the way left before picking the area.
+  for (let i = 0; i < 10; i++) await page.keyboard.press('Shift+ArrowLeft');
   // Click the area to edit it: drag it off the button, Save, and the change is back.
   const shown = await img.boundingBox();
   if (!shown) throw new Error('screenshot not on screen');
