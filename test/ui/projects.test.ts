@@ -186,6 +186,35 @@ describe('UI projects', () => {
       expect((await postForm(t, '/ui/p/shop/promote', { branch: 'feature/new' }, viewer)).status).toBe(403);
     });
 
+    test('the promote page shows how each screen differs from main, with a diff image', async () => {
+      const project = await createProject(t.deps, { slug: 'shop', name: 'Shop' });
+      await seedBaseline(t.deps, project, white, { name: 'home' });
+      const build = await openBuild(t.deps, 'shop', { branch: 'feature/new' });
+      const home = (await submit(t.deps, build, withSquare, { name: 'home' })).check;
+      const cart = (await submit(t.deps, build, withSquare, { name: 'cart' })).check;
+      await approveCheck(t.deps, home.id, admin.id);
+      await approveCheck(t.deps, cart.id, admin.id);
+
+      const page = await html(await t.request('GET', '/ui/p/shop/promote?branch=feature%2Fnew', { as: admin }));
+      // home: a 10×10 square on 100×100 is 1% of the pixels.
+      expect(page).toContain('1% changed · 1 change');
+      const diffUrl = `/ui/p/shop/promote/diff.png?branch=feature%2Fnew&amp;key=${encodeURIComponent(home.snapshotKey)}`;
+      expect(page).toContain(`src="${diffUrl}"`);
+      expect(page).toContain('<summary>Compare</summary>');
+      expect(page).toContain('new on main');
+
+      const png = await t.request('GET', diffUrl.replace('&amp;', '&'), { as: admin });
+      expect(png.status).toBe(200);
+      expect(png.headers.get('content-type')).toBe('image/png');
+      const none = await t.request(
+        'GET',
+        `/ui/p/shop/promote/diff.png?branch=feature%2Fnew&key=${encodeURIComponent(cart.snapshotKey)}`,
+        { as: admin },
+      );
+      expect(none.status).toBe(404);
+      expect((await t.request('GET', diffUrl.replace('&amp;', '&'), { as: viewer })).status).toBe(403);
+    });
+
     test('a lane whose latest build waits for review links straight to it', async () => {
       const { pendingCheck } = await seedWeb();
       const page = await html(await t.request('GET', '/ui/p/web', { as: viewer }));

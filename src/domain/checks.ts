@@ -81,7 +81,7 @@ interface SnapshotRegions {
   compare: Rect[];
 }
 
-async function regionsFor(
+export async function regionsFor(
   db: Deps['db'],
   projectId: string,
   snapshotKey: string,

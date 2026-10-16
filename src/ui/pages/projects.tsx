@@ -7,6 +7,7 @@ import { type BranchSummary, listBranchSummaries } from '../../domain/branches';
 import { type BuildView, listBuilds } from '../../domain/builds';
 import { firstPendingCheckId } from '../../domain/checks';
 import { createProject, getProjectBySlug, listProjects } from '../../domain/projects';
+import { type PromotionDiff, promotionDiff } from '../../domain/promotion-diff';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import {
@@ -460,11 +461,23 @@ function AllBuildsPage(props: {
 }
 
 /** Choose the screens of a branch to copy to main: each shows main now → the branch. */
-function PromotePage(props: { ui: Ui; project: Project; branch: string; candidates: PromotionCandidate[] }) {
+function PromotePage(props: {
+  ui: Ui;
+  project: Project;
+  branch: string;
+  candidates: PromotionCandidate[];
+  diffs: Map<string, PromotionDiff | null>;
+}) {
   const { ui, project, branch, candidates } = props;
-  const image = (sha: string, alt: string) => (
-    <img class="promote-thumb" src={ui.url(`/api/v1/images/${sha}`)} alt={alt} loading="lazy" />
+  const main = project.mainBranch;
+  const image = (src: string, alt: string, cls = 'promote-thumb') => (
+    <img class={cls} src={src} alt={alt} loading="lazy" />
   );
+  const imageUrl = (sha: string) => ui.url(`/api/v1/images/${sha}`);
+  const diffUrl = (key: string) =>
+    ui.url(
+      `/ui/p/${project.slug}/promote/diff.png?branch=${encodeURIComponent(branch)}&key=${encodeURIComponent(key)}`,
+    );
   return (
     <Layout
       ui={ui}
@@ -474,16 +487,16 @@ function PromotePage(props: { ui: Ui; project: Project; branch: string; candidat
     >
       <div class="page-head">
         <div>
-          <h1>{`Promote ${branch} to ${project.mainBranch}`}</h1>
+          <h1>{`Promote ${branch} to ${main}`}</h1>
           <p class="sub">
-            {`The checked screens' baselines from ${branch} become ${project.mainBranch}'s, so ${project.mainBranch} does not ask to review them again after the merge. Uncheck what should wait.`}
+            {`The checked screens' baselines from ${branch} become ${main}'s, so ${main} does not ask to review them again after the merge. Uncheck what should wait; Compare shows a screen large, with its changes in red.`}
           </p>
         </div>
       </div>
       {candidates.length === 0 ? (
         <div class="empty">
           <h3>Nothing to promote</h3>
-          <p class="muted">{`${project.mainBranch} already has every screen of ${branch} as it is.`}</p>
+          <p class="muted">{`${main} already has every screen of ${branch} as it is.`}</p>
           <a class="button" href={ui.url(`/ui/p/${project.slug}`)}>
             Back to branches
           </a>
@@ -492,37 +505,71 @@ function PromotePage(props: { ui: Ui; project: Project; branch: string; candidat
         <form method="post" action={ui.url(`/ui/p/${project.slug}/promote`)}>
           <input type="hidden" name="branch" value={branch} />
           <ul class="promote-list">
-            {candidates.map((c) => (
-              <li>
-                <label class="promote-item">
-                  <input type="checkbox" name="snapshotKey" value={c.snapshotKey} checked />
-                  <span class="promote-name">
-                    <strong>{c.name}</strong>
-                    <span class="muted">
-                      {Object.entries(c.variant)
-                        .map(([k, v]) => `${k}=${v}`)
-                        .join(' · ') || 'no variant'}
+            {candidates.map((c) => {
+              const diff = props.diffs.get(c.snapshotKey);
+              const what = !c.mainImageSha
+                ? `new on ${main}`
+                : diff
+                  ? `${diff.percent}% changed · ${diff.changes} ${diff.changes === 1 ? 'change' : 'changes'}`
+                  : `differs from ${main}`;
+              const variant =
+                Object.entries(c.variant)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(' · ') || 'no variant';
+              const showDiff = Boolean(c.mainImageSha && diff?.diffPng);
+              return (
+                <li class="promote-row">
+                  <label class="promote-pick">
+                    <input type="checkbox" name="snapshotKey" value={c.snapshotKey} checked />
+                    <span class="promote-name">
+                      <strong>{c.name}</strong>
+                      <span class="muted">{variant}</span>
+                      <span class={c.mainImageSha ? 'promote-what' : 'promote-what new'}>{what}</span>
                     </span>
-                  </span>
+                  </label>
                   <span class="promote-images">
                     {c.mainImageSha ? (
-                      image(c.mainImageSha, `${project.mainBranch} now`)
+                      image(imageUrl(c.mainImageSha), `${main} now`)
                     ) : (
-                      <span class="promote-none muted">new on {project.mainBranch}</span>
+                      <span class="promote-none muted">new on {main}</span>
                     )}
                     <span aria-hidden="true">→</span>
-                    {image(c.branchImageSha, branch)}
+                    {image(imageUrl(c.branchImageSha), branch)}
+                    {showDiff && image(diffUrl(c.snapshotKey), 'changes in red', 'promote-thumb promote-diff-thumb')}
                   </span>
-                </label>
-              </li>
-            ))}
+                  <details class="promote-compare">
+                    <summary>Compare</summary>
+                    <div class={showDiff ? 'promote-large three' : 'promote-large'}>
+                      <figure>
+                        <figcaption>{`${main} now`}</figcaption>
+                        {c.mainImageSha ? (
+                          image(imageUrl(c.mainImageSha), `${main} now`, 'promote-full')
+                        ) : (
+                          <span class="promote-none muted">{`no baseline on ${main} yet`}</span>
+                        )}
+                      </figure>
+                      <figure>
+                        <figcaption>{branch}</figcaption>
+                        {image(imageUrl(c.branchImageSha), branch, 'promote-full')}
+                      </figure>
+                      {showDiff && (
+                        <figure>
+                          <figcaption>Changes in red</figcaption>
+                          {image(diffUrl(c.snapshotKey), 'changes in red', 'promote-full')}
+                        </figure>
+                      )}
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
           </ul>
           <div class="dialog-actions">
             <a class="button" href={ui.url(`/ui/p/${project.slug}`)}>
               Cancel
             </a>
             <button class="primary" type="submit">
-              {`Promote checked to ${project.mainBranch}`}
+              {`Promote checked to ${main}`}
             </button>
           </div>
         </form>
@@ -544,7 +591,36 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
     const project = await getProjectBySlug(s.deps, c.req.param('slug'));
     const branch = (c.req.query('branch') ?? '').trim();
     const candidates = await promotionCandidates(s.deps, project.slug, branch);
-    return c.html(<PromotePage ui={ui} project={project} branch={branch} candidates={candidates} />);
+    const diffs = new Map(
+      await Promise.all(
+        candidates.map(
+          async (x) =>
+            [
+              x.snapshotKey,
+              x.mainImageSha
+                ? await promotionDiff(s.deps, project, x.snapshotKey, x.mainImageSha, x.branchImageSha)
+                : null,
+            ] as const,
+        ),
+      ),
+    );
+    return c.html(<PromotePage ui={ui} project={project} branch={branch} candidates={candidates} diffs={diffs} />);
+  });
+
+  // The diff image of one screen on the promote page (main now vs the branch, changes in red).
+  app.get('/ui/p/:slug/promote/diff.png', async (c) => {
+    requirePromote(c);
+    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const branch = (c.req.query('branch') ?? '').trim();
+    const key = c.req.query('key') ?? '';
+    const candidate = (await promotionCandidates(s.deps, project.slug, branch)).find((x) => x.snapshotKey === key);
+    const diff = candidate?.mainImageSha
+      ? await promotionDiff(s.deps, project, key, candidate.mainImageSha, candidate.branchImageSha)
+      : null;
+    if (!diff?.diffPng) throw new AppError('not_found', 404, 'No diff for this screen.');
+    return new Response(new Uint8Array(diff.diffPng), {
+      headers: { 'content-type': 'image/png', 'cache-control': 'private, max-age=300' },
+    });
   });
 
   app.post('/ui/p/:slug/promote', async (c) => {
