@@ -157,6 +157,7 @@ export interface DB {
   sessions: SessionsTable;
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
+  storedObjects: StoredObjectsTable;
 }
 
 export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq'>;
@@ -165,3 +166,10 @@ export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;
 export type ReviewEvent = Selectable<ReviewEventsTable>;
 export type SnapshotArea = Selectable<SnapshotAreasTable>;
+
+/** Image bytes when STORAGE=postgres (keys as for any storage: `images/ab/cd/<sha>.png`). */
+export interface StoredObjectsTable {
+  key: string;
+  data: Uint8Array;
+  createdAt: number;
+}

@@ -2,9 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readPngHeader, storeImage } from '../../src/domain/images';
+import { DAY_MS, runRetention } from '../../src/domain/retention';
+import { DatabaseStorage } from '../../src/storage/database';
 import { LocalStorage } from '../../src/storage/local';
 import { MemoryStorage } from '../../src/storage/memory';
 import { imageKey, type Storage } from '../../src/storage/storage';
+import { createTestDb } from '../helpers/db';
+import { makePng } from '../helpers/png';
 
 const SHA = 'ab'.repeat(32);
 
@@ -19,16 +24,20 @@ describe('imageKey', () => {
   });
 });
 
-function contract(name: string, make: () => { storage: Storage; cleanup: () => void }) {
+type Made = { storage: Storage; cleanup: () => void | Promise<void> };
+
+function contract(name: string, make: () => Made | Promise<Made>) {
   describe(name, () => {
     let storage: Storage;
-    let cleanup: () => void;
+    let cleanup: () => void | Promise<void>;
 
-    beforeEach(() => {
-      ({ storage, cleanup } = make());
+    beforeEach(async () => {
+      ({ storage, cleanup } = await make());
     });
 
-    afterEach(() => cleanup());
+    afterEach(async () => {
+      await cleanup();
+    });
 
     test('round-trips bytes', async () => {
       await storage.put('images/a/b/c.png', new Uint8Array([1, 2, 3]));
@@ -79,4 +88,33 @@ describe('LocalStorage specifics', () => {
     await expect(storage.put('../outside.png', new Uint8Array([1]))).rejects.toThrow('Invalid storage key');
     await expect(storage.get('/etc/passwd')).rejects.toThrow('Invalid storage key');
   });
+});
+
+// Images in the database itself (STORAGE=postgres): replicas need no shared disk.
+contract('DatabaseStorage', async () => {
+  const handle = await createTestDb();
+  return { storage: new DatabaseStorage(handle.db), cleanup: () => handle.close() };
+});
+
+// With SQLite one connection serves everything, so image GC (a transaction that also deletes the
+// bytes) needs Postgres for this storage; the config only allows STORAGE=postgres with Postgres.
+test.skipIf(!process.env.TEST_DATABASE_URL)('image GC removes unused bytes from the database storage', async () => {
+  const handle = await createTestDb();
+  try {
+    const storage = new DatabaseStorage(handle.db);
+    const deps = {
+      db: handle.db,
+      storage,
+      runDiff: async () => ({ kind: 'error' as const, code: 'diff_failed' as const, message: 'unused' }),
+      limits: { maxImageBytes: 10 * 1024 * 1024, maxImagePixels: 40_000_000 },
+    };
+    const png = makePng(10, 10);
+    const sha = await storeImage(deps, png, readPngHeader(png, deps.limits));
+    expect(await storage.exists(imageKey(sha))).toBe(true);
+    const result = await runRetention(deps, Date.now() + 2 * DAY_MS);
+    expect(result.imagesDeleted).toBe(1);
+    expect(await storage.exists(imageKey(sha))).toBe(false);
+  } finally {
+    await handle.close();
+  }
 });

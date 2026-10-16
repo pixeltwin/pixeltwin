@@ -7,6 +7,7 @@ import { startRetentionJob } from './domain/retention-job';
 import { createApp } from './http/app';
 import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
+import { DatabaseStorage } from './storage/database';
 import { LocalStorage } from './storage/local';
 
 export interface RunningServer {
@@ -26,12 +27,12 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
   const pool = new DiffPool({ size: config.diffWorkers, timeoutMs: config.diffTimeoutMs });
   const deps: Deps = {
     db: handle.db,
-    storage: new LocalStorage(config.dataDir),
+    storage: config.storage === 'postgres' ? new DatabaseStorage(handle.db) : new LocalStorage(config.dataDir),
     runDiff: pool.run,
     diffBacklog: () => pool.backlog,
     limits: { maxImageBytes: config.maxImageBytes, maxImagePixels: config.maxImagePixels },
   };
-  const { state, token } = await SetupState.init(deps);
+  const { state, token } = await SetupState.init(deps, config.setupToken);
   const app = createApp({ deps, config, logger, setup: state, loginLimiter: new LoginLimiter() });
 
   const server = Bun.serve({
@@ -43,7 +44,12 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
   const retention = startRetentionJob({ deps, handle, logger });
   const url = server.url.href.replace(/\/$/, '');
   logger.info('listening', { url, publicUrl: config.publicUrl, database: handle.kind, dataDir: config.dataDir });
-  if (token) {
+  if (token && config.setupToken) {
+    // The token came from SETUP_TOKEN (a secret): never copy it into the logs.
+    logger.warn('no users yet; create the first admin with the SETUP_TOKEN value', {
+      setupUrl: `${config.publicUrl}/ui/setup`,
+    });
+  } else if (token) {
     logger.warn('no users yet; create the first admin with the setup token', {
       setupToken: token,
       setupUrl: `${config.publicUrl}/ui/setup?token=${token}`,

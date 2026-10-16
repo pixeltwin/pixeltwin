@@ -74,6 +74,7 @@ describe('build numbers', () => {
         '0004_review_events',
         '0005_snapshot_areas',
         '0006_outdated_checks',
+        '0007_stored_objects',
       ]);
     }
     const numbers = await deps.db.selectFrom('builds').select(['id', 'number']).orderBy('id').execute();

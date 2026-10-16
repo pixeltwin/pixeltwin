@@ -5,6 +5,7 @@ import * as m0003 from './0003_build_numbers';
 import * as m0004 from './0004_review_events';
 import * as m0005 from './0005_snapshot_areas';
 import * as m0006 from './0006_outdated_checks';
+import * as m0007 from './0007_stored_objects';
 
 // Static list: a compiled binary has no migrations directory to scan.
 const migrations: Record<string, Migration> = {
@@ -14,6 +15,7 @@ const migrations: Record<string, Migration> = {
   '0004_review_events': m0004,
   '0005_snapshot_areas': m0005,
   '0006_outdated_checks': m0006,
+  '0007_stored_objects': m0007,
 };
 
 export const migrationProvider: MigrationProvider = {

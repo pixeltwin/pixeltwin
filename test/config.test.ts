@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { cpus } from 'node:os';
 import { resolve } from 'node:path';
-import { ConfigError, loadConfig } from '../src/config';
+import { ConfigError, cpuLimitFrom, loadConfig } from '../src/config';
 
 describe('loadConfig', () => {
   test('works with no variables set', () => {
@@ -16,6 +16,8 @@ describe('loadConfig', () => {
     expect(config.diffTimeoutMs).toBe(30_000);
     expect(config.diffQueueMax).toBe(config.diffWorkers * 20);
     expect(config.databasePoolMax).toBe(20);
+    expect(config.storage).toBe('local');
+    expect(config.setupToken).toBeNull();
     expect(config.maxImageBytes).toBe(10 * 1024 * 1024);
     expect(config.maxImagePixels).toBe(40_000_000);
   });
@@ -35,6 +37,27 @@ describe('loadConfig', () => {
     expect(config.databaseUrl).toBe('postgres://u:p@db:5432/pt');
     expect(config.diffWorkers).toBe(3);
     expect(config.diffTimeoutMs).toBe(5000);
+  });
+
+  test('STORAGE=postgres keeps images in the database, which must then be Postgres', () => {
+    const pg = loadConfig({ STORAGE: 'postgres', DATABASE_URL: 'postgres://u:p@db:5432/pt' });
+    expect(pg.storage).toBe('postgres');
+    expect(() => loadConfig({ STORAGE: 'postgres' })).toThrow('STORAGE=postgres needs DATABASE_URL');
+    expect(() => loadConfig({ STORAGE: 's3' })).toThrow(ConfigError);
+  });
+
+  test('SETUP_TOKEN fixes the first-run token (for a Kubernetes Secret); it must be long', () => {
+    expect(loadConfig({ SETUP_TOKEN: 'a'.repeat(24) }).setupToken).toBe('a'.repeat(24));
+    expect(() => loadConfig({ SETUP_TOKEN: 'short' })).toThrow(ConfigError);
+  });
+
+  test('diff workers follow the container CPU limit, not the machine', () => {
+    expect(cpuLimitFrom({ 'cpu.max': 'max 100000' })).toBeNull();
+    expect(cpuLimitFrom({ 'cpu.max': '200000 100000' })).toBe(2);
+    expect(cpuLimitFrom({ 'cpu.max': '150000 100000' })).toBe(2);
+    expect(cpuLimitFrom({ 'cpu.cfs_quota_us': '50000', 'cpu.cfs_period_us': '100000' })).toBe(1);
+    expect(cpuLimitFrom({ 'cpu.cfs_quota_us': '-1', 'cpu.cfs_period_us': '100000' })).toBeNull();
+    expect(cpuLimitFrom({})).toBeNull();
   });
 
   test('treats empty strings as unset', () => {

@@ -81,7 +81,9 @@ nothing references any more are deleted by an hourly job.
 | `DATA_DIR` | `./data` |
 | `DATABASE_URL` | unset → SQLite in `DATA_DIR`; `postgres://…` for Postgres |
 | `DATABASE_POOL_MAX` | `20` (Postgres connections) |
-| `DIFF_WORKERS` | CPU count − 1 (one core stays with the main thread) |
+| `STORAGE` | `local`: images are files under `DATA_DIR`; `postgres`: images live in the Postgres database (needs `DATABASE_URL`), so replicas need no shared disk and one database backup covers everything |
+| `SETUP_TOKEN` | unset → a random first-run token in the log; set (≥ 16 characters, e.g. from a Kubernetes Secret) to fix it on every replica; it is then never logged |
+| `DIFF_WORKERS` | CPUs − 1 (one core stays with the main thread); in a container, its CPU limit counts |
 | `DIFF_TIMEOUT_MS` | `30000` |
 | `DIFF_QUEUE_MAX` | `DIFF_WORKERS` × 20: while more diffs wait, uploads get `503 server_busy` with `Retry-After`; `0` never refuses |
 | `MAX_IMAGE_BYTES` | `10485760` |

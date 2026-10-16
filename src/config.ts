@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -17,6 +18,8 @@ const envSchema = z.object({
   DIFF_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
   DIFF_QUEUE_MAX: z.coerce.number().int().min(0).optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(500).default(20),
+  STORAGE: z.enum(['local', 'postgres']).default('local'),
+  SETUP_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   MAX_IMAGE_BYTES: z.coerce
     .number()
     .int()
@@ -41,8 +44,43 @@ export interface Config {
   diffQueueMax: number;
   /** Connections in the Postgres pool (ignored for SQLite). */
   databasePoolMax: number;
+  /** Where image bytes live: files under DATA_DIR, or the Postgres database (no shared disk needed). */
+  storage: 'local' | 'postgres';
+  /** The first-run setup token, fixed (e.g. from a Kubernetes Secret); null makes a random one. */
+  setupToken: string | null;
   maxImageBytes: number;
   maxImagePixels: number;
+}
+
+/**
+ * The CPU limit of this container from cgroup files (v2 `cpu.max`, or v1 quota and period),
+ * rounded up; null when unlimited or unknown. `files` maps a file name to its content.
+ */
+export function cpuLimitFrom(files: Record<string, string | undefined>): number | null {
+  const max = files['cpu.max']?.trim().split(/\s+/);
+  if (max && max[0] !== 'max') {
+    const quota = Number(max[0]);
+    const period = Number(max[1] ?? 100_000);
+    return quota > 0 && period > 0 ? Math.ceil(quota / period) : null;
+  }
+  const quota = Number(files['cpu.cfs_quota_us']);
+  const period = Number(files['cpu.cfs_period_us']);
+  return quota > 0 && period > 0 ? Math.ceil(quota / period) : null;
+}
+
+function readCgroupCpuLimit(): number | null {
+  const read = (path: string) => {
+    try {
+      return readFileSync(path, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+  return cpuLimitFrom({
+    'cpu.max': read('/sys/fs/cgroup/cpu.max'),
+    'cpu.cfs_quota_us': read('/sys/fs/cgroup/cpu/cpu.cfs_quota_us'),
+    'cpu.cfs_period_us': read('/sys/fs/cgroup/cpu/cpu.cfs_period_us'),
+  });
 }
 
 export class ConfigError extends Error {
@@ -64,8 +102,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   const e = parsed.data;
   const dataDir = resolve(e.DATA_DIR);
+  if (e.STORAGE === 'postgres' && !e.DATABASE_URL) {
+    throw new ConfigError(['STORAGE=postgres needs DATABASE_URL=postgres://… (images are kept in that database)']);
+  }
   // One core stays free for the main thread, which parses every request and runs every query.
-  const diffWorkers = e.DIFF_WORKERS ?? Math.max(1, cpus().length - 1);
+  // In a container the CPU limit counts, not the machine's cores.
+  const available = Math.min(cpus().length, readCgroupCpuLimit() ?? Number.POSITIVE_INFINITY);
+  const diffWorkers = e.DIFF_WORKERS ?? Math.max(1, available - 1);
   return {
     port: e.PORT,
     publicUrl: (e.PUBLIC_URL ?? `http://localhost:${e.PORT}`).replace(/\/+$/, ''),
@@ -76,6 +119,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     diffTimeoutMs: e.DIFF_TIMEOUT_MS,
     diffQueueMax: e.DIFF_QUEUE_MAX ?? diffWorkers * 20,
     databasePoolMax: e.DATABASE_POOL_MAX,
+    storage: e.STORAGE,
+    setupToken: e.SETUP_TOKEN ?? null,
     maxImageBytes: e.MAX_IMAGE_BYTES,
     maxImagePixels: e.MAX_IMAGE_PIXELS,
   };

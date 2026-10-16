@@ -16,9 +16,15 @@ export class SetupState {
     this.#tokenHash = token ? sha256(token) : null;
   }
 
-  /** Creates the state for a starting server: a fresh token when there are no users yet. */
-  static async init(deps: Pick<Deps, 'db'>): Promise<{ state: SetupState; token: string | null }> {
-    const token = (await countUsers(deps)) === 0 ? randomBase62(32) : null;
+  /**
+   * Creates the state for a starting server when there are no users yet: `fixed` (SETUP_TOKEN, the
+   * same on every replica) or a fresh random token.
+   */
+  static async init(
+    deps: Pick<Deps, 'db'>,
+    fixed: string | null = null,
+  ): Promise<{ state: SetupState; token: string | null }> {
+    const token = (await countUsers(deps)) === 0 ? (fixed ?? randomBase62(32)) : null;
     return { state: new SetupState(token), token };
   }
 
