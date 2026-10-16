@@ -1,21 +1,23 @@
 /* Overlays: toasts, dialogs, the shortcut sheet. Shadows appear only here (UI spec §2). */
-/* Toasts sit at the top, below the top bar, clear of the review's action bar at the bottom. */
+/* Toasts sit top right, below the top bar, clear of the review's action bar at the bottom.
+   Every toast has the same size, whatever its text. */
 .toasts {
   position: fixed;
   top: calc(var(--topbar-height) + var(--space-3));
-  left: 50%;
+  right: var(--space-4);
   z-index: 60;
   display: grid;
   gap: var(--space-2);
-  justify-items: center;
-  transform: translateX(-50%);
+  justify-items: end;
   pointer-events: none;
 }
 .toast {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  max-width: min(420px, calc(100vw - 2 * var(--space-4)));
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 2 * var(--space-4)));
+  min-height: 48px;
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
   background: var(--primary);
@@ -48,6 +50,14 @@
   --tone-border: var(--amber-border);
   --tone-text: var(--amber);
 }
+.toast > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 .toast .ghost {
   color: inherit;
   border-color: transparent;
@@ -61,7 +71,7 @@
 }
 @keyframes toast-in {
   from {
-    transform: translateY(-8px);
+    transform: translateX(16px);
     opacity: 0;
   }
 }
