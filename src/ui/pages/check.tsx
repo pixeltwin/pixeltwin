@@ -29,7 +29,7 @@ async function reviewerName(s: Services, id: string): Promise<string> {
   return token ? `token “${token.name}”` : 'a deleted account';
 }
 
-/** A screenshot with region boxes; `soft` boxes only outline (side by side), diff boxes are filled. */
+/** A screenshot with its change regions (boxes that light up from the info strip) and areas. */
 function Shot(props: {
   ui: Ui;
   sha: string;
@@ -39,7 +39,6 @@ function Shot(props: {
   areas?: Area[] | undefined;
   /** Ignore regions the test sent with this check (`ignoreRegions` in the API). */
   apiIgnore?: Rect[] | undefined;
-  soft?: boolean;
 }) {
   const { ui, sha, alt, size, regions } = props;
   return (
@@ -53,12 +52,7 @@ function Shot(props: {
       />
       {size && regions && regions.length > 0 && (
         // Region boxes as SVG attributes: the CSP forbids inline styles.
-        <svg
-          class={props.soft ? 'soft' : undefined}
-          viewBox={`0 0 ${size.width} ${size.height}`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
+        <svg viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
           {regions.map((r, i) => (
             <rect x={r.x} y={r.y} width={r.width} height={r.height} data-change={i} />
           ))}
@@ -233,7 +227,6 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
             regions={diff?.regions}
             areas={areas}
             apiIgnore={check.ignoreRegions}
-            soft
           />
         </Pane>
         {check.diffImageSha && (
@@ -432,15 +425,12 @@ function Areas(props: {
         ))}
       </ul>
       {areas.length > 0 && <p class="hint">Areas apply to every check of this snapshot, on every branch.</p>}
-      {api.length > 0 && (
-        <p class="hint">
-          Sent by the test with this check only (ignoreRegions in the API). Draw an ignore area to skip a spot in every
-          check of this snapshot.
-        </p>
-      )}
     </section>
   );
 }
+
+/** Up to this many changes are listed open; more start folded. */
+const CHANGES_OPEN = 3;
 
 /** Room an Ignore-this-change area leaves around the change, so a slightly wider change next time is still covered. */
 const CHANGE_MARGIN = 4;
@@ -520,12 +510,6 @@ function Info(props: {
             <dd>{`${check.tolerancePercent}%`}</dd>
           </>
         )}
-        {diff && diff.regions.length > 0 && (
-          <>
-            <dt>Changes</dt>
-            <dd>{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''}`}</dd>
-          </>
-        )}
         {check.baseline && (
           <>
             <dt>Branch</dt>
@@ -542,36 +526,6 @@ function Info(props: {
           </>
         )}
       </dl>
-      {diff && diff.regions.length > 0 && (
-        <ul class="regions" aria-label="Changes">
-          {diff.regions.map((r, i) => (
-            <li>
-              <button
-                type="button"
-                class="small ghost"
-                data-change={i}
-                aria-pressed="false"
-                title="Highlight this change on the screenshots"
-              >
-                <span>{`Change ${i + 1}`}</span>
-                <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
-              </button>
-              {props.canReview && (
-                <IgnoreChange
-                  ui={props.ui}
-                  check={check}
-                  region={r}
-                  index={i}
-                  size={size}
-                  filter={props.filter}
-                  blocked={props.areas.some((a) => a.kind === 'compare')}
-                />
-              )}
-            </li>
-          ))}
-          {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
-        </ul>
-      )}
       <Areas
         ui={props.ui}
         check={check}
@@ -580,6 +534,42 @@ function Info(props: {
         filter={props.filter}
         canReview={props.canReview}
       />
+      {diff && diff.regions.length > 0 && (
+        // A few changes are listed open; a long list starts folded under its count.
+        <details class="changes" open={diff.regions.length <= CHANGES_OPEN ? true : undefined}>
+          <summary>
+            Changes <span class="count">{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''}`}</span>
+          </summary>
+          <ul class="regions" aria-label="Changes">
+            {diff.regions.map((r, i) => (
+              <li>
+                <button
+                  type="button"
+                  class="small ghost"
+                  data-change={i}
+                  aria-pressed="false"
+                  title="Highlight this change on the screenshots"
+                >
+                  <span>{`Change ${i + 1}`}</span>
+                  <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+                </button>
+                {props.canReview && (
+                  <IgnoreChange
+                    ui={props.ui}
+                    check={check}
+                    region={r}
+                    index={i}
+                    size={size}
+                    filter={props.filter}
+                    blocked={props.areas.some((a) => a.kind === 'compare')}
+                  />
+                )}
+              </li>
+            ))}
+            {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
+          </ul>
+        </details>
+      )}
       <History check={check} history={props.history} />
     </aside>
   );

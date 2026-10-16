@@ -115,6 +115,15 @@ describe('UI focus mode', () => {
     expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('New snapshot.</p>');
   });
 
+  test('a long list of changes starts folded under its count', async () => {
+    await seedBaseline(t.deps, project, white, { name: 'home' });
+    const buildId = await openBuild(t.deps, 'web');
+    const spots = [0, 30, 60, 90].map((x) => ({ x, y: 40, width: 8, height: 8, color: BLACK }));
+    const many = (await submit(t.deps, buildId, makePng(100, 100, WHITE, spots), { name: 'home' })).check;
+    const body = await page(`/ui/checks/${many.id}`);
+    expect(body).toContain('<details class="changes"><summary>Changes <span class="count">4</span></summary>');
+  });
+
   test('the info strip shows Diff, Tolerance and Branch', async () => {
     const { changed, fresh } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}`);
@@ -132,7 +141,9 @@ describe('UI focus mode', () => {
   test('changed areas are named by where they are, and each lights itself up on the screenshots', async () => {
     const { changed } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}`);
-    expect(body).toContain('<dt>Changes</dt><dd>1</dd>');
+    // A few changes are listed open under their count.
+    expect(body).toContain('<details class="changes" open=""><summary>Changes <span class="count">1</span></summary>');
+    expect(body).not.toContain('<dt>Changes</dt>');
     expect(body).toContain(
       '<button type="button" class="small ghost" data-change="0" aria-pressed="false" title="Highlight this change on the screenshots"><span>Change 1</span><span class="muted">top left · 10×10 px</span></button>',
     );

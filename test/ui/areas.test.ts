@@ -171,10 +171,22 @@ describe('UI areas', () => {
         '<span class="badge-api" title="Sent with the check through the API (ignoreRegions)">API</span>',
       );
       expect(body).toContain('top center · 100×20 px');
-      expect(body).toContain('Sent by the test with this check only');
+      // No explanation under the list: the API badge's tooltip says it.
+      expect(body).not.toContain('Sent by the test');
       const item = body.slice(body.indexOf('area-item-api'), body.indexOf('</li>', body.indexOf('area-item-api')));
       expect(item).not.toContain('data-area-edit');
       expect(item).not.toContain('data-area-delete');
+    });
+
+    test('the Areas section comes before the list of changes', async () => {
+      await seedBaseline(t.deps, project, white);
+      const buildId = await openBuild(t.deps, 'web');
+      const check = (
+        await submit(t.deps, buildId, withClock, { ignoreRegions: [{ x: 60, y: 60, width: 20, height: 20 }] })
+      ).check;
+      const body = await page(`/ui/checks/${check.id}`);
+      expect(body.indexOf('aria-label="Areas"')).toBeGreaterThan(0);
+      expect(body.indexOf('aria-label="Areas"')).toBeLessThan(body.indexOf('<details class="changes"'));
     });
 
     test('show for viewers too, and a check without them has no Areas section', async () => {
