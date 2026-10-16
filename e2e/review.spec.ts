@@ -8,7 +8,8 @@ test('a reviewer goes through a build with the keyboard, without page loads', as
   reviewerPage: page,
   seeded,
 }) => {
-  await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
+  // Newest first: the new cart page (posted last) comes before the changed home page.
+  await open(page, `/ui/checks/${seeded.fresh}?filter=pending`);
   await page.evaluate(() => {
     (window as unknown as { stayed: boolean }).stayed = true;
   });
@@ -18,16 +19,16 @@ test('a reviewer goes through a build with the keyboard, without page loads', as
   await expect(page.getByRole('button', { name: /Approve/ })).toBeInViewport({ ratio: 1 });
 
   await page.keyboard.press('a');
-  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
-  await expect(page.locator('.toast').last()).toContainText('Approved home');
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
+  await expect(page.locator('.toast').last()).toContainText('Approved cart');
 
   // Undo goes back to the check and makes it pending again.
   await page.keyboard.press('u');
-  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
-  expect((await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).review).toBe('pending');
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+  expect((await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.fresh}`)).review).toBe('pending');
 
   await page.keyboard.press('a');
-  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
   await page.keyboard.press('a');
   await expect(page.getByRole('heading', { name: 'Build reviewed' })).toBeVisible();
   await expect(page.locator('.reviewed-screen')).toContainText('2 approved · 0 rejected · 0 skipped');
@@ -212,10 +213,11 @@ test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) 
 });
 
 test('arrow keys move between checks; Shift+arrows move the slider', async ({ reviewerPage: page, seeded }) => {
+  // Newest first: ← goes to the newer check (the new cart page), → back to the older one.
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
-  await page.keyboard.press('ArrowRight');
-  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
   await page.keyboard.press('ArrowLeft');
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+  await page.keyboard.press('ArrowRight');
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
 
   await page.keyboard.press('2');

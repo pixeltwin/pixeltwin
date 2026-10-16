@@ -80,10 +80,10 @@ describe('UI build page', () => {
     expect(all).toContain(`src="/api/v1/images/${same.imageSha}"`);
   });
 
-  test('Start review opens the first waiting check; it is gone when nothing waits', async () => {
-    const { buildId, changed } = await seedBuild();
+  test('Start review opens the newest waiting check; it is gone when nothing waits', async () => {
+    const { buildId, fresh } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain(`href="/ui/checks/${changed.id}?filter=pending"`);
+    expect(page).toContain(`href="/ui/checks/${fresh.id}?filter=pending"`);
     expect(page).toContain('Start review');
     await postForm(t, `/ui/builds/${buildId}/approve`, {}, reviewer);
     expect(await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }))).not.toContain('Start review');
@@ -108,11 +108,30 @@ describe('UI build page', () => {
   test('an open build updates itself while it runs', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="live"');
+    expect(page).toContain('data-islands="search live"');
     expect(page).toContain('data-live="build-head" data-live-open=""');
     expect(page).toContain('data-live="chips"');
     expect(page).toContain('data-live="checks"');
     expect(page).toContain('data-palette-review');
+  });
+
+  test('screenshots are listed newest first and can be searched, also without JavaScript', async () => {
+    const { buildId, changed, fresh, same } = await seedBuild();
+    const page = async (path: string) => html(await t.request('GET', path, { as: viewer }));
+    const body = await page(`/ui/builds/${buildId}?filter=all`);
+    const at = (id: string) => body.indexOf(`/ui/checks/${id}?filter=all"`);
+    expect(at(same.id)).toBeLessThan(at(fresh.id));
+    expect(at(fresh.id)).toBeLessThan(at(changed.id));
+    expect(body).toContain('<form class="check-search" method="get" action=');
+    expect(body).toContain('placeholder="Search screenshots"');
+
+    const found = await page(`/ui/builds/${buildId}?filter=all&q=CART`);
+    expect(found).toContain(`/ui/checks/${fresh.id}?filter=all"`);
+    expect(found).not.toContain(`/ui/checks/${changed.id}?filter=all"`);
+    expect(found).toContain('value="CART"');
+    // Filter chips keep the search.
+    expect(found).toContain(`href="/ui/builds/${buildId}?filter=pending&amp;q=CART"`);
+    expect(await page(`/ui/builds/${buildId}?filter=all&q=nothing-like-this`)).toContain('No checks match');
   });
 
   test('a filter with no checks says so', async () => {

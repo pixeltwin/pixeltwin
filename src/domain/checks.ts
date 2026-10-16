@@ -209,20 +209,39 @@ export async function getCheck(deps: Pick<Deps, 'db'>, id: string): Promise<Chec
 }
 
 /** Oldest first. */
+/** `text` as a LIKE pattern that matches it anywhere, with `%`, `_` and `\\` taken literally. */
+function containsPattern(text: string): string {
+  return `%${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * Checks of a build, oldest first (the API's order) or newest first (`order: 'desc'`, the UI's).
+ * `q` finds checks whose name or variant contains it, ignoring case.
+ */
 export async function listChecks(
   deps: Pick<Deps, 'db'>,
   buildId: string,
-  options: { result?: CheckResult; review?: CheckReview } & PageInput = {},
+  options: { result?: CheckResult; review?: CheckReview; q?: string; order?: 'asc' | 'desc' } & PageInput = {},
 ): Promise<Page<CheckView>> {
-  const { result, review, ...pageOptions } = options;
+  const { result, review, q, order = 'asc', ...pageOptions } = options;
   const page = parseInput(pageInputSchema, pageOptions);
   await getBuildRow(deps, buildId);
   let query = checksWithJoins(deps).where('checks.buildId', '=', buildId);
   if (result) query = query.where('checks.result', '=', result);
   if (review) query = query.where('checks.review', '=', review);
-  if (page.cursor) query = query.where('checks.id', '>', page.cursor);
+  const text = q?.trim();
+  if (text) {
+    const pattern = containsPattern(text);
+    query = query.where((eb) =>
+      eb.or([
+        eb(sql`lower(${sql.ref('checks.name')})`, 'like', sql`${pattern} escape '\\'`),
+        eb(sql`lower(${sql.ref('checks.variant')})`, 'like', sql`${pattern} escape '\\'`),
+      ]),
+    );
+  }
+  if (page.cursor) query = query.where('checks.id', order === 'asc' ? '>' : '<', page.cursor);
   const rows = await query
-    .orderBy('checks.id', 'asc')
+    .orderBy('checks.id', order)
     .limit(page.limit + 1)
     .execute();
   const pageRows = toPage(rows, page.limit);
@@ -396,20 +415,25 @@ export interface CheckNeighbors {
   nextPending: string | null;
 }
 
-/** Navigation within a build, in the order `listChecks` uses (oldest first). */
+/** Navigation within a build in the UI's order, newest first: `next` is the next older check. */
 export async function checkNeighbors(
   deps: Pick<Deps, 'db'>,
   check: { id: string; buildId: string },
 ): Promise<CheckNeighbors> {
   const inBuild = deps.db.selectFrom('checks').select('id').where('buildId', '=', check.buildId);
   const [previous, next, pendingAfter, pendingFirst] = await Promise.all([
-    inBuild.where('id', '<', check.id).orderBy('id', 'desc').limit(1).executeTakeFirst(),
     inBuild.where('id', '>', check.id).orderBy('id', 'asc').limit(1).executeTakeFirst(),
-    inBuild.where('id', '>', check.id).where('review', '=', 'pending').orderBy('id', 'asc').limit(1).executeTakeFirst(),
+    inBuild.where('id', '<', check.id).orderBy('id', 'desc').limit(1).executeTakeFirst(),
+    inBuild
+      .where('id', '<', check.id)
+      .where('review', '=', 'pending')
+      .orderBy('id', 'desc')
+      .limit(1)
+      .executeTakeFirst(),
     inBuild
       .where('id', '!=', check.id)
       .where('review', '=', 'pending')
-      .orderBy('id', 'asc')
+      .orderBy('id', 'desc')
       .limit(1)
       .executeTakeFirst(),
   ]);
@@ -420,14 +444,14 @@ export async function checkNeighbors(
   };
 }
 
-/** The build's first check waiting for review, in posting order; null when none waits. */
+/** The build's newest check waiting for review (where the UI's newest-first review starts); null when none waits. */
 export async function firstPendingCheckId(deps: Pick<Deps, 'db'>, buildId: string): Promise<string | null> {
   const row = await deps.db
     .selectFrom('checks')
     .select('id')
     .where('buildId', '=', buildId)
     .where('review', '=', 'pending')
-    .orderBy('id')
+    .orderBy('id', 'desc')
     .limit(1)
     .executeTakeFirst();
   return row?.id ?? null;

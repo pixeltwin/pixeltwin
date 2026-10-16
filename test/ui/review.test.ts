@@ -50,7 +50,8 @@ describe('UI focus mode', () => {
     expect(body).toContain(`href="/ui/builds/${buildId}?filter=pending"`);
     expect(body).toContain('<a href="/ui/p/web">Web shop</a>');
     expect(body).toContain('>#1</a>');
-    expect(body).toContain('<span class="review-position">1 / 2</span>');
+    // Newest first: the changed check was posted before the new one, so it comes second.
+    expect(body).toContain('<span class="review-position">2 / 2</span>');
     expect(body).toContain('tone-amber">changed</span>');
   });
 
@@ -63,17 +64,17 @@ describe('UI focus mode', () => {
     // The review island reads each frame's state to find the next waiting check.
     expect(body).toContain(`data-frame="${changed.id}" data-review="pending"`);
     // Without a filter the strip holds what waits for review.
-    expect(await page(`/ui/checks/${changed.id}`)).toContain('<span class="review-position">1 / 2</span>');
-    expect(await page(`/ui/checks/${changed.id}?filter=all`)).toContain('<span class="review-position">1 / 3</span>');
+    expect(await page(`/ui/checks/${changed.id}`)).toContain('<span class="review-position">2 / 2</span>');
+    expect(await page(`/ui/checks/${changed.id}?filter=all`)).toContain('<span class="review-position">3 / 3</span>');
   });
 
-  test('previous and next follow the filter, with j and k', async () => {
+  test('previous and next follow the filter, newest first, with j and k', async () => {
     const { changed, fresh } = await seedBuild();
-    const first = await page(`/ui/checks/${changed.id}?filter=pending`);
-    expect(first).toContain(`href="/ui/checks/${fresh.id}?filter=pending" data-key="j"`);
+    const first = await page(`/ui/checks/${fresh.id}?filter=pending`);
+    expect(first).toContain(`href="/ui/checks/${changed.id}?filter=pending" data-key="j"`);
     expect(first).not.toContain('data-key="k"');
-    const second = await page(`/ui/checks/${fresh.id}?filter=pending`);
-    expect(second).toContain(`href="/ui/checks/${changed.id}?filter=pending" data-key="k"`);
+    const second = await page(`/ui/checks/${changed.id}?filter=pending`);
+    expect(second).toContain(`href="/ui/checks/${fresh.id}?filter=pending" data-key="k"`);
   });
 
   test('the stage holds the baseline, the new screenshot and the diff with region boxes', async () => {
@@ -151,7 +152,10 @@ describe('UI focus mode', () => {
     expect(body).toContain('data-key="r"');
     expect(body).not.toContain('<textarea');
     expect(body).toContain('<input type="hidden" name="filter" value="pending"/>');
-    expect(body).toContain(`class="button ghost" href="/ui/checks/${fresh.id}?filter=pending"`);
+    // Skip goes to the next (older) check; the changed check is the oldest waiting, so the new one skips to it.
+    expect(await page(`/ui/checks/${fresh.id}?filter=pending`)).toContain(
+      `class="button ghost" href="/ui/checks/${changed.id}?filter=pending"`,
+    );
     const forViewer = await page(`/ui/checks/${changed.id}`, viewer);
     expect(forViewer).not.toContain('data-key="a"');
     expect(forViewer).not.toContain('/approve"');

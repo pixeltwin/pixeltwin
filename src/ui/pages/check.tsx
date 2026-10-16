@@ -674,8 +674,9 @@ function CheckPage(props: {
   const { ui, project, build, check, filter, strip } = props;
   const at = strip.findIndex((c) => c.id === check.id);
   // When the check is outside the filter (reviewed meanwhile), its neighbours are found by order.
-  const prevCheck = at >= 0 ? strip[at - 1] : strip.filter((c) => c.id < check.id).at(-1);
-  const nextCheck = at >= 0 ? strip[at + 1] : strip.find((c) => c.id > check.id);
+  // The strip is newest first: the previous check is the next newer one, the next is older.
+  const prevCheck = at >= 0 ? strip[at - 1] : strip.filter((c) => c.id > check.id).at(-1);
+  const nextCheck = at >= 0 ? strip[at + 1] : strip.find((c) => c.id < check.id);
   const href = (c: CheckView | undefined) => (c ? ui.url(`/ui/checks/${c.id}?filter=${filter.key}`) : null);
   const prev = href(prevCheck);
   const next = href(nextCheck);
@@ -785,7 +786,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const [project, build, strip, history, areas, decidedBy] = await Promise.all([
       getProjectById(s.deps, check.projectId),
       getBuild(s.deps, check.buildId),
-      listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, limit: 200 }),
+      listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, order: 'desc', limit: 200 }),
       historyOf(s, check.id),
       listAreas(s.deps, check.id),
       check.supersededBy ? decidedByOf(s, check.supersededBy) : Promise.resolve(null),

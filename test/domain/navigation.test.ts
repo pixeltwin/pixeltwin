@@ -17,7 +17,7 @@ describe('check navigation and image sizes', () => {
     await deps.handle.close();
   });
 
-  test('previous, next and the next pending check, wrapping around', async () => {
+  test('previous, next and the next pending check, newest first, wrapping around', async () => {
     const project = await seedProject(deps);
     await seedBaseline(deps, project, makePng(10, 10), { name: 'b' });
     const buildId = await openBuild(deps);
@@ -26,8 +26,9 @@ describe('check navigation and image sizes', () => {
     const c = (await submit(deps, buildId, makePng(10, 10), { name: 'c' })).check;
     expect(b.review).toBe('none');
 
-    expect(await checkNeighbors(deps, a)).toEqual({ previous: null, next: b.id, nextPending: c.id });
-    expect(await checkNeighbors(deps, c)).toEqual({ previous: b.id, next: null, nextPending: a.id });
+    // Newest first (c, b, a): next is the next older check; the pending search wraps to the newest.
+    expect(await checkNeighbors(deps, a)).toEqual({ previous: b.id, next: null, nextPending: c.id });
+    expect(await checkNeighbors(deps, c)).toEqual({ previous: null, next: b.id, nextPending: a.id });
     await approveCheck(deps, a.id, 'usr_1');
     expect((await checkNeighbors(deps, c)).nextPending).toBeNull();
   });

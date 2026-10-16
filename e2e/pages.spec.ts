@@ -26,6 +26,22 @@ test('the theme switch applies at once and survives a reload', async ({ reviewer
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
+test('the build page lists screenshots newest first and narrows them as you type', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await open(page, `/ui/builds/${seeded.buildId}?filter=all`);
+  const names = page.locator('.check-card:visible .check-name');
+  await expect(names).toHaveText(['footer', 'cart', 'home']);
+  await page.getByRole('searchbox', { name: /Search screenshots/ }).fill('CA');
+  await expect(names).toHaveText(['cart']);
+  await expect(page).toHaveURL(/q=CA/);
+  await page.getByRole('searchbox', { name: /Search screenshots/ }).fill('nothing like this');
+  await expect(page.getByText('No checks match this search.')).toBeVisible();
+  await page.getByRole('searchbox', { name: /Search screenshots/ }).fill('');
+  await expect(names).toHaveCount(3);
+});
+
 test('Ctrl+K opens the palette; Enter goes to the match', async ({ reviewerPage: page, seeded }) => {
   await open(page, '/ui');
   await page.keyboard.press('Control+k');
@@ -62,7 +78,7 @@ test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test('the action bar stays in reach and a swipe moves to the next check', async ({ reviewerPage: page, seeded }) => {
-    await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
+    await open(page, `/ui/checks/${seeded.fresh}?filter=pending`);
     const approve = page.getByRole('button', { name: /Approve/ });
     await expect(approve).toBeInViewport();
     await page.locator('.review-head').evaluate((el) => {
@@ -72,6 +88,6 @@ test.describe('on a phone', () => {
       );
       el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [], changedTouches: [touch(150)] }));
     });
-    await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+    await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
   });
 });

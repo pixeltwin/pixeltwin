@@ -17,7 +17,11 @@ import { Layout } from '../layout';
 function CheckCard({ ui, check, size, filter }: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter }) {
   const sha = thumbnailSha(check);
   return (
-    <a class="check-card" href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}>
+    <a
+      class="check-card"
+      href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
+      data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
+    >
       <div class="thumb">
         <img
           src={ui.url(`/api/v1/images/${sha}`)}
@@ -45,10 +49,13 @@ function BuildPage(props: {
   filter: CheckFilter;
   firstPending: string | null;
   canReview: boolean;
+  /** The search, empty when none. */
+  q: string;
   older?: string | undefined;
   notice?: string | undefined;
 }) {
-  const { ui, project, build, checks, filter } = props;
+  const { ui, project, build, checks, filter, q } = props;
+  const search = q ? `&q=${encodeURIComponent(q)}` : '';
   const pending = build.counts.review.pending;
   // An open build still receives checks; the live island refreshes the header, chips and grid.
   const open = build.state === 'open';
@@ -66,7 +73,7 @@ function BuildPage(props: {
         { label: `#${build.number}` },
       ]}
       project={project.slug}
-      islands={open ? ['live'] : undefined}
+      islands={open ? ['search', 'live'] : ['search']}
     >
       <div class="page-head" data-live="build-head" data-live-open={open ? '' : undefined}>
         <div>
@@ -106,26 +113,40 @@ function BuildPage(props: {
           )}
         </div>
       </div>
-      <nav class="chips" aria-label="Filter checks" data-live="chips">
-        {CHECK_FILTERS.map((f) => {
-          const count = countFor(f, build.counts);
-          if (count === 0 && f.key !== 'all' && f.key !== filter.key) return null;
-          return (
-            <a
-              href={ui.url(`/ui/builds/${build.id}?filter=${f.key}`)}
-              aria-current={f.key === filter.key ? 'page' : undefined}
-            >
-              {f.label} <span class="count">{count}</span>
-            </a>
-          );
-        })}
-      </nav>
+      <div class="build-tools">
+        <nav class="chips" aria-label="Filter checks" data-live="chips">
+          {CHECK_FILTERS.map((f) => {
+            const count = countFor(f, build.counts);
+            if (count === 0 && f.key !== 'all' && f.key !== filter.key) return null;
+            return (
+              <a
+                href={ui.url(`/ui/builds/${build.id}?filter=${f.key}${search}`)}
+                aria-current={f.key === filter.key ? 'page' : undefined}
+              >
+                {f.label} <span class="count">{count}</span>
+              </a>
+            );
+          })}
+        </nav>
+        {/* Newest first; the search island narrows the grid as you type, the form searches without it. */}
+        <form class="check-search" method="get" action={ui.url(`/ui/builds/${build.id}`)}>
+          <input type="hidden" name="filter" value={filter.key} />
+          <input
+            type="search"
+            name="q"
+            value={q}
+            placeholder="Search screenshots"
+            aria-label="Search screenshots by name or variant"
+            maxlength={200}
+            data-check-search
+          />
+        </form>
+      </div>
       <div data-live="checks">
-        {checks.length === 0 ? (
-          <div class="empty">
-            <h3>No checks match this filter.</h3>
-          </div>
-        ) : (
+        <div class="empty" data-search-empty hidden={checks.length > 0}>
+          <h3>{q ? 'No checks match this search.' : 'No checks match this filter.'}</h3>
+        </div>
+        {checks.length > 0 && (
           <div class="check-grid">
             {checks.map((check) => (
               <CheckCard ui={ui} check={check} size={props.sizes.get(thumbnailSha(check))} filter={filter} />
@@ -155,13 +176,15 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       review: c.req.query('review'),
     });
     const cursor = c.req.query('cursor') || undefined;
+    const q = (c.req.query('q') ?? '').trim().slice(0, 200);
     const [page, firstPending] = await Promise.all([
-      listChecks(s.deps, id, { result: filter.result, review: filter.review, cursor, limit: 200 }),
+      listChecks(s.deps, id, { result: filter.result, review: filter.review, q, order: 'desc', cursor, limit: 200 }),
       firstPendingCheckId(s.deps, id),
     ]);
     const sizes = await imageSizes(s.deps, page.items.map(thumbnailSha));
+    const search = q ? `&q=${encodeURIComponent(q)}` : '';
     const older = page.nextCursor
-      ? ui.url(`/ui/builds/${id}?filter=${filter.key}&cursor=${encodeURIComponent(page.nextCursor)}`)
+      ? ui.url(`/ui/builds/${id}?filter=${filter.key}${search}&cursor=${encodeURIComponent(page.nextCursor)}`)
       : undefined;
     return c.html(
       <BuildPage
@@ -173,6 +196,7 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         filter={filter}
         firstPending={firstPending}
         canReview={hasPermission(userOf(c), 'check.review')}
+        q={q}
         older={older}
         notice={noticeOf(c)}
       />,

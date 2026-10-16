@@ -77,3 +77,22 @@
     padding: var(--space-2);
   }
 }
+/* Filter chips at the left, the search at the right; they wrap on narrow screens. */
+.build-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.build-tools .chips {
+  margin-bottom: 0;
+}
+.check-search input {
+  width: 260px;
+  max-width: 100%;
+}
+.check-card[hidden] {
+  display: none;
+}

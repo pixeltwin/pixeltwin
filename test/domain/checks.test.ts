@@ -172,6 +172,27 @@ describe('submitCheck', () => {
     expect(await getCheck(deps, changed.check.id)).toEqual(changed.check);
     expect((await appError(getCheck(deps, 'chk_missing'))).code).toBe('check_not_found');
   });
+
+  test('lists checks newest first and finds them by name or variant', async () => {
+    const buildId = await openBuild(deps);
+    await submit(deps, buildId, white, { name: 'Home page', variant: { browser: 'chromium' } });
+    await submit(deps, buildId, white, { name: 'cart', variant: { browser: 'webkit' } });
+    await submit(deps, buildId, white, { name: 'footer_100%', variant: { browser: 'chromium' } });
+    const names = async (options: Parameters<typeof listChecks>[2]) =>
+      (await listChecks(deps, buildId, options)).items.map((c) => c.name);
+
+    expect(await names({ order: 'desc' })).toEqual(['footer_100%', 'cart', 'Home page']);
+    expect(await names({})).toEqual(['Home page', 'cart', 'footer_100%']);
+    expect(await names({ q: 'HOME' })).toEqual(['Home page']);
+    expect(await names({ q: 'webkit' })).toEqual(['cart']);
+    // % and _ are searched for literally, not as wildcards.
+    expect(await names({ q: '_100%' })).toEqual(['footer_100%']);
+    expect(await names({ q: '%' })).toEqual(['footer_100%']);
+    // Newest first pages backwards through the build.
+    const first = await listChecks(deps, buildId, { order: 'desc', limit: 2 });
+    expect(first.items.map((c) => c.name)).toEqual(['footer_100%', 'cart']);
+    expect(await names({ order: 'desc', cursor: first.nextCursor ?? '' })).toEqual(['Home page']);
+  });
 });
 
 describe('submitCheck racing finalize', () => {
