@@ -646,6 +646,12 @@ body.focus main {
   border-color: var(--blue-dot);
   background: rgb(28 126 214 / 0.14);
 }
+/* Pointing at a drawing tool lights it up like a standalone button (Fit). */
+.draw-tools button:hover:not(:disabled, [aria-pressed="true"]) {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
 .draw-tools button[aria-pressed="true"] {
   background: var(--primary);
   color: var(--primary-text);
