@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { LoginLimiter } from '../../src/http/rate-limit';
 import { createLogger } from '../../src/log';
 import { createTestApp, PASSWORD, problemOf, type TestApp } from '../helpers/app';
 
@@ -173,9 +174,11 @@ describe('auth routes', () => {
   });
 
   test('one client cannot dodge the login limit by changing the email', async () => {
-    t = await createTestApp();
+    // A per-IP limit of 6 instead of 60: each attempt checks a password (argon2), and 61 of them
+    // took longer than the test timeout on a CI runner.
+    t = await createTestApp({ loginLimiter: new LoginLimiter({ perIp: 6 }) });
     let limited = 0;
-    for (let i = 0; i < 61; i++) {
+    for (let i = 0; i < 7; i++) {
       const res = await t.request('POST', '/api/v1/auth/login', {
         json: { email: `nobody${i}@example.com`, password: 'wrong password' },
       });

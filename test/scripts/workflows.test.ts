@@ -30,6 +30,18 @@ describe.each(['ci.yml', 'release.yml'])('%s', (name) => {
   });
 });
 
+test('every job that runs `bun test` installs Chromium first, for the Playwright SDK suite', () => {
+  for (const name of ['ci.yml', 'release.yml']) {
+    for (const [id, job] of Object.entries(workflow(name).jobs)) {
+      const runs = (job.steps ?? []).map((s) => s.run ?? '');
+      const test = runs.indexOf('bun test');
+      if (test < 0) continue;
+      const install = runs.findIndex((r) => r.startsWith('bunx playwright install --with-deps chromium'));
+      expect({ name, id, installsFirst: install >= 0 && install < test }).toEqual({ name, id, installsFirst: true });
+    }
+  }
+});
+
 describe('release.yml permissions', () => {
   const release = workflow('release.yml');
 

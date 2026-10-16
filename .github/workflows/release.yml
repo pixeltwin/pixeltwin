@@ -28,6 +28,7 @@ jobs:
           fi
       - run: bun run lint
       - run: bun run typecheck
+      - run: bunx playwright install --with-deps chromium # test/sdk runs a real Playwright suite
       - run: bun test
       - run: bun scripts/build.ts all
       - run: bun scripts/smoke.ts dist/pixeltwin-*-linux-x64

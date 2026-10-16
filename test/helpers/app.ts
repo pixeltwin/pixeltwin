@@ -37,7 +37,13 @@ export interface TestApp {
 }
 
 export async function createTestApp(
-  options: { setupToken?: string | null; maxImageBytes?: number; diffQueueMax?: number; logger?: Logger } = {},
+  options: {
+    setupToken?: string | null;
+    maxImageBytes?: number;
+    diffQueueMax?: number;
+    logger?: Logger;
+    loginLimiter?: LoginLimiter;
+  } = {},
 ): Promise<TestApp> {
   const deps = await createTestDeps();
   const setup = new SetupState(options.setupToken ?? null);
@@ -51,7 +57,7 @@ export async function createTestApp(
     },
     logger: options.logger ?? silentLogger,
     setup,
-    loginLimiter: new LoginLimiter(),
+    loginLimiter: options.loginLimiter ?? new LoginLimiter(),
   });
 
   const request: TestApp['request'] = async (method, path, opts = {}) => {
