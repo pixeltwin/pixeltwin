@@ -1,11 +1,13 @@
 // Focus-mode compare viewer (UI spec §5.1): Side, Slider, Onion and Diff modes over one shared
 // zoom and pan. Mounted on the page's #review element; returns a function that unmounts it.
+import { changeMask } from './changes.ts';
 import { onKey } from './keys.ts';
 import { actualView, fitView, panBy, type Size, type View, zoomAt } from './zoom.ts';
 
 const MODES = ['side', 'slider', 'onion', 'diff'] as const;
 type Mode = (typeof MODES)[number];
 const MODE_STORAGE = 'pixeltwin.review.mode';
+const HIGHLIGHT_STORAGE = 'pixeltwin.review.highlight';
 
 function storedMode(): Mode {
   try {
@@ -22,6 +24,78 @@ function storeMode(mode: Mode): void {
   } catch {
     // Private windows may refuse storage; the mode just is not remembered.
   }
+}
+
+/** Changed pixels are highlighted unless the reviewer turned it off. */
+function storedHighlight(): boolean {
+  try {
+    return localStorage.getItem(HIGHLIGHT_STORAGE) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function storeHighlight(on: boolean): void {
+  try {
+    localStorage.setItem(HIGHLIGHT_STORAGE, on ? 'on' : 'off');
+  } catch {
+    // Private windows may refuse storage; the choice just is not remembered.
+  }
+}
+
+/**
+ * Draws the diff's changed pixels as a mask over the baseline, the new screenshot and the slider
+ * layers, and wires the Changes toggle (and H). Returns its cleanup.
+ */
+function mountHighlight(stage: HTMLElement): () => void {
+  const toggle = stage.querySelector<HTMLButtonElement>('[data-highlight]');
+  const diff = stage.querySelector<HTMLImageElement>('.pane-diff img');
+  if (!toggle || !diff) return () => {};
+  let on = storedHighlight();
+  const show = () => {
+    stage.classList.toggle('highlight-changes', on);
+    toggle.setAttribute('aria-pressed', String(on));
+  };
+  const draw = () => {
+    const width = diff.naturalWidth;
+    const height = diff.naturalHeight;
+    const scratch = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    if (!width || !height || !scratch) return;
+    scratch.canvas.width = width;
+    scratch.canvas.height = height;
+    scratch.drawImage(diff, 0, 0);
+    const mask = new ImageData(
+      changeMask(scratch.getImageData(0, 0, width, height).data, width, height),
+      width,
+      height,
+    );
+    for (const host of stage.querySelectorAll<HTMLElement>('.pane-baseline .shot, .pane-current .shot, .layers')) {
+      const img = host.querySelector('img');
+      const canvas = document.createElement('canvas');
+      canvas.className = 'change-mask';
+      canvas.width = width;
+      canvas.height = height;
+      // The diff spans both images; size the mask in the host image's own pixels.
+      canvas.style.width = `${(width / (img?.naturalWidth || width)) * 100}%`;
+      canvas.getContext('2d')?.putImageData(mask, 0, 0);
+      host.insertBefore(canvas, host.querySelector(':scope > svg, :scope > .divider'));
+    }
+  };
+  const flip = () => {
+    on = !on;
+    storeHighlight(on);
+    show();
+  };
+  show();
+  if (diff.complete) draw();
+  else diff.addEventListener('load', draw, { once: true });
+  toggle.addEventListener('click', flip);
+  const offKey = onKey({ key: 'h', label: 'Highlight changes', run: flip });
+  return () => {
+    toggle.removeEventListener('click', flip);
+    offKey();
+    for (const canvas of stage.querySelectorAll('.change-mask')) canvas.remove();
+  };
 }
 
 function sizeOf(img: HTMLImageElement | null): Size {
@@ -60,6 +134,7 @@ export function mountViewer(root: HTMLElement): () => void {
   stage.classList.add('interactive');
   stage.tabIndex = 0;
   if (toolbar) toolbar.hidden = false;
+  cleanups.push(mountHighlight(stage));
 
   let mode: Mode | 'new' = isNew ? 'new' : storedMode();
   if (mode !== 'new' && !available.includes(mode)) mode = 'slider';

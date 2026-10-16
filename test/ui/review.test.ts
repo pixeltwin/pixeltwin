@@ -94,6 +94,16 @@ describe('UI focus mode', () => {
     expect(body).not.toContain('style=');
   });
 
+  test('a changed check offers to highlight the changed pixels on the screenshots, on by default', async () => {
+    const { changed, same } = await seedBuild();
+    const body = await page(`/ui/checks/${changed.id}`);
+    expect(body).toContain(
+      '<button type="button" class="small highlight-toggle" data-highlight="true" aria-pressed="true" title="Highlight changed pixels on the screenshots (H)">Changes <kbd>H</kbd></button>',
+    );
+    // Without a diff image there is nothing to highlight.
+    expect(await page(`/ui/checks/${same.id}`)).not.toContain('data-highlight');
+  });
+
   test('the info strip lists regions and names the baseline branch, without the summary sentence', async () => {
     const { changed, fresh } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}`);

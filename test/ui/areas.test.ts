@@ -140,4 +140,45 @@ describe('UI areas', () => {
     const forViewer = await postForm(t, `/ui/checks/${check.id}/areas/${area.id}/delete`, {}, viewer);
     expect(forViewer.status).toBe(403);
   });
+
+  describe('ignore regions sent through the API with the check', () => {
+    const statusBar = { x: 0, y: 0, width: 100, height: 20 };
+
+    async function checkWithApiIgnore() {
+      await seedBaseline(t.deps, project, white);
+      const buildId = await openBuild(t.deps, 'web');
+      return (await submit(t.deps, buildId, withClock, { ignoreRegions: [statusBar] })).check;
+    }
+
+    test('are drawn on the screenshot, marked as API and not editable', async () => {
+      const check = await checkWithApiIgnore();
+      const body = await page(`/ui/checks/${check.id}`);
+      expect(body).toContain('<rect class="area area-api-ignore" x="0" y="0" width="100" height="20"></rect>');
+      expect(body).toContain('class="area-api-label"');
+      expect(body).toMatch(/>(IGNORED · )?API<\/text>/);
+      // Not a drawn area: no id, so the island never picks it for editing.
+      expect(body).not.toMatch(/area-api-ignore"[^>]*data-area=/);
+    });
+
+    test('are listed with an API badge, without edit or delete, and say they apply to this check only', async () => {
+      const check = await checkWithApiIgnore();
+      const body = await page(`/ui/checks/${check.id}`);
+      expect(body).toContain('<li class="area-item area-item-api">');
+      expect(body).toContain(
+        '<span class="badge-api" title="Sent with the check through the API (ignoreRegions)">API</span>',
+      );
+      expect(body).toContain('top center · 100×20 px');
+      expect(body).toContain('Sent by the test with this check only');
+      const item = body.slice(body.indexOf('area-item-api'), body.indexOf('</li>', body.indexOf('area-item-api')));
+      expect(item).not.toContain('data-area-edit');
+      expect(item).not.toContain('data-area-delete');
+    });
+
+    test('show for viewers too, and a check without them has no Areas section', async () => {
+      const check = await checkWithApiIgnore();
+      expect(await page(`/ui/checks/${check.id}`, viewer)).toContain('area-item-api');
+      const plain = await changedCheck();
+      expect(await page(`/ui/checks/${plain.id}`)).not.toContain('aria-label="Areas"');
+    });
+  });
 });

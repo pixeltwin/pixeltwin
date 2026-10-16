@@ -37,6 +37,8 @@ function Shot(props: {
   size?: Size | undefined;
   regions?: Region[] | undefined;
   areas?: Area[] | undefined;
+  /** Ignore regions the test sent with this check (`ignoreRegions` in the API). */
+  apiIgnore?: Rect[] | undefined;
   soft?: boolean;
 }) {
   const { ui, sha, alt, size, regions } = props;
@@ -62,20 +64,52 @@ function Shot(props: {
           ))}
         </svg>
       )}
-      {size && <AreaLayer areas={props.areas} size={size} />}
+      {size && <AreaLayer areas={props.areas} apiIgnore={props.apiIgnore} size={size} />}
     </div>
   );
 }
 
-/** The snapshot's ignore and compare areas, drawn over a screenshot in its own coordinates. */
-function AreaLayer({ areas, size }: { areas: Area[] | undefined; size: Size | undefined }) {
-  if (!size || !areas || areas.length === 0) return null;
+/**
+ * The snapshot's ignore and compare areas, drawn over a screenshot in its own coordinates, and
+ * the ignore regions the test sent through the API (grey, labelled API, never editable).
+ */
+function AreaLayer(props: { areas: Area[] | undefined; apiIgnore?: Rect[] | undefined; size: Size | undefined }) {
+  const { areas = [], apiIgnore = [], size } = props;
+  if (!size || (areas.length === 0 && apiIgnore.length === 0)) return null;
   return (
     <svg class="area-layer" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
+      {apiIgnore.map((r) => (
+        <ApiIgnore region={r} size={size} />
+      ))}
       {areas.map((a) => (
         <rect class={`area area-${a.kind}`} x={a.x} y={a.y} width={a.width} height={a.height} data-area={a.id} />
       ))}
     </svg>
+  );
+}
+
+/** An API ignore region with an "API" label inside it, when the label fits. */
+function ApiIgnore({ region: r, size }: { region: Rect; size: Size }) {
+  // In image pixels: readable at fit on a phone screenshot, never taller than the region.
+  const font = Math.round(Math.min(r.height * 0.55, Math.max(12, size.width / 22)));
+  const fits = r.height >= 10 && r.width >= font * 2.5;
+  const label = r.width >= font * 8 ? 'IGNORED · API' : 'API';
+  return (
+    <>
+      <rect class="area area-api-ignore" x={r.x} y={r.y} width={r.width} height={r.height} />
+      {fits && (
+        <text
+          class="area-api-label"
+          x={r.x + r.width / 2}
+          y={r.y + r.height / 2}
+          font-size={font}
+          text-anchor="middle"
+          dominant-baseline="central"
+        >
+          {label}
+        </text>
+      )}
+    </>
   );
 }
 
@@ -146,7 +180,14 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
       <section class="stage" id="stage" data-mode="new" aria-label="New snapshot">
         <div class="panes">
           <Pane kind="current" caption="New snapshot — no baseline yet">
-            <Shot ui={ui} sha={check.imageSha} alt="new snapshot" size={sizes.get(check.imageSha)} areas={areas} />
+            <Shot
+              ui={ui}
+              sha={check.imageSha}
+              alt="new snapshot"
+              size={sizes.get(check.imageSha)}
+              areas={areas}
+              apiIgnore={check.ignoreRegions}
+            />
           </Pane>
         </div>
       </section>
@@ -172,6 +213,17 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
             </button>
           ))}
         </fieldset>
+        {check.diffImageSha && (
+          <button
+            type="button"
+            class="small highlight-toggle"
+            data-highlight
+            aria-pressed="true"
+            title="Highlight changed pixels on the screenshots (H)"
+          >
+            Changes <kbd>H</kbd>
+          </button>
+        )}
         <label class="onion-control" hidden>
           <span class="muted">Opacity</span>
           <input type="range" min="0" max="100" value="50" data-onion />
@@ -201,6 +253,7 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
             size={baseSize}
             regions={diff?.regions}
             areas={areas}
+            apiIgnore={check.ignoreRegions}
             soft
           />
         </Pane>
@@ -212,6 +265,7 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
             size={currentSize}
             regions={diff?.regions}
             areas={areas}
+            apiIgnore={check.ignoreRegions}
             soft
           />
         </Pane>
@@ -224,6 +278,7 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
               size={sizes.get(check.diffImageSha)}
               regions={diff?.regions}
               areas={areas}
+              apiIgnore={check.ignoreRegions}
             />
           </Pane>
         )}
@@ -252,7 +307,7 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
               width={currentSize?.width}
               height={currentSize?.height}
             />
-            <AreaLayer areas={areas} size={currentSize} />
+            <AreaLayer areas={areas} apiIgnore={check.ignoreRegions} size={currentSize} />
             <div class="divider" aria-hidden="true" />
           </div>
         </Pane>
@@ -354,7 +409,8 @@ function Areas(props: {
   canReview: boolean;
 }) {
   const { ui, check, areas, size } = props;
-  if (areas.length === 0) return null;
+  const api = check.ignoreRegions;
+  if (areas.length === 0 && api.length === 0) return null;
   return (
     <section class="areas" aria-label="Areas">
       <h3>Areas</h3>
@@ -396,8 +452,25 @@ function Areas(props: {
             )}
           </li>
         ))}
+        {api.map((r) => (
+          <li class="area-item area-item-api">
+            <span>
+              <strong>Ignored</strong>{' '}
+              <span class="badge-api" title="Sent with the check through the API (ignoreRegions)">
+                API
+              </span>
+              <span class="muted">{` ${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+            </span>
+          </li>
+        ))}
       </ul>
-      <p class="hint">Areas apply to every check of this snapshot, on every branch.</p>
+      {areas.length > 0 && <p class="hint">Areas apply to every check of this snapshot, on every branch.</p>}
+      {api.length > 0 && (
+        <p class="hint">
+          Sent by the test with this check only (ignoreRegions in the API). Draw an ignore area to skip a spot in every
+          check of this snapshot.
+        </p>
+      )}
     </section>
   );
 }

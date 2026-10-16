@@ -9,6 +9,8 @@ import areas from './client/areas.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import boot from './client/boot.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import changes from './client/changes.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import copy from './client/copy.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import dialog from './client/dialog.ts' with { type: 'text' };
@@ -45,6 +47,7 @@ const SOURCES: Record<string, string> = {
   api,
   areas,
   boot,
+  changes,
   copy,
   dialog,
   keymap,
