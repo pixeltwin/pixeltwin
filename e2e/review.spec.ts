@@ -1,3 +1,4 @@
+import { makePng, WHITE } from '../test/helpers/png';
 import { expect, open, test } from './fixtures';
 
 interface CheckJson {
@@ -340,4 +341,40 @@ test.describe('on a short screen', () => {
     const check = await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.fresh}`);
     expect(check.review).toBe('approved');
   });
+});
+
+test('Ignore keeps the list of changes as it was; Ignore all clears the rest in one go', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  const grid = (blobs: number) =>
+    makePng(600, 900, WHITE, [
+      ...Array.from({ length: blobs }, (_, i) => ({
+        x: 40 + (i % 3) * 180,
+        y: 140 + Math.floor(i / 3) * 160,
+        width: 120,
+        height: 60,
+        color: [229, 72, 77, 255] as [number, number, number, number],
+      })),
+    ]);
+  const first = await seeded.ci.call<{ id: string }>('POST', `/projects/${seeded.slug}/builds`, { branch: 'main' });
+  await seeded.ci.check(first.id, 'grid', grid(0));
+  await seeded.ci.call('POST', `/builds/${first.id}/approve`);
+  const next = await seeded.ci.call<{ id: string }>('POST', `/projects/${seeded.slug}/builds`, { branch: 'main' });
+  const check = await seeded.ci.check(next.id, 'grid', grid(5));
+
+  await open(page, `/ui/checks/${check.id}?filter=all`);
+  const changes = page.locator('details.changes');
+  // Five changes start folded; the reviewer opens the list.
+  await expect(changes).not.toHaveAttribute('open', '');
+  await changes.locator('summary').click();
+  await page.getByRole('button', { name: 'Ignore change 1' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Ignore area added');
+  await expect(changes.locator('summary .count')).toHaveText('4');
+  await expect(changes).toHaveAttribute('open', '');
+
+  await page.getByRole('button', { name: 'Ignore all 4 changes' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Ignored 4 changes');
+  await expect(page.locator('details.changes')).toHaveCount(0);
+  expect((await seeded.ci.call<{ result: string }>('GET', `/checks/${check.id}`)).result).toBe('unchanged');
 });

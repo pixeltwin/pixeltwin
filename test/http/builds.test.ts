@@ -96,5 +96,15 @@ describe('build routes', () => {
     expect(((await closed.json()) as { state: string }).state).toBe('finalized');
     const bad = await t.request('POST', `/api/v1/builds/${plain.id}/finalize`, { as, json: { part: '' } });
     expect(bad.status).toBe(422);
+
+    // Finalize took no body before parallel builds: a JSON content type with an empty body still works.
+    const other = (await (await t.request('POST', '/api/v1/projects/web/builds', { as, json: {} })).json()) as {
+      id: string;
+    };
+    const empty = await t.request('POST', `/api/v1/builds/${other.id}/finalize`, {
+      as,
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(empty.status).toBe(200);
   });
 });

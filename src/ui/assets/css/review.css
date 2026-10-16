@@ -364,8 +364,13 @@ body.focus main {
 .regions li {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  padding-block: 2px;
 }
+.regions li + li {
+  border-top: 1px solid var(--border);
+}
+/* Two lines: the change, then where it is and how big, quieter. */
 .regions button[data-change] {
   flex: 1;
   min-width: 0;
@@ -373,13 +378,42 @@ body.focus main {
   align-items: flex-start;
   gap: 2px;
   height: auto;
-  padding-block: var(--space-1);
+  padding-block: var(--space-2);
+  font-weight: 400;
   white-space: normal;
   text-align: left;
 }
-/* Ignore next to a change carries the ignore colour mark of the toolbar. */
+.region-name {
+  font-weight: 600;
+}
+.region-place {
+  font-size: var(--text-xs);
+}
+/* Ignore next to a change carries the ignore colour mark of the toolbar; quiet until pointed at. */
 .ignore-change {
   gap: var(--space-2);
+  border-color: transparent;
+  background: none;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.ignore-change:hover:not(:disabled) {
+  border-color: var(--amber-border);
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.ignore-all {
+  margin: var(--space-2) 0 0;
+}
+.ignore-all button {
+  width: 100%;
+  justify-content: center;
+  border-style: dashed;
+  border-color: var(--amber-border);
+  color: var(--amber);
+}
+.ignore-all button:hover:not(:disabled) {
+  background: var(--amber-bg);
 }
 .ignore-change::before {
   content: "";
@@ -824,7 +858,7 @@ body.focus main {
 .area-item-compare {
   border-left-color: var(--blue-dot);
 }
-.badge-api {
+.badge-source {
   padding: 0 var(--space-1);
   border: 1px solid var(--border-strong);
   border-radius: 4px;

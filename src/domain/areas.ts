@@ -1,4 +1,5 @@
 import type { SnapshotArea } from '../db/schema';
+import type { Rect, Size } from '../diff/types';
 import { AppError } from '../errors';
 import { newId } from '../ids';
 import { type CheckView, getCheck, recomputeCheck } from './checks';
@@ -14,6 +15,18 @@ import { areaInputSchema, areaUpdateSchema, parseInput } from './schemas';
 export const MAX_AREAS_PER_SNAPSHOT = 50;
 
 export type Area = SnapshotArea;
+
+/** Room an ignore area leaves around a change, so a slightly wider change next time is still covered. */
+export const CHANGE_MARGIN = 4;
+
+/** A change grown by CHANGE_MARGIN on every side, kept inside the screenshot when its size is known. */
+export function aroundChange(r: Rect, size: Size | undefined): Rect {
+  const x = Math.max(0, r.x - CHANGE_MARGIN);
+  const y = Math.max(0, r.y - CHANGE_MARGIN);
+  const right = Math.min(size?.width ?? Number.POSITIVE_INFINITY, r.x + r.width + CHANGE_MARGIN);
+  const bottom = Math.min(size?.height ?? Number.POSITIVE_INFINITY, r.y + r.height + CHANGE_MARGIN);
+  return { x, y, width: right - x, height: bottom - y };
+}
 
 /** The areas of the check's snapshot, oldest first. */
 export async function listAreas(deps: Pick<Deps, 'db'>, checkId: string): Promise<Area[]> {
@@ -65,6 +78,52 @@ export async function createArea(
   };
   await deps.db.insertInto('snapshotAreas').values(area).execute();
   return { area, check: await recomputeCheck(deps, checkId) };
+}
+
+/**
+ * Ignore all changes: an ignore area around each change the check shows, then one comparison.
+ * Refused next to compare areas, without changes, and when the snapshot would pass the area limit.
+ */
+export async function ignoreChanges(
+  deps: Deps,
+  checkId: string,
+  actor: string,
+): Promise<{ areas: Area[]; check: CheckView }> {
+  const check = await getCheck(deps, checkId);
+  const diff = check.diff && !('error' in check.diff) ? check.diff : null;
+  if (!diff || diff.regions.length === 0) {
+    throw new AppError('no_changes', 422, `Check ${check.name} shows no changes to ignore.`);
+  }
+  const existing = await listAreas(deps, checkId);
+  const other = existing.find((a) => a.kind === 'compare');
+  if (other) {
+    throw new AppError(
+      'area_kind_conflict',
+      409,
+      `Snapshot ${check.name} has compare areas; delete them before ignoring its changes.`,
+    );
+  }
+  if (existing.length + diff.regions.length > MAX_AREAS_PER_SNAPSHOT) {
+    throw new AppError(
+      'too_many_areas',
+      422,
+      `${diff.regions.length} changes would pass the limit of ${MAX_AREAS_PER_SNAPSHOT} areas on snapshot ` +
+        `${check.name}; draw one area over them instead.`,
+    );
+  }
+  const size = diff.dimensions?.current;
+  const now = Date.now();
+  const areas: Area[] = diff.regions.map((region) => ({
+    id: newId('are'),
+    projectId: check.projectId,
+    snapshotKey: check.snapshotKey,
+    kind: 'ignore',
+    ...aroundChange(region, size),
+    createdBy: actor,
+    createdAt: now,
+  }));
+  await deps.db.insertInto('snapshotAreas').values(areas).execute();
+  return { areas, check: await recomputeCheck(deps, checkId) };
 }
 
 /** Deletes one area of the check's snapshot and compares the check again. */

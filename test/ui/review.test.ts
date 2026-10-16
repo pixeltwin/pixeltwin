@@ -198,7 +198,7 @@ describe('UI focus mode', () => {
     expect(body).toContain('<details class="changes" open=""><summary>Changes <span class="count">1</span></summary>');
     expect(body).not.toContain('<dt>Changes</dt>');
     expect(body).toContain(
-      '<button type="button" class="small ghost" data-change="0" aria-pressed="false" title="Highlight this change on the screenshots"><span>Change 1</span><span class="muted">top left · 10×10 px</span></button>',
+      '<button type="button" class="small ghost" data-change="0" aria-pressed="false" title="Highlight this change on the screenshots"><span class="region-name">Change 1</span><span class="region-place muted">top left · 10×10 px</span></button>',
     );
     expect(body).toContain('<rect x="10" y="10" width="10" height="10" data-change="0"></rect>');
     expect(body).not.toContain('data-region=');

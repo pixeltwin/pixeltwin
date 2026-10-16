@@ -1,7 +1,7 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
-import { createArea, deleteArea, listAreas, updateArea } from '../../domain/areas';
+import { createArea, deleteArea, ignoreChanges, listAreas, updateArea } from '../../domain/areas';
 import { getBuildRow } from '../../domain/builds';
 import { type CheckView, getCheck, listChecks, submitCheck } from '../../domain/checks';
 import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
@@ -248,6 +248,24 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     allowProject(c, (await getCheck(s.deps, id)).projectId);
     const { area, check } = await createArea(s.deps, id, principalOf(c).id, c.req.valid('json'));
     return c.json({ area, check: withLinks(check) }, 201);
+  });
+
+  const areaIgnoreChanges = defineRoute('check.review', {
+    method: 'post',
+    path: `${API}/checks/{id}/areas/ignore-changes`,
+    tags: ['areas'],
+    summary: 'Ignore all changes: an ignore area around each change of the check; compared again at once',
+    request: { params: idParam },
+    responses: {
+      201: json(z.object({ areas: z.array(AreaSchema), check: CheckSchema }), 'The new areas and the check'),
+      ...problems(401, 403, 404, 409, 422),
+    },
+  });
+  app.openapi(areaIgnoreChanges, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const { areas, check } = await ignoreChanges(s.deps, id, principalOf(c).id);
+    return c.json({ areas, check: withLinks(check) }, 201);
   });
 
   const areaUpdate = defineRoute('check.review', {

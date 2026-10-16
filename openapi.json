@@ -4052,6 +4052,110 @@
         }
       }
     },
+    "/api/v1/checks/{id}/areas/ignore-changes": {
+      "post": {
+        "tags": [
+          "areas"
+        ],
+        "summary": "Ignore all changes: an ignore area around each change of the check; compared again at once",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The new areas and the check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "areas": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Area"
+                      }
+                    },
+                    "check": {
+                      "$ref": "#/components/schemas/Check"
+                    }
+                  },
+                  "required": [
+                    "areas",
+                    "check"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/checks/{id}/areas/{areaId}": {
       "patch": {
         "tags": [

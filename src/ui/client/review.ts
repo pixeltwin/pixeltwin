@@ -125,10 +125,18 @@ async function show(id: string): Promise<void> {
   prefetchNext();
 }
 
-/** Shows the check again from the server, after its areas changed and it was compared again. */
+/**
+ * Shows the check again from the server, after its areas changed and it was compared again. The
+ * folding lists (Changes, Baseline history) stay as the reviewer left them.
+ */
 async function reload(id: string): Promise<void> {
+  const folded = new Map([...root.querySelectorAll('details')].map((d) => [d.className, d.open]));
   forget(id);
   await show(id);
+  for (const details of root.querySelectorAll('details')) {
+    const open = folded.get(details.className);
+    if (open !== undefined) details.open = open;
+  }
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {

@@ -3,7 +3,7 @@ import type { Child } from 'hono/jsx';
 import type { Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
-import { type Area, createArea, deleteArea, listAreas } from '../../domain/areas';
+import { type Area, aroundChange, createArea, deleteArea, ignoreChanges, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
 import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
@@ -490,7 +490,13 @@ function Areas(props: {
         {areas.map((a) => (
           <li class={`area-item area-item-${a.kind}`} data-area-item={a.id}>
             <span>
-              <strong>{AREA_VERB[a.kind]}</strong>
+              <strong>{AREA_VERB[a.kind]}</strong>{' '}
+              <span
+                class="badge-source"
+                title="Drawn in pixeltwin: applies to every check of this snapshot, on every branch"
+              >
+                UI
+              </span>
               <span class="muted">{` ${areaPlace(a, size)}${a.width}×${a.height} px`}</span>
             </span>
             {props.canReview && (
@@ -528,7 +534,7 @@ function Areas(props: {
           <li class="area-item area-item-api">
             <span>
               <strong>Ignored</strong>{' '}
-              <span class="badge-api" title="Sent with the check through the API (ignoreRegions)">
+              <span class="badge-source" title="Sent with the check through the API (ignoreRegions)">
                 API
               </span>
               <span class="muted">{` ${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
@@ -543,18 +549,6 @@ function Areas(props: {
 
 /** Up to this many changes are listed open; more start folded. */
 const CHANGES_OPEN = 3;
-
-/** Room an Ignore-this-change area leaves around the change, so a slightly wider change next time is still covered. */
-const CHANGE_MARGIN = 4;
-
-/** The change grown by CHANGE_MARGIN on every side, kept inside the screenshot when its size is known. */
-function aroundChange(r: Rect, size: Size | undefined): Rect {
-  const x = Math.max(0, r.x - CHANGE_MARGIN);
-  const y = Math.max(0, r.y - CHANGE_MARGIN);
-  const right = Math.min(size?.width ?? Number.POSITIVE_INFINITY, r.x + r.width + CHANGE_MARGIN);
-  const bottom = Math.min(size?.height ?? Number.POSITIVE_INFINITY, r.y + r.height + CHANGE_MARGIN);
-  return { x, y, width: right - x, height: bottom - y };
-}
 
 /** Ignore next to a change: a form that adds an ignore area over it (works without JavaScript too). */
 function IgnoreChange(props: {
@@ -663,8 +657,8 @@ function Info(props: {
                   aria-pressed="false"
                   title="Highlight this change on the screenshots"
                 >
-                  <span>{`Change ${i + 1}`}</span>
-                  <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+                  <span class="region-name">{`Change ${i + 1}`}</span>
+                  <span class="region-place muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
                 </button>
                 {props.canReview && (
                   <IgnoreChange
@@ -681,6 +675,28 @@ function Info(props: {
             ))}
             {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
           </ul>
+          {props.canReview && diff.regions.length > 1 && (
+            <form
+              class="ignore-all"
+              method="post"
+              action={props.ui.url(`/ui/checks/${check.id}/areas/ignore-changes`)}
+              data-ignore-changes
+            >
+              <input type="hidden" name="filter" value={props.filter.key} />
+              <button
+                type="submit"
+                class="small"
+                title={
+                  props.areas.some((a) => a.kind === 'compare')
+                    ? 'Delete the compare areas first to ignore changes'
+                    : 'Add an ignore area over every change, for every check of this snapshot'
+                }
+                disabled={props.areas.some((a) => a.kind === 'compare')}
+              >
+                {`Ignore all ${diff.regions.length} changes`}
+              </button>
+            </form>
+          )}
         </details>
       )}
       <BaselineHistory ui={props.ui} check={check} entries={props.baselines} />
@@ -1008,6 +1024,17 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       height: number('height'),
     });
     return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=area-added`), 303);
+  });
+
+  app.post('/ui/checks/:id/areas/ignore-changes', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
+    }
+    const form = await c.req.parseBody();
+    const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
+    const { check } = await ignoreChanges(s.deps, c.req.param('id'), userOf(c).id);
+    return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=changes-ignored`), 303);
   });
 
   app.post('/ui/checks/:id/areas/:areaId/delete', async (c) => {

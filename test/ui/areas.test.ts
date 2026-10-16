@@ -68,6 +68,10 @@ describe('UI areas', () => {
     expect(body.split('class="area-layer"').length - 1).toBeGreaterThanOrEqual(2);
     expect(body).toContain('<section class="areas" aria-label="Areas"><h3>Areas</h3>');
     expect(body).toContain('<strong>Ignored</strong>');
+    // Drawn areas have a source badge like the API's.
+    expect(body).toContain(
+      '<span class="badge-source" title="Drawn in pixeltwin: applies to every check of this snapshot, on every branch">UI</span>',
+    );
     // Ignore areas are on this snapshot, so compare areas cannot be drawn (and the other way round).
     expect(body).toMatch(/data-draw="compare"[^>]* disabled/);
     expect(body).toContain('Delete the ignore areas first to use compare areas');
@@ -125,6 +129,29 @@ describe('UI areas', () => {
     expect(forViewer.status).toBe(403);
   });
 
+  test('Ignore all changes adds an ignore area around each change at once, also without JavaScript', async () => {
+    await seedBaseline(t.deps, project, white);
+    const twoChanges = makePng(100, 100, WHITE, [
+      { x: 10, y: 10, width: 10, height: 10, color: BLACK },
+      { x: 70, y: 70, width: 10, height: 10, color: BLACK },
+    ]);
+    const check = (await submit(t.deps, await openBuild(t.deps, 'web'), twoChanges)).check;
+    const form = `<form class="ignore-all" method="post" action="/ui/checks/${check.id}/areas/ignore-changes" data-ignore-changes="true">`;
+    expect(await page(`/ui/checks/${check.id}?filter=all`)).toContain(form);
+    expect(await page(`/ui/checks/${check.id}`, viewer)).not.toContain('data-ignore-changes');
+
+    expect((await postForm(t, `/ui/checks/${check.id}/areas/ignore-changes`, {}, viewer)).status).toBe(403);
+    const res = await postForm(t, `/ui/checks/${check.id}/areas/ignore-changes`, { filter: 'all' }, reviewer);
+    expect(location(res)).toBe(`/ui/checks/${check.id}?filter=all&done=changes-ignored`);
+    expect(await listAreas(t.deps, check.id)).toHaveLength(2);
+    expect((await getCheck(t.deps, check.id)).result).toBe('unchanged');
+  });
+
+  test('a single change has no Ignore all: its own Ignore does the same', async () => {
+    const check = await changedCheck();
+    expect(await page(`/ui/checks/${check.id}`)).not.toContain('data-ignore-changes');
+  });
+
   test('Ignore is disabled on a snapshot that has compare areas', async () => {
     const check = await changedCheck();
     await createArea(t.deps, check.id, reviewer.id, { kind: 'compare', x: 0, y: 0, width: 100, height: 100 });
@@ -172,7 +199,7 @@ describe('UI areas', () => {
       const body = await page(`/ui/checks/${check.id}`);
       expect(body).toContain('<li class="area-item area-item-api">');
       expect(body).toContain(
-        '<span class="badge-api" title="Sent with the check through the API (ignoreRegions)">API</span>',
+        '<span class="badge-source" title="Sent with the check through the API (ignoreRegions)">API</span>',
       );
       expect(body).toContain('top center · 100×20 px');
       // No explanation under the list: the API badge's tooltip says it.

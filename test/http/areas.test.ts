@@ -99,4 +99,17 @@ describe('area routes', () => {
       (await t.request('PATCH', `/api/v1/checks/${check.id}/areas/are_x`, { as: viewer, json: rect })).status,
     ).toBe(403);
   });
+
+  test('POST /checks/{id}/areas/ignore-changes ignores every change at once', async () => {
+    const first = await post(white);
+    await t.request('POST', `/api/v1/checks/${first.id}/approve`, { as: ci });
+    const check = await post(withClock);
+    const res = await t.request('POST', `/api/v1/checks/${check.id}/areas/ignore-changes`, { as: reviewer });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { areas: { kind: string; x: number }[]; check: { result: string } };
+    expect(body.areas.map((a) => [a.kind, a.x])).toEqual([['ignore', 6]]);
+    expect(body.check.result).toBe('unchanged');
+    const again = await t.request('POST', `/api/v1/checks/${check.id}/areas/ignore-changes`, { as: reviewer });
+    expect((await problemOf(again)).code).toBe('no_changes');
+  });
 });

@@ -415,6 +415,27 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     });
   }
 
+  // Ignore all changes: one call adds an area around each, then the check is compared again.
+  for (const form of root.querySelectorAll<HTMLFormElement>('form[data-ignore-changes]')) {
+    listen(form, 'submit', (e) => {
+      e.preventDefault();
+      const button = form.querySelector('button');
+      if (button) button.disabled = true;
+      void (async () => {
+        try {
+          const { areas } = await api<{ areas: unknown[] }>('POST', `/checks/${checkId}/areas/ignore-changes`);
+          toast(`Ignored ${areas.length} changes`, { tone: 'success', timeout: 2000 });
+          if (!gone) await changed(checkId);
+        } catch (err) {
+          if (button) button.disabled = false;
+          toast(`Couldn't ignore the changes: ${err instanceof Error ? err.message : String(err)}`, {
+            tone: 'danger',
+          });
+        }
+      })();
+    });
+  }
+
   for (const form of root.querySelectorAll<HTMLFormElement>('form[data-area-delete]')) {
     listen(form, 'submit', (e) => {
       e.preventDefault();

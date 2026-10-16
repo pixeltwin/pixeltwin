@@ -72,6 +72,7 @@ export const NOTICES: Record<string, string> = {
   'area-added': 'Ignore area added.',
   promoted: 'Promoted to main. Main builds still waiting on those screens are outdated now.',
   'area-deleted': 'Area deleted.',
+  'changes-ignored': 'All changes ignored.',
   'approved-all': 'All pending checks approved.',
   finalized: 'Build finalized.',
   'project-created': 'Project created.',

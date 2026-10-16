@@ -4,7 +4,8 @@ import { createBuild, deleteBuilds, finalizeBuild, getBuild, getBuildRow, listBu
 import { getProjectBySlug } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { createBuildSchema, finalizeBuildSchema } from '../../domain/schemas';
-import { allowProject, principalOf } from '../auth';
+import { AppError } from '../../errors';
+import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { BranchSummarySchema, BuildSchema, json, PageQuerySchema, pageOf, problems } from '../schemas';
@@ -112,10 +113,23 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       ...problems(401, 403, 404, 422),
     },
   });
-  app.openapi(finalize, async (c) => {
-    const { id } = c.req.valid('param');
+  // Documented with its optional body, but served by a plain handler: finalize took no body before
+  // parallel builds, and a client sending a JSON content type with an empty body must still work.
+  const { middleware: _middleware, ...finalizeDoc } = finalize;
+  app.openAPIRegistry.registerPath(finalizeDoc);
+  app.post(`${API}/builds/:id/finalize`, requirePermission('check.write'), async (c) => {
+    const id = c.req.param('id');
     allowProject(c, (await getBuildRow(s.deps, id)).projectId);
-    return c.json(await finalizeBuild(s.deps, id, c.req.valid('json') ?? {}), 200);
+    const text = await c.req.text();
+    let input: unknown = {};
+    if (text.trim()) {
+      try {
+        input = JSON.parse(text);
+      } catch {
+        throw new AppError('bad_request', 400, 'Malformed JSON in request body');
+      }
+    }
+    return c.json(await finalizeBuild(s.deps, id, input), 200);
   });
 
   const approveAll = defineRoute('check.review', {

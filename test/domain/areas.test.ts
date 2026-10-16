@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
 import { compareImages } from '../../src/diff/compare';
-import { createArea, deleteArea, listAreas, updateArea } from '../../src/domain/areas';
+import { createArea, deleteArea, ignoreChanges, listAreas, updateArea } from '../../src/domain/areas';
 import { getBuild } from '../../src/domain/builds';
 import { getCheck } from '../../src/domain/checks';
 import { approveCheck } from '../../src/domain/reviews';
@@ -46,6 +46,40 @@ describe('ignore and compare areas', () => {
     expect(area.id).toMatch(/^are_/);
     expect(after).toMatchObject({ result: 'unchanged', review: 'none', diffImageSha: null });
     expect((await getBuild(deps, buildId)).verdict).toBe('passed');
+  });
+
+  test('ignore all changes: one ignore area around each change, compared again once', async () => {
+    const { check } = await changed(both);
+    const { areas, check: after } = await ignoreChanges(deps, check.id, 'usr_1');
+    // Each change grown by 4 px, as Ignore next to one change does.
+    expect(areas.map((a) => [a.kind, a.x, a.y, a.width, a.height])).toEqual([
+      ['ignore', 6, 6, 18, 18],
+      ['ignore', 66, 66, 18, 18],
+    ]);
+    expect(after).toMatchObject({ result: 'unchanged', review: 'none' });
+    expect(await listAreas(deps, check.id)).toHaveLength(2);
+    expect((await appError(ignoreChanges(deps, check.id, 'usr_1'))).code).toBe('no_changes');
+  });
+
+  test('ignore all changes refuses next to compare areas and above the area limit', async () => {
+    const { check } = await changed(both);
+    await createArea(deps, check.id, 'usr_1', { kind: 'compare', x: 0, y: 0, width: 100, height: 100 });
+    expect((await appError(ignoreChanges(deps, check.id, 'usr_1'))).code).toBe('area_kind_conflict');
+
+    const next = (await changed(both)).check;
+    for (const area of await listAreas(deps, next.id)) await deleteArea(deps, next.id, area.id);
+    // 49 areas away from the changes: two more would pass the limit of 50.
+    for (let i = 0; i < 49; i++) {
+      await createArea(deps, next.id, 'usr_1', {
+        kind: 'ignore',
+        x: 40 + (i % 7),
+        y: 40 + Math.floor(i / 7),
+        width: 1,
+        height: 1,
+      });
+    }
+    const err = await appError(ignoreChanges(deps, next.id, 'usr_1'));
+    expect(err.code).toBe('too_many_areas');
   });
 
   test('the area applies to every later check of the snapshot, on any branch', async () => {
