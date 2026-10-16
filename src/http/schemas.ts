@@ -75,7 +75,15 @@ export const BuildSchema = z
       .openapi({ description: 'A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build' }),
     partsFinished: z.number().int().openapi({ description: 'Parts of a parallel build that have finalized it' }),
     verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'outdated', 'passed']),
-    counts: z.object({ total: z.number().int(), result: countsBy(CHECK_RESULTS), review: countsBy(CHECK_REVIEWS) }),
+    counts: z.object({
+      total: z.number().int(),
+      result: countsBy(CHECK_RESULTS),
+      review: countsBy(CHECK_REVIEWS),
+      autoApproved: z
+        .number()
+        .int()
+        .openapi({ description: "Approved by the project's auto-approve-new setting (part of review.approved)" }),
+    }),
   })
   .openapi('Build');
 

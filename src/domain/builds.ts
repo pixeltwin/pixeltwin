@@ -6,6 +6,7 @@ import { newId } from '../ids';
 import type { Deps } from './deps';
 import { type Page, toPage } from './pagination';
 import { getProjectBySlug } from './projects';
+import { AUTO_APPROVER } from './reviews';
 import { createBuildSchema, finalizeBuildSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
 import { type BuildCounts, deriveVerdict, emptyCounts, type Verdict } from './verdict';
 
@@ -29,7 +30,13 @@ export async function countChecks(deps: DbDeps, buildIds: string[]): Promise<Map
   if (buildIds.length === 0) return counts;
   const rows = await deps.db
     .selectFrom('checks')
-    .select(['buildId', 'result', 'review', (eb) => eb.fn.countAll<number>().as('n')])
+    .select([
+      'buildId',
+      'result',
+      'review',
+      (eb) => eb.fn.countAll<number>().as('n'),
+      (eb) => eb.fn.sum<number>(eb.case().when('reviewedBy', '=', AUTO_APPROVER).then(1).else(0).end()).as('auto'),
+    ])
     .where('buildId', 'in', buildIds)
     .groupBy(['buildId', 'result', 'review'])
     .execute();
@@ -40,6 +47,7 @@ export async function countChecks(deps: DbDeps, buildIds: string[]): Promise<Map
     c.total += n;
     c.result[row.result] += n;
     c.review[row.review] += n;
+    if (row.review === 'approved') c.autoApproved += Number(row.auto ?? 0);
   }
   return counts;
 }

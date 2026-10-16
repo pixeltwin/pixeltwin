@@ -41,6 +41,7 @@ describe('auto-approve new screenshots (project setting)', () => {
       { action: 'approved', actor: 'auto', comment: 'New screenshot approved automatically (project setting).' },
     ]);
     expect((await getBuild(deps, first)).verdict).toBe('passed');
+    expect((await getBuild(deps, first)).counts.autoApproved).toBe(1);
 
     // The next build compares with it.
     const second = await openBuild(deps);

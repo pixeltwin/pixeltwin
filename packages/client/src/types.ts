@@ -16,6 +16,8 @@ export interface BuildCounts {
   total: number;
   result: Record<CheckResult, number>;
   review: Record<CheckReview, number>;
+  /** Approved by the project's auto-approve-new setting (part of `review.approved`). */
+  autoApproved: number;
 }
 
 /** A branch screen whose baseline differs from main's: what a promotion would change. */

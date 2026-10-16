@@ -398,12 +398,17 @@
                   "rejected",
                   "outdated"
                 ]
+              },
+              "autoApproved": {
+                "type": "integer",
+                "description": "Approved by the project's auto-approve-new setting (part of review.approved)"
               }
             },
             "required": [
               "total",
               "result",
-              "review"
+              "review",
+              "autoApproved"
             ]
           }
         },

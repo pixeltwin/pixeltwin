@@ -20,6 +20,7 @@ import {
   formErrors,
   Pill,
   ProjectTabs,
+  ReviewStats,
   RunningIndicator,
   toneOf,
   VERDICT_LABELS,
@@ -267,6 +268,9 @@ function Lane(props: {
           ))}
         </ol>
         <span class="muted">{countsText(build.counts)}</span>
+        <span class="muted">
+          <ReviewStats counts={build.counts} />
+        </span>
       </div>
     </article>
   );
@@ -372,6 +376,7 @@ function BuildsTable(props: { ui: Ui; builds: BuildView[]; watch: boolean; delet
           <th>CI run</th>
           <th>Verdict</th>
           <th>Checks</th>
+          <th>Review</th>
           <th>Created</th>
         </tr>
       </thead>
@@ -405,6 +410,9 @@ function BuildsTable(props: { ui: Ui; builds: BuildView[]; watch: boolean; delet
               <VerdictCell build={b} />
             </td>
             <td class="muted">{countsText(b.counts)}</td>
+            <td class="muted">
+              <ReviewStats counts={b.counts} />
+            </td>
             <td>
               <Ago at={b.createdAt} />
             </td>

@@ -134,6 +134,25 @@ export function countsText(counts: BuildCounts): string {
   return parts.join(' · ');
 }
 
+/**
+ * What a build cost its reviewers: checks that passed automatically (unchanged, or new and approved
+ * by the project setting) against those that needed a person (changed or new: decided or waiting).
+ */
+export function ReviewStats({ counts }: { counts: BuildCounts }) {
+  const auto = counts.result.unchanged + counts.autoApproved;
+  const { pending, approved, rejected, outdated } = counts.review;
+  const needed = pending + approved - counts.autoApproved + rejected + outdated;
+  const left = pending > 0 ? ` · ${pending} left` : '';
+  return (
+    <span
+      class="review-stats"
+      title="Passed automatically: unchanged, or new and approved by the project setting. Needed review: changed or new, decided by a person or still waiting."
+    >
+      {`${auto} automatically · ${needed} needed review${left}`}
+    </span>
+  );
+}
+
 export interface Tab {
   label: string;
   href: string;

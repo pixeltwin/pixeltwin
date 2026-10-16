@@ -334,6 +334,20 @@ describe('UI projects', () => {
       expect(first).toContain('data-islands="live"');
     });
 
+    test('lane and table say how many checks passed automatically and how many needed review', async () => {
+      const { cartBuild, pendingCheck } = await seedWeb();
+      // feature/cart: a new screen joins the changed one; both wait for review.
+      await submit(t.deps, cartBuild, white, { name: 'footer', variant: { x: '1' } });
+      const stats = '<span class="review-stats" title="Passed automatically: unchanged, or new and approved by the project setting. Needed review: changed or new, decided by a person or still waiting.">';
+      const table = await html(await t.request('GET', '/ui/p/web/builds', { as: viewer }));
+      expect(table).toContain('<th>Review</th>');
+      expect(table).toContain(`${stats}0 automatically · 2 needed review · 2 left</span>`);
+      expect(table).toContain(`${stats}1 automatically · 0 needed review</span>`);
+      await approveCheck(t.deps, pendingCheck, admin.id);
+      const lanes = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
+      expect(lanes).toContain(`${stats}0 automatically · 2 needed review · 1 left</span>`);
+    });
+
     test('filters by branch from a list of the project branches', async () => {
       await seedWeb();
       const page = await html(await t.request('GET', '/ui/p/web/builds?branch=main', { as: viewer }));
