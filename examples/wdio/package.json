@@ -1,0 +1,26 @@
+{
+  "name": "pixeltwin-example-wdio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WebdriverIO with pixeltwin: viewport and element checks, ignore regions, desktop and mobile, the CI gate",
+  "scripts": {
+    "test": "wdio run wdio.conf.ts",
+    "site": "node serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "sdk:local": "cd ../.. && bun scripts/build-sdk.ts pack examples/wdio/vendor"
+  },
+  "devDependencies": {
+    "@pixeltwin/client": "file:vendor/pixeltwin-client-0.1.0.tgz",
+    "@pixeltwin/wdio": "file:vendor/pixeltwin-wdio-0.1.0.tgz",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.0",
+    "@wdio/cli": "^10.0.2",
+    "@wdio/globals": "^10.0.2",
+    "@wdio/local-runner": "^10.0.2",
+    "@wdio/mocha-framework": "^10.0.1",
+    "@wdio/spec-reporter": "^10.0.1",
+    "typescript": "^5.7.2",
+    "webdriverio": "^10.0.2"
+  }
+}

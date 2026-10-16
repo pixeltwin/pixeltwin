@@ -1,0 +1,8 @@
+/* Served only when the site runs with DEMO_CHANGE=1: a visible change for the third run. */
+.hero h1 {
+  color: #d1242f;
+}
+.btn {
+  background: #1a7f37;
+  border-radius: 999px;
+}

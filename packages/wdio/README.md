@@ -23,7 +23,7 @@ import '@pixeltwin/wdio'; // types for browser.pixeltwinCheck
 
 it('home', async () => {
   await browser.url('/');
-  await browser.pixeltwinCheck('home', { ignore: [$('.clock')] });
+  await browser.pixeltwinCheck('home', { ignore: [$$('.clock')] });
   await $('header').pixeltwinCheck('header');
 });
 ```
@@ -46,10 +46,13 @@ On `browser`: the viewport. On an element: that element. Resolves to the compare
 
 | Option | |
 |---|---|
-| `ignore` | elements, `$()` results or `{x, y, width, height}` rectangles in screenshot pixels: never compared |
+| `ignore` | elements, `$()` or `$$()` results (every element) or `{x, y, width, height}` rectangles in screenshot pixels: never compared |
 | `variant` | extra variant keys for this check |
 | `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
 
 Every check gets the variant `{ browser: <browserName>, viewport: '<innerWidth>x<innerHeight>' }`.
 Ignored elements are measured in the page and scaled to screenshot pixels. Full-page screenshots
 are not offered (WebDriver screenshots are of the viewport or an element).
+
+A complete project that runs a real Chrome (desktop and an emulated phone) through WebdriverIO's
+own driver management, with a demo site and a CI snippet: [`examples/wdio`](../../examples/wdio/README.md).

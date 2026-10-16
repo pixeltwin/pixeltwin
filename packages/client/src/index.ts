@@ -1,6 +1,6 @@
 export { type ClientOptions, PixeltwinClient, SDK_VERSION } from './client.js';
 export { type FieldError, PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from './errors.js';
-export { pngSize, toPixelRect } from './png.js';
+export { type CssToPixels, cssBoxToPixels, pngSize, toPixelRect } from './png.js';
 export type {
   Build,
   BuildCounts,

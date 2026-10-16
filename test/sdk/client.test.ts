@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { PixeltwinClient, PixeltwinError, PixeltwinNetworkError, pngSize, toPixelRect } from '@pixeltwin/client';
+import {
+  cssBoxToPixels,
+  PixeltwinClient,
+  PixeltwinError,
+  PixeltwinNetworkError,
+  pngSize,
+  toPixelRect,
+} from '@pixeltwin/client';
 import { makePng, WHITE } from '../helpers/png';
 import { startServer, type TestServer } from './server';
 
@@ -248,6 +255,33 @@ describe('helpers', () => {
       height: 10,
     });
     expect(toPixelRect({ x: 120, y: 0, width: 10, height: 10 }, { width: 100, height: 100 })).toBeNull();
+  });
+
+  test('cssBoxToPixels snaps to whole CSS pixels before scaling, then rounds outwards', () => {
+    // Measured in Chromium at a device pixel ratio of 2.625: a box at x 50.6875, 150 wide paints
+    // device columns 133 to 527 (its edges snapped to CSS pixels 51 and 201: 527.625). Scaling the
+    // exact box gives 133.05 to 526.8, i.e. columns 133–526, and column 527 was compared.
+    const box = { x: 50.6875, y: 1392.796875, width: 150, height: 22.390625 };
+    const region = cssBoxToPixels(box, { origin: { x: 0, y: 0 }, scale: 2.625 });
+    expect(region).toEqual({ x: 131, y: 3654, width: 397, height: 63 });
+    expect((region?.x ?? 0) + (region?.width ?? 0)).toBeGreaterThanOrEqual(Math.ceil(201 * 2.625));
+    // Origin (scroll, element) and separate x/y scales; clipped to the image; empty boxes dropped.
+    expect(cssBoxToPixels({ x: 10, y: -290, width: 20, height: 10 }, { origin: { x: 0, y: -300 }, scale: 2 })).toEqual({
+      x: 20,
+      y: 20,
+      width: 40,
+      height: 20,
+    });
+    expect(
+      cssBoxToPixels({ x: 0, y: 0, width: 10, height: 10 }, { origin: { x: 0, y: 0 }, scale: { x: 1, y: 3 } }),
+    ).toEqual({ x: 0, y: 0, width: 10, height: 30 });
+    expect(cssBoxToPixels(box, { origin: { x: 0, y: 0 }, scale: 1 }, { width: 100, height: 2000 })).toEqual({
+      x: 50,
+      y: 1392,
+      width: 50,
+      height: 24,
+    });
+    expect(cssBoxToPixels({ x: 1, y: 1, width: 0, height: 5 }, { origin: { x: 0, y: 0 }, scale: 1 })).toBeNull();
   });
 
   test('the constructor wants a url and a token', () => {

@@ -81,6 +81,12 @@ describe('Playwright Test through @pixeltwin/playwright', () => {
     expect(find('full page', '800x600')?.ignoreRegions).toHaveLength(2);
     expect(find('full page', '640x480')?.ignoreRegions[1]?.y).toBeGreaterThan(2 * 1200);
     expect(find('header', '640x480')?.ignoreRegions[0]?.y).toBeLessThan(2 * 64);
+    // Chromium paints the footer clock (x 50.6875, 150 wide) snapped to CSS pixels 51–201, which at
+    // 2.625 ends inside device column 527 (527.625). The exact box ends at 526.8; the region must
+    // reach 528 or column 527 is compared and the random digits make the run flaky.
+    const footer = find('full page', '412x839')?.ignoreRegions[1];
+    expect(footer?.x).toBeLessThanOrEqual(133);
+    expect((footer?.x ?? 0) + (footer?.width ?? 0)).toBeGreaterThanOrEqual(528);
 
     await client.approveBuild(first.buildId);
 

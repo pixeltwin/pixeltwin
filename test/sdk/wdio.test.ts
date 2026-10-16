@@ -66,8 +66,10 @@ function fakeBrowser(button: Rgba = [0, 112, 243, 255]) {
       const [target, ...ignored] = args;
       return { width: 400, height: 300, target: box(target ?? null), boxes: ignored.map(box) };
     }) as BrowserLike['execute'],
-    addCommand(name, fn, attachToElement) {
-      (attachToElement ? elementCommands : browserCommands)[name] = fn as CommandFn;
+    // As WebdriverIO 10 does: an options object, and a boolean third argument throws.
+    addCommand(name, fn, commandOptions) {
+      if (typeof commandOptions === 'boolean') throw new Error('Passing a boolean as the third argument was removed');
+      (commandOptions?.attachToElement ? elementCommands : browserCommands)[name] = fn as CommandFn;
     },
   };
   const el = (elementId: string) => ({ elementId });
@@ -142,6 +144,23 @@ describe('PixeltwinService', () => {
     const check = await changed.check('home', { ignore: [changed.el('clock')] });
     expect(check?.result).toBe('changed');
     expect((await run3.launcher.onComplete().catch((e) => e)).message).toContain('not "passed"');
+  });
+
+  test('element arrays ($$ results, awaited or not) are spread into execute arguments', async () => {
+    const run = services({ externalId: 'wdio-arrays-1' });
+    await run.launcher.onPrepare({});
+    const fake = fakeBrowser();
+    run.worker.before({}, [], fake.browser);
+    const check = await fake.check('arrays', {
+      ignore: [Promise.resolve([fake.el('clock'), fake.el('hidden')]), [fake.el('header')]],
+    });
+    // Element references only work as top-level execute arguments: no nested arrays.
+    expect(fake.executed[0]).toEqual([null, { elementId: 'clock' }, { elementId: 'hidden' }, { elementId: 'header' }]);
+    expect(check?.ignoreRegions).toEqual([
+      { x: 600, y: 20, width: 160, height: 40 },
+      { x: 0, y: 0, width: 800, height: 80 },
+    ]);
+    await run.launcher.onComplete();
   });
 
   test('a shard leaves the build open', async () => {
