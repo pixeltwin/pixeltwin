@@ -2,7 +2,7 @@
 
 Self-hosted visual regression testing with an API built for CI and AI agents.
 
-> Status: early development (0.x). See `docs/superpowers/specs/` for the design.
+> Status: early development (0.x).
 
 ![Branches of a project: main passed, a feature branch waiting for review](docs/screenshots/branches-light.png)
 
@@ -15,11 +15,11 @@ next and previous, <kbd>?</kbd> for every shortcut.
 ## Run it
 
 **Docker** (images for amd64 and arm64 are published by the release workflow to
-`ghcr.io/<owner>/pixeltwin`, where `<owner>` is the GitHub account hosting this repository):
+`ghcr.io/pixeltwin/pixeltwin`):
 
 ```sh
 docker run -d --name pixeltwin -p 8080:8080 -v pixeltwin-data:/data \
-  -e PUBLIC_URL=http://localhost:8080 ghcr.io/<owner>/pixeltwin:latest
+  -e PUBLIC_URL=http://localhost:8080 ghcr.io/pixeltwin/pixeltwin:latest
 docker logs pixeltwin          # shows the setup link
 ```
 
@@ -82,7 +82,7 @@ A Helm chart is in [`deploy/helm/pixeltwin`](deploy/helm/pixeltwin/README.md). I
 
 ```sh
 helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --create-namespace \
-  --set image.repository=ghcr.io/<owner>/pixeltwin --set publicUrl=https://vrt.example.com \
+  --set publicUrl=https://vrt.example.com \
   --set storage=postgres --set replicaCount=3 \
   --set database.url='postgres://pixeltwin:…@db:5432/pixeltwin'
 kubectl -n pixeltwin get secret pixeltwin -o jsonpath='{.data.SETUP_TOKEN}' | base64 -d   # first-run token

@@ -7,6 +7,9 @@ version: 0.1.0
 # The pixeltwin version the chart deploys by default (image tag). Kept equal to src/version.ts (a test checks).
 appVersion: "0.1.0"
 kubeVersion: ">=1.30.0-0"
+home: https://github.com/pixeltwin/pixeltwin
+sources:
+  - https://github.com/pixeltwin/pixeltwin
 keywords:
   - visual-regression
   - screenshots

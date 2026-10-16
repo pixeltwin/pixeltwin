@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/pixeltwin/pixeltwin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pixeltwin/pixeltwin.git"
+  },
+  "bugs": "https://github.com/pixeltwin/pixeltwin/issues",
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -32,5 +38,8 @@
     "@types/pg": "^8.23.1",
     "@types/pngjs": "^6.0.5",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "@ai-sdk/provider-utils": "^4.0.33"
   }
 }

@@ -8,7 +8,6 @@ The chart is not published to a chart repository yet; install it from a checkout
 
 ```sh
 helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --create-namespace \
-  --set image.repository=ghcr.io/<owner>/pixeltwin \
   --set publicUrl=https://vrt.example.com \
   --set ingress.enabled=true --set ingress.className=nginx \
   --set 'ingress.hosts[0].host=vrt.example.com' --set 'ingress.hosts[0].paths[0].path=/'

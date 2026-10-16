@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "Playwright Test fixture and global setup for pixeltwin visual regression checks",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/pixeltwin/pixeltwin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pixeltwin/pixeltwin.git",
+    "directory": "packages/playwright"
+  },
+  "bugs": "https://github.com/pixeltwin/pixeltwin/issues",
   "type": "module",
   "sideEffects": false,
   "engines": {

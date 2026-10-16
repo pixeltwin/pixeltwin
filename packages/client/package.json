@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "Framework-free client for pixeltwin, the self-hosted visual regression service",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/pixeltwin/pixeltwin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pixeltwin/pixeltwin.git",
+    "directory": "packages/client"
+  },
+  "bugs": "https://github.com/pixeltwin/pixeltwin/issues",
   "type": "module",
   "sideEffects": false,
   "engines": {

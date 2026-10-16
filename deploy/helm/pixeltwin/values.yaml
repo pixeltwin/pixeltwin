@@ -2,8 +2,8 @@
 # upgrades and backups.
 
 image:
-  # The release workflow publishes amd64 and arm64 images to ghcr.io/<owner>/pixeltwin.
-  repository: ghcr.io/OWNER/pixeltwin
+  # The release workflow publishes amd64 and arm64 images here.
+  repository: ghcr.io/pixeltwin/pixeltwin
   # Defaults to the chart's appVersion.
   tag: ""
   pullPolicy: IfNotPresent
