@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { assertProjectAccess, hasPermission, type RoutePermission } from '../domain/auth/policy';
-import { resolveSession } from '../domain/auth/sessions';
+import { resolveSession, USER_TOKEN_PREFIX } from '../domain/auth/sessions';
 import { resolveProjectToken } from '../domain/auth/tokens';
 import { AppError } from '../errors';
 import { setSessionCookie } from './cookies';
@@ -10,7 +10,8 @@ import { type AppEnv, SESSION_COOKIE, type Services } from './env';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
- * Resolves the caller: `Authorization: Bearer pt_…` (project token) or the session cookie.
+ * Resolves the caller: `Authorization: Bearer pt_…` (project token), `Bearer pu_…` (a user's
+ * personal token, from POST /auth/token) or the session cookie.
  * A malformed or unknown Bearer token is a 401 even on public routes, so typos surface early.
  * Cookie-authenticated writes must come from PUBLIC_URL's origin (CSRF, spec §7.1).
  */
@@ -27,9 +28,17 @@ export function authenticate(services: Services): MiddlewareHandler<AppEnv> {
     const bearer = header && /^Bearer(\s|$)/i.test(header) ? header : null;
     if (bearer) {
       const raw = /^Bearer\s+(\S+)$/i.exec(bearer)?.[1];
-      const token = raw ? await resolveProjectToken(services.deps, raw) : null;
-      if (!token) throw new AppError('invalid_token', 401, 'The Bearer token is not a valid project token.');
-      c.set('principal', { kind: 'token', ...token });
+      if (raw?.startsWith(USER_TOKEN_PREFIX)) {
+        // A header is never sent by a cross-site form, so no Origin check (unlike the cookie).
+        const session = await resolveSession(services.deps, raw);
+        if (!session) throw new AppError('invalid_token', 401, 'The personal token is unknown or has expired.');
+        const { user } = session;
+        c.set('principal', { kind: 'user', id: user.id, email: user.email, role: user.role });
+      } else {
+        const token = raw ? await resolveProjectToken(services.deps, raw) : null;
+        if (!token) throw new AppError('invalid_token', 401, 'The Bearer token is not a valid project token.');
+        c.set('principal', { kind: 'token', ...token });
+      }
       c.set('authVia', 'token');
     } else {
       const cookie = getCookie(c, SESSION_COOKIE);

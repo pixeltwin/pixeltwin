@@ -287,13 +287,13 @@ export function thumbnailSha(check: CheckView): string {
 
 const REVIEW_LABELS = {
   none: '',
-  pending: 'to review',
+  pending: 'unresolved',
   approved: 'approved',
   rejected: 'rejected',
   outdated: 'outdated',
 } as const;
 
-/** Result and review state of a check: `changed` `to review`, `new` `approved`, … */
+/** Result and review state of a check: `changed` `unresolved`, `new` `approved`, … */
 export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
   return (
     <span class="status">

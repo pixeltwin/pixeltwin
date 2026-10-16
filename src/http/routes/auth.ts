@@ -1,5 +1,5 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
-import { createSession, deleteSession } from '../../domain/auth/sessions';
+import { createSession, deleteSession, USER_TOKEN_PREFIX } from '../../domain/auth/sessions';
 import { completeSetup, setupInputSchema } from '../../domain/auth/setup';
 import { changePassword, authenticate as checkPassword, getUserRow, toUserView } from '../../domain/auth/users';
 import { AppError } from '../../errors';
@@ -41,6 +41,34 @@ export function registerAuthRoutes(app: OpenAPIHono<AppEnv>, s: Services): void 
     if (!user) throw new AppError('invalid_credentials', 401, 'The email or password is wrong.');
     setSessionCookie(c, s.config.publicUrl, await createSession(s.deps, user.id));
     return c.json(toUserView(user), 200);
+  });
+
+  const token = defineRoute('public', {
+    method: 'post',
+    path: `${API}/auth/token`,
+    tags: ['auth'],
+    summary: 'Get a personal token (Bearer pu_…) for a page served elsewhere, such as a test report',
+    description:
+      'Same credentials and limits as login, but no cookie: the token acts as the user (with their role) when sent ' +
+      'as `Authorization: Bearer`, expires like a session, and ends when the password changes.',
+    request: { body: { required: true, content: { 'application/json': { schema: loginSchema } } } },
+    responses: {
+      201: json(
+        z.object({ token: z.string(), expiresAt: z.number().int(), user: UserSchema }),
+        'The personal token and its user',
+      ),
+      ...problems(401, 422, 429),
+    },
+  });
+  app.openapi(token, async (c) => {
+    const { email, password } = c.req.valid('json');
+    if (!s.loginLimiter.hit(clientIp(c), email)) {
+      throw new AppError('rate_limited', 429, 'Too many login attempts; wait a minute and try again.');
+    }
+    const user = await checkPassword(s.deps, email, password);
+    if (!user) throw new AppError('invalid_credentials', 401, 'The email or password is wrong.');
+    const session = await createSession(s.deps, user.id, USER_TOKEN_PREFIX);
+    return c.json({ token: session.token, expiresAt: session.expiresAt, user: toUserView(user) }, 201);
   });
 
   const logout = defineRoute('session', {

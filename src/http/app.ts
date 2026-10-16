@@ -62,6 +62,28 @@ function bodyLimits(maxImageBytes: number): MiddlewareHandler<AppEnv> {
   return (c, next) => (CHECK_UPLOAD_PATH.test(c.req.path) ? upload(c, next) : standard(c, next));
 }
 
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE',
+  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-max-age': '600',
+};
+
+/**
+ * The API answers any origin (a test report opened from a file or a CI artifact), for Bearer
+ * tokens only: `*` is never sent with credentials, so a cross-origin page cannot ride on a
+ * session cookie (and cookie writes need PUBLIC_URL's Origin anyway).
+ */
+function cors(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    if (c.req.method === 'OPTIONS' && c.req.header('access-control-request-method')) {
+      return c.body(null, 204, CORS_HEADERS);
+    }
+    await next();
+    c.res.headers.set('access-control-allow-origin', '*');
+  };
+}
+
 export function createApp(services: Services): OpenAPIHono<AppEnv> {
   const app = new OpenAPIHono<AppEnv>({
     defaultHook: (result) => {
@@ -70,6 +92,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   });
 
   app.use('*', requestContext(services));
+  app.use(`${API}/*`, cors());
   app.use(`${API}/*`, bodyLimits(services.config.maxImageBytes));
   // UI forms are small; refuse big bodies before parsing (spec §7.4), including the public login form.
   app.use(

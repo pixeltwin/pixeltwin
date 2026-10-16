@@ -9,9 +9,19 @@ export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 /** Sliding expiry is refreshed at most this often, to avoid a write per request. */
 const REFRESH_AFTER_MS = 60 * 60 * 1000;
 
-/** Creates a session and returns the raw cookie value. Only its sha256 is stored. */
-export async function createSession(deps: DbDeps, userId: string): Promise<{ token: string; expiresAt: number }> {
-  const token = randomToken();
+/** Personal tokens: sessions sent as `Authorization: Bearer pu_…` instead of a cookie. */
+export const USER_TOKEN_PREFIX = 'pu_';
+
+/**
+ * Creates a session and returns the raw cookie value (or, with `USER_TOKEN_PREFIX`, a personal
+ * token). Only its sha256 is stored.
+ */
+export async function createSession(
+  deps: DbDeps,
+  userId: string,
+  prefix = '',
+): Promise<{ token: string; expiresAt: number }> {
+  const token = prefix + randomToken();
   const now = Date.now();
   const expiresAt = now + SESSION_TTL_MS;
   await deps.db

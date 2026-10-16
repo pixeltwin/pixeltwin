@@ -107,6 +107,11 @@ describe('UI build page', () => {
       `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}"><span class="thumb-stack"><img src="/api/v1/images/${changed.imageSha}"`,
     );
     expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
+    // A check waiting for review says "unresolved".
+    expect(page).toContain(
+      '<span class="pill tone-amber">changed</span><span class="pill tone-amber">unresolved</span>',
+    );
+    expect(page).not.toContain('>to review</span>');
     expect(page).toContain('data-islands="search live thumbs"');
   });
 
