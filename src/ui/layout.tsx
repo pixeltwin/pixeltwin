@@ -111,6 +111,7 @@ export function Layout({ ui, title, crumbs, notice, error, islands, variant, pro
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta name="color-scheme" content="light dark" />
           <title>{`${title} · pixeltwin`}</title>
+          <link rel="icon" type="image/svg+xml" href={ui.url(ASSET_PATHS.favicon)} />
           <link rel="stylesheet" href={ui.url(ASSET_PATHS.css)} />
           <script type="module" src={ui.url(clientModulePath('boot'))} />
         </head>

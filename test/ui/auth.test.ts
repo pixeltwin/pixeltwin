@@ -148,6 +148,24 @@ describe('UI authentication', () => {
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 
+  test('every page has the pixeltwin mark as its favicon', async () => {
+    t = await createTestApp();
+    const page = await html(await t.request('GET', '/ui/login'));
+    const href = /<link rel="icon" type="image\/svg\+xml" href="(\/ui\/assets\/favicon\.svg\?v=[0-9a-f]{12})"/.exec(
+      page,
+    )?.[1];
+    expect(href).toBeDefined();
+    const icon = await t.request('GET', href ?? '');
+    expect(icon.headers.get('content-type')).toStartWith('image/svg+xml');
+    expect(icon.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(icon.headers.get('set-cookie')).toBeNull();
+    expect(await icon.text()).toContain('<path d="M16 7 26 24H6Z"');
+    // Browsers that ask for /favicon.ico anyway are sent to the same mark.
+    const ico = await t.request('GET', '/favicon.ico');
+    expect(ico.status).toBe(301);
+    expect(ico.headers.get('location')).toBe(href ?? 'missing');
+  });
+
   test('only the current asset version is cached as immutable', async () => {
     t = await createTestApp();
     for (const path of ['/ui/assets/app.css?v=deadbeef0000', '/ui/assets/app.css', '/ui/assets/boot.js?v=0']) {

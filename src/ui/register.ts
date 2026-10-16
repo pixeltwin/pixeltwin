@@ -1,7 +1,7 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import type { AppEnv, Services } from '../http/env';
-import { APP_CSS, ASSET_VERSIONS } from './assets';
+import { APP_CSS, ASSET_PATHS, ASSET_VERSIONS, FAVICON_SVG } from './assets';
 import { CLIENT_MODULES, CLIENT_VERSION } from './client-assets';
 import { registerAuthPages } from './pages/auth';
 import { registerBuildPages } from './pages/build';
@@ -16,6 +16,7 @@ import { registerThemeRoute } from './theme';
 export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
   const base = new URL(s.config.publicUrl).pathname.replace(/\/+$/, '');
   app.get('/', (c) => c.redirect(`${base}/ui`, 302));
+  app.get('/favicon.ico', (c) => c.redirect(`${base}${ASSET_PATHS.favicon}`, 301));
 
   app.use('/ui', uiSession(s));
   app.use('/ui/*', uiSession(s));
@@ -28,6 +29,7 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
       'cache-control': c.req.query('v') === version ? 'public, max-age=31536000, immutable' : 'no-store',
     });
   app.get('/ui/assets/app.css', asset(APP_CSS, 'text/css; charset=utf-8', ASSET_VERSIONS.css));
+  app.get('/ui/assets/favicon.svg', asset(FAVICON_SVG, 'image/svg+xml', ASSET_VERSIONS.favicon));
   app.get('/ui/assets/:file{[a-z0-9-]+\\.js}', (c) => {
     const code = CLIENT_MODULES[c.req.param('file').slice(0, -'.js'.length)];
     if (code === undefined) return c.notFound();
