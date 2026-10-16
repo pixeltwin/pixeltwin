@@ -1,3 +1,4 @@
+import type { Db } from '../db/database';
 import { isUniqueViolation } from '../db/database';
 import type { Build } from '../db/schema';
 import { AppError } from '../errors';
@@ -153,4 +154,37 @@ export async function finalizeBuild(deps: DbDeps, id: string): Promise<BuildView
     .where('state', '=', 'open')
     .execute();
   return getBuild(deps, id);
+}
+
+/**
+ * Deletes builds with their checks (and those checks' review history). Baselines approved in them
+ * stay; their `sourceCheckId` is cleared. Shared by the retention job and manual deletion.
+ */
+export async function removeBuilds(db: Db, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.transaction().execute(async (tx) => {
+    await tx
+      .updateTable('baselines')
+      .set({ sourceCheckId: null })
+      .where('sourceCheckId', 'in', tx.selectFrom('checks').select('id').where('buildId', 'in', ids))
+      .execute();
+    await tx.deleteFrom('builds').where('id', 'in', ids).execute();
+  });
+}
+
+/** Deletes some of a project's builds (all must be the project's); returns how many. */
+export async function deleteBuilds(deps: Pick<Deps, 'db'>, projectId: string, ids: string[]): Promise<number> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return 0;
+  const found = await deps.db
+    .selectFrom('builds')
+    .select('id')
+    .where('projectId', '=', projectId)
+    .where('id', 'in', unique)
+    .execute();
+  if (found.length !== unique.length) {
+    throw new AppError('not_found', 404, 'Some of these builds do not exist in this project.');
+  }
+  await removeBuilds(deps.db, unique);
+  return unique.length;
 }

@@ -80,6 +80,7 @@ export const NOTICES: Record<string, string> = {
   'user-saved': 'User updated.',
   'user-deleted': 'User deleted.',
   'project-deleted': 'Project deleted.',
+  'builds-deleted': 'Builds deleted.',
 };
 
 export function noticeOf(c: Context<AppEnv>): string | undefined {

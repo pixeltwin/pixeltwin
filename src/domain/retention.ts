@@ -1,6 +1,7 @@
 import type { ExpressionBuilder } from 'kysely';
 import type { DB } from '../db/schema';
 import { imageKey } from '../storage/storage';
+import { removeBuilds } from './builds';
 import type { Deps } from './deps';
 import { listProjects } from './projects';
 
@@ -33,14 +34,7 @@ export async function deleteExpiredBuilds(deps: Pick<Deps, 'db'>, now: number): 
         .execute();
       if (rows.length === 0) break;
       const ids = rows.map((r) => r.id);
-      await deps.db.transaction().execute(async (tx) => {
-        await tx
-          .updateTable('baselines')
-          .set({ sourceCheckId: null })
-          .where('sourceCheckId', 'in', tx.selectFrom('checks').select('id').where('buildId', 'in', ids))
-          .execute();
-        await tx.deleteFrom('builds').where('id', 'in', ids).execute();
-      });
+      await removeBuilds(deps.db, ids);
       deleted += ids.length;
     }
   }

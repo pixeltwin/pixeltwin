@@ -289,6 +289,31 @@ describe('UI projects', () => {
   });
 
   describe('all builds page', () => {
+    test('admins can pick builds and delete them; the baselines approved in them stay', async () => {
+      const { mainBuild, cartBuild, pendingCheck } = await seedWeb();
+      await approveCheck(t.deps, pendingCheck, admin.id);
+      const page = await html(await t.request('GET', '/ui/p/web/builds', { as: admin }));
+      expect(page).toContain('<form class="builds-form" method="post" action="/ui/p/web/builds/delete"');
+      expect(page).toContain(`<input type="checkbox" name="build" value="${cartBuild}" aria-label="Select build #2"`);
+      expect(page).toContain('data-select-all');
+      const res = await postForm(t, '/ui/p/web/builds/delete', { build: [mainBuild, cartBuild] }, admin);
+      expect(location(res)).toBe('/ui/p/web/builds?done=builds-deleted');
+      const after = await html(await t.request('GET', location(res), { as: admin }));
+      expect(after).toContain('Builds deleted.');
+      expect(after).not.toContain(`/ui/builds/${cartBuild}`);
+      // The approved screenshot is still feature/cart's baseline.
+      const baselines = await t.deps.db.selectFrom('baselines').select(['branch', 'sourceCheckId']).execute();
+      expect(baselines).toContainEqual({ branch: 'feature/cart', sourceCheckId: null });
+    });
+
+    test('viewers see no checkboxes and cannot delete builds', async () => {
+      const { mainBuild } = await seedWeb();
+      const page = await html(await t.request('GET', '/ui/p/web/builds', { as: viewer }));
+      expect(page).not.toContain('name="build"');
+      const res = await postForm(t, '/ui/p/web/builds/delete', { build: mainBuild }, viewer);
+      expect(res.status).toBe(403);
+    });
+
     test('a table of builds with number, branch, commit, CI run id and verdict', async () => {
       const { mainBuild, cartBuild } = await seedWeb();
       const page = await html(await t.request('GET', '/ui/p/web/builds', { as: viewer }));

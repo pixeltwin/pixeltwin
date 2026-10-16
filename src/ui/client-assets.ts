@@ -33,6 +33,8 @@ import review from './client/review.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import search from './client/search.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import select from './client/select.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import theme from './client/theme.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import thumbs from './client/thumbs.ts' with { type: 'text' };
@@ -61,6 +63,7 @@ const SOURCES: Record<string, string> = {
   rank,
   review,
   search,
+  select,
   theme,
   thumbs,
   toast,

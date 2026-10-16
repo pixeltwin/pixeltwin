@@ -1,6 +1,6 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import { listBranchSummaries } from '../../domain/branches';
-import { createBuild, finalizeBuild, getBuild, getBuildRow, listBuilds } from '../../domain/builds';
+import { createBuild, deleteBuilds, finalizeBuild, getBuild, getBuildRow, listBuilds } from '../../domain/builds';
 import { getProjectBySlug } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { createBuildSchema } from '../../domain/schemas';
@@ -78,6 +78,21 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     const build = await getBuild(s.deps, c.req.valid('param').id);
     allowProject(c, build.projectId);
     return c.json(build, 200);
+  });
+
+  const remove = defineRoute('project.admin', {
+    method: 'delete',
+    path: `${API}/builds/{id}`,
+    tags: ['builds'],
+    summary: 'Delete a build with its checks; baselines approved in it stay',
+    request: { params: idParam },
+    responses: { 204: { description: 'Deleted' }, ...problems(401, 403, 404) },
+  });
+  app.openapi(remove, async (c) => {
+    const build = await getBuild(s.deps, c.req.valid('param').id);
+    allowProject(c, build.projectId);
+    await deleteBuilds(s.deps, build.projectId, [build.id]);
+    return c.body(null, 204);
   });
 
   const finalize = defineRoute('check.write', {

@@ -4,7 +4,7 @@ import { hasPermission } from '../../domain/auth/policy';
 import { listProjectTokens } from '../../domain/auth/tokens';
 import { type PromotionCandidate, promoteBranch, promotionCandidates } from '../../domain/baselines';
 import { type BranchSummary, listBranchSummaries } from '../../domain/branches';
-import { type BuildView, listBuilds } from '../../domain/builds';
+import { type BuildView, deleteBuilds, listBuilds } from '../../domain/builds';
 import { firstPendingCheckId } from '../../domain/checks';
 import { createProject, getProjectBySlug, listProjects } from '../../domain/projects';
 import { type PromotionDiff, promotionDiff } from '../../domain/promotion-diff';
@@ -350,12 +350,22 @@ function BranchesPage(props: {
 }
 
 /** `watch`: the first page, where new builds appear; a later page never changes by itself. */
-function BuildsTable({ ui, builds, watch }: { ui: Ui; builds: BuildView[]; watch: boolean }) {
+/**
+ * The builds as a table; with `deleteAction` (admins) each row gets a checkbox, and the table sits
+ * in a form whose button deletes the picked builds after asking.
+ */
+function BuildsTable(props: { ui: Ui; builds: BuildView[]; watch: boolean; deleteAction?: string | undefined }) {
+  const { ui, builds, watch, deleteAction } = props;
   const running = builds.some((b) => b.state === 'open');
-  return (
+  const table = (
     <table class="builds stack-on-phone">
       <thead>
         <tr>
+          {deleteAction && (
+            <th class="pick">
+              <input type="checkbox" data-select-all aria-label="Select all builds on this page" />
+            </th>
+          )}
           <th>Build</th>
           <th>Branch</th>
           <th>Commit</th>
@@ -372,6 +382,11 @@ function BuildsTable({ ui, builds, watch }: { ui: Ui; builds: BuildView[]; watch
       >
         {builds.map((b) => (
           <tr>
+            {deleteAction && (
+              <td class="pick">
+                <input type="checkbox" name="build" value={b.id} aria-label={`Select build #${b.number}`} />
+              </td>
+            )}
             <td>
               <span class="build-id">
                 <BuildDot build={b} />
@@ -398,6 +413,23 @@ function BuildsTable({ ui, builds, watch }: { ui: Ui; builds: BuildView[]; watch
       </tbody>
     </table>
   );
+  if (!deleteAction) return table;
+  return (
+    <form class="builds-form" method="post" action={deleteAction} data-builds-form>
+      <div class="builds-actions">
+        <button
+          type="submit"
+          class="small danger"
+          data-delete-selected
+          data-confirm="Delete the selected builds and their checks? Baselines approved in them stay."
+          data-confirm-label="Delete builds"
+        >
+          Delete selected
+        </button>
+      </div>
+      {table}
+    </form>
+  );
 }
 
 /**
@@ -419,15 +451,20 @@ function AllBuildsPage(props: {
   newer?: string | undefined;
   older?: string | undefined;
   canManage: boolean;
+  notice?: string | undefined;
 }) {
   const { ui, project, builds, branch } = props;
   return (
     <Layout
       ui={ui}
       title={`${project.name} builds`}
+      notice={props.notice}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'All builds' }]}
       project={project.slug}
-      islands={builds.some((b) => b.state === 'open') || !props.newer ? ['live'] : undefined}
+      islands={[
+        ...(builds.some((b) => b.state === 'open') || !props.newer ? ['live'] : []),
+        ...(props.canManage ? ['select'] : []),
+      ]}
     >
       <div class="page-head">
         <div>
@@ -454,7 +491,12 @@ function AllBuildsPage(props: {
           <h3>{branch ? `No builds on ${branch}` : 'No builds yet'}</h3>
         </div>
       ) : (
-        <BuildsTable ui={ui} builds={builds} watch={!props.newer} />
+        <BuildsTable
+          ui={ui}
+          builds={builds}
+          watch={!props.newer}
+          deleteAction={props.canManage ? ui.url(`/ui/p/${project.slug}/builds/delete`) : undefined}
+        />
       )}
       <div class="pager">
         <span>{props.newer && <a href={props.newer}>← Newest</a>}</span>
@@ -783,6 +825,19 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
     );
   });
 
+  app.post('/ui/p/:slug/builds/delete', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'project.admin')) {
+      throw new AppError('forbidden', 403, 'Only admins can delete builds.');
+    }
+    const slug = c.req.param('slug');
+    const project = await getProjectBySlug(s.deps, slug);
+    const form = await c.req.parseBody({ all: true });
+    const picked = ([] as unknown[]).concat(form.build ?? []).filter((v): v is string => typeof v === 'string');
+    const deleted = await deleteBuilds(s.deps, project.id, picked);
+    return c.redirect(ui.url(`/ui/p/${slug}/builds${deleted > 0 ? '?done=builds-deleted' : ''}`), 303);
+  });
+
   app.get('/ui/p/:slug/builds', async (c) => {
     const ui = uiOf(c, s);
     const slug = c.req.param('slug');
@@ -807,6 +862,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
         newer={cursor ? ui.url(`/ui/p/${slug}/builds${query({})}`) : undefined}
         older={page.nextCursor ? ui.url(`/ui/p/${slug}/builds${query({ cursor: page.nextCursor })}`) : undefined}
         canManage={hasPermission(userOf(c), 'project.admin')}
+        notice={noticeOf(c)}
       />,
     );
   });

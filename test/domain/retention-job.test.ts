@@ -41,7 +41,9 @@ describe('retention job', () => {
     const sha = await oldOrphan();
     const { logger, lines } = recordingLogger();
     job = startRetentionJob({ deps, handle: deps.handle, logger, firstRunDelayMs: 0, intervalMs: 60_000 });
-    for (let i = 0; i < 50 && (await deps.storage.exists(imageKey(sha))); i++) await Bun.sleep(10);
+    // The image goes first, the log line after the pass: wait for both.
+    const logged = () => lines.some((l) => l.msg === 'retention');
+    for (let i = 0; i < 100 && ((await deps.storage.exists(imageKey(sha))) || !logged()); i++) await Bun.sleep(10);
     expect(await deps.storage.exists(imageKey(sha))).toBe(false);
     expect(lines.find((l) => l.msg === 'retention')).toMatchObject({ buildsDeleted: 0, imagesDeleted: 1 });
   });

@@ -60,4 +60,14 @@ describe('build routes', () => {
     expect(doc.components.schemas.Build.required).toContain('number');
     expect(doc.components.schemas.Build.properties.number).toMatchObject({ type: 'integer' });
   });
+
+  test('DELETE /builds/{id} removes a build for admins only, and is a 404 afterwards', async () => {
+    const admin = await t.userAs('admin');
+    const viewer = await t.userAs('viewer', 'view@example.com');
+    const { openBuild } = await import('../helpers/scenario');
+    const id = await openBuild(t.deps, 'web');
+    expect((await t.request('DELETE', `/api/v1/builds/${id}`, { as: viewer })).status).toBe(403);
+    expect((await t.request('DELETE', `/api/v1/builds/${id}`, { as: admin })).status).toBe(204);
+    expect((await t.request('GET', `/api/v1/builds/${id}`, { as: admin })).status).toBe(404);
+  });
 });
