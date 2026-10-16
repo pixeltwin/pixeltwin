@@ -13,7 +13,8 @@ function requireUserAdmin(c: Context<AppEnv>): void {
   if (!hasPermission(userOf(c), 'user.admin')) throw new AppError('forbidden', 403, 'Only admins can open this page.');
 }
 
-const ROLE_HELP = 'Admins manage everything; reviewers approve and reject; viewers only look.';
+const ROLE_HELP =
+  'Admins manage everything. Reviewers approve or reject changes and manage ignore and compare areas. Viewers only look.';
 
 type UserValues = { email?: string | undefined; role?: string | undefined };
 

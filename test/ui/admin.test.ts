@@ -26,6 +26,10 @@ describe('UI administration', () => {
       expect(page).toContain('href="/ui/admin/users/new" data-dialog-open="new-user"');
       expect(page).toMatch(/<dialog id="new-user"[^>]*>[\s\S]*action="\/ui\/admin\/users"/);
       expect(await get('/ui/admin/users/new')).toContain('action="/ui/admin/users"');
+      // The roles are explained where they are chosen.
+      expect(await get('/ui/admin/users/new')).toContain(
+        'Admins manage everything. Reviewers approve or reject changes and manage ignore and compare areas. Viewers only look.',
+      );
 
       const created = await postForm(
         t,
