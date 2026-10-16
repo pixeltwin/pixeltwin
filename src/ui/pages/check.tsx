@@ -866,9 +866,14 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       const id = c.req.param('id');
       const review = action === 'approve' ? approveCheck : rejectCheck;
       const check = await review(s.deps, id, user.id, comment ? { comment } : {});
+      const done = action === 'approve' ? 'approved' : 'rejected';
+      // From a card on the build page: back to that page and card.
+      if (field(form, 'back') === 'build') {
+        const at = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
+        return c.redirect(ui.url(`/ui/builds/${check.buildId}?${at}done=${done}#${check.id}`), 303);
+      }
       // Keep the reviewer moving: the next check awaiting review, else back to the build.
       const { nextPending } = await checkNeighbors(s.deps, check);
-      const done = action === 'approve' ? 'approved' : 'rejected';
       return c.redirect(
         ui.url(
           nextPending ? `/ui/checks/${nextPending}?${filter}done=${done}` : `/ui/builds/${check.buildId}?done=${done}`,

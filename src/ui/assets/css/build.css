@@ -36,6 +36,25 @@
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
   text-decoration: none;
 }
+/* A card and, for a new screenshot, its Approve button over the card's corner. */
+.check-card-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.check-card-wrap[hidden] {
+  display: none;
+}
+.check-card-wrap > .check-card {
+  flex: 1;
+  min-width: 0;
+}
+.card-approve {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  margin: 0;
+}
 .thumb {
   height: 170px;
   padding: var(--space-2);

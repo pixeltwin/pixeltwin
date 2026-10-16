@@ -41,6 +41,31 @@ describe('UI build page', () => {
     return { buildId, changed, fresh, same };
   }
 
+  describe('approving a new screenshot from its card', () => {
+    const approveForm = (id: string) => `<form class="card-approve" method="post" action="/ui/checks/${id}/approve">`;
+
+    test('reviewers get an Approve button on new checks waiting for review only; viewers do not', async () => {
+      const { buildId, changed, fresh, same } = await seedBuild();
+      const body = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: reviewer }));
+      expect(body).toContain(approveForm(fresh.id));
+      expect(body).not.toContain(approveForm(changed.id));
+      expect(body).not.toContain(approveForm(same.id));
+      // The card stays a link; the form sits beside it, not inside it.
+      expect(body).toContain(`<div class="check-card-wrap" id="${fresh.id}"`);
+      const forViewer = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: viewer }));
+      expect(forViewer).not.toContain('class="card-approve"');
+    });
+
+    test('Approve makes it the baseline and comes back to the build, at the same filter and card', async () => {
+      const { buildId, fresh } = await seedBuild();
+      const res = await postForm(t, `/ui/checks/${fresh.id}/approve`, { filter: 'all', back: 'build' }, reviewer);
+      expect(location(res)).toBe(`/ui/builds/${buildId}?filter=all&done=approved#${fresh.id}`);
+      const body = await html(await t.request('GET', location(res).split('#')[0] as string, { as: reviewer }));
+      expect(body).toContain('Approved.');
+      expect(body).not.toContain(approveForm(fresh.id));
+    });
+  });
+
   test('the header names the build by number with its branch, commit, CI run and status', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));

@@ -14,29 +14,46 @@ import { noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
 
-function CheckCard({ ui, check, size, filter }: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter }) {
+/**
+ * One check: a link to it, and for reviewers an Approve button on a new screenshot waiting for
+ * review (nothing to compare it with, so the thumbnail is enough). The form sits beside the link.
+ */
+function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter; canReview: boolean }) {
+  const { ui, check, size, filter } = props;
   const sha = thumbnailSha(check);
+  const approvable = props.canReview && check.result === 'new' && check.review === 'pending';
   return (
-    <a
-      class="check-card"
-      href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
+    <div
+      class="check-card-wrap"
+      id={check.id}
       data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
     >
-      <div class="thumb">
-        <img
-          src={ui.url(`/api/v1/images/${sha}`)}
-          alt={check.name}
-          loading="lazy"
-          width={size?.width}
-          height={size?.height}
-        />
-      </div>
-      <div class="check-card-body">
-        <span class="check-name">{check.name}</span>
-        <Variant variant={check.variant} />
-        <CheckStatus check={check} />
-      </div>
-    </a>
+      <a class="check-card" href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}>
+        <div class="thumb">
+          <img
+            src={ui.url(`/api/v1/images/${sha}`)}
+            alt={check.name}
+            loading="lazy"
+            width={size?.width}
+            height={size?.height}
+          />
+        </div>
+        <div class="check-card-body">
+          <span class="check-name">{check.name}</span>
+          <Variant variant={check.variant} />
+          <CheckStatus check={check} />
+        </div>
+      </a>
+      {approvable && (
+        <form class="card-approve" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)}>
+          <input type="hidden" name="filter" value={filter.key} />
+          <input type="hidden" name="back" value="build" />
+          <button type="submit" class="small approve" title="Approve this new screenshot: it becomes the baseline">
+            Approve
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -218,7 +235,13 @@ function BuildPage(props: {
         {checks.length > 0 && (
           <div class="check-grid">
             {checks.map((check) => (
-              <CheckCard ui={ui} check={check} size={props.sizes.get(thumbnailSha(check))} filter={filter} />
+              <CheckCard
+                ui={ui}
+                check={check}
+                size={props.sizes.get(thumbnailSha(check))}
+                filter={filter}
+                canReview={props.canReview}
+              />
             ))}
           </div>
         )}

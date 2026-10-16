@@ -8,7 +8,7 @@ export function init(): void {
 
   const apply = () => {
     const text = input.value.trim().toLowerCase();
-    const cards = [...document.querySelectorAll<HTMLElement>('.check-card[data-search]')];
+    const cards = [...document.querySelectorAll<HTMLElement>('.check-card-wrap[data-search]')];
     let shown = 0;
     for (const card of cards) {
       const hit = !text || (card.dataset.search ?? '').includes(text);
