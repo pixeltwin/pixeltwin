@@ -125,7 +125,12 @@ body.focus main {
   margin: 0;
   font-weight: 400;
 }
-.zoom-controls {
+/* Opacity, the compare modes and zoom sit together at the right; drawing tools stay left. */
+.view-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   margin-left: auto;
 }
 .panes {

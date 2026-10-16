@@ -43,6 +43,10 @@ describe('UI areas', () => {
     expect(body).toContain('data-draw="ignore"');
     expect(body).toContain('data-draw="compare"');
     expect(body).toContain('data-key="i"');
+    // Drawing tools on the left; the view controls (opacity, modes, zoom) together on the right.
+    expect(body).toContain('<div class="view-controls">');
+    expect(body.indexOf('data-draw="ignore"')).toBeLessThan(body.indexOf('class="view-controls"'));
+    expect(body.indexOf('class="view-controls"')).toBeLessThan(body.indexOf('class="segmented modes"'));
     const forViewer = await page(`/ui/checks/${check.id}`, viewer);
     expect(forViewer).not.toContain('data-draw=');
   });
