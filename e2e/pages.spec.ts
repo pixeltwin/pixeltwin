@@ -29,6 +29,16 @@ test('the eye button shows and hides a password', async ({ browser, baseURL }) =
   await expect(password).toHaveValue('secret-words');
 });
 
+test('the role hint follows the chosen role', async ({ adminPage: page }) => {
+  await open(page, '/ui/admin/users/new');
+  const hint = page.locator('#user-role-hint');
+  await expect(hint).toContainText('cannot change anything');
+  await page.locator('select[name=role]').selectOption('reviewer');
+  await expect(hint).toContainText('Approves or rejects changes');
+  await page.locator('select[name=role]').selectOption('admin');
+  await expect(hint).toContainText('Manages everything');
+});
+
 test('the theme switch applies at once and survives a reload', async ({ reviewerPage: page }) => {
   await open(page, '/ui');
   await page.locator('.menu summary').click();

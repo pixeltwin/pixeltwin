@@ -1,6 +1,6 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import { USER_ROLES } from '../../db/schema';
+import { USER_ROLES, type UserRole } from '../../db/schema';
 import { hasPermission } from '../../domain/auth/policy';
 import { createUser, deleteUser, listUsers, type UserView, updateUser } from '../../domain/auth/users';
 import { AppError } from '../../errors';
@@ -16,6 +16,14 @@ function requireUserAdmin(c: Context<AppEnv>): void {
 const ROLE_HELP =
   'Admins manage everything. Reviewers approve or reject changes and manage ignore and compare areas. Viewers only look.';
 
+/** What each role may do, shown under the Role select for the chosen one. */
+const ROLE_HINTS: Record<UserRole, string> = {
+  viewer: 'Sees every project, build and screenshot, but cannot change anything.',
+  reviewer:
+    'Approves or rejects changes and manages ignore and compare areas, in every project. Cannot change settings, tokens or users.',
+  admin: 'Manages everything: projects, settings, tokens and users. Reviews too.',
+};
+
 type UserValues = { email?: string | undefined; role?: string | undefined };
 
 function NewUserForm({
@@ -30,6 +38,7 @@ function NewUserForm({
   inDialog: boolean;
 }) {
   const passwordHint = 'At least 10 characters. Share it with them safely.';
+  const chosenRole: UserRole = USER_ROLES.find((r) => r === values.role) ?? 'viewer';
   return (
     <form method="post" action={ui.url('/ui/admin/users')}>
       {errors._form && <p class="flash error">{errors._form}</p>}
@@ -55,10 +64,10 @@ function NewUserForm({
           />
         </PasswordField>
       </Field>
-      <Field id="user-role" label="Role" hint={ROLE_HELP} error={errors.role}>
-        <select name="role" {...describedBy('user-role', ROLE_HELP, errors.role)}>
+      <Field id="user-role" label="Role" hint={ROLE_HINTS[chosenRole]} error={errors.role}>
+        <select name="role" data-hint-from-option {...describedBy('user-role', ROLE_HINTS[chosenRole], errors.role)}>
           {USER_ROLES.map((r) => (
-            <option value={r} selected={r === (values.role ?? 'viewer')}>
+            <option value={r} data-hint={ROLE_HINTS[r]} selected={r === chosenRole}>
               {r}
             </option>
           ))}

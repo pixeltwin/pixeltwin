@@ -26,10 +26,12 @@ describe('UI administration', () => {
       expect(page).toContain('href="/ui/admin/users/new" data-dialog-open="new-user"');
       expect(page).toMatch(/<dialog id="new-user"[^>]*>[\s\S]*action="\/ui\/admin\/users"/);
       expect(await get('/ui/admin/users/new')).toContain('action="/ui/admin/users"');
-      // The roles are explained where they are chosen.
-      expect(await get('/ui/admin/users/new')).toContain(
-        'Admins manage everything. Reviewers approve or reject changes and manage ignore and compare areas. Viewers only look.',
-      );
+      // The hint under Role explains the chosen role; each option carries its own text for the switch.
+      const form = await get('/ui/admin/users/new');
+      expect(form).toContain('<p class="hint" id="user-role-hint">Sees every project, build and screenshot');
+      expect(form).toContain('data-hint-from-option="true"');
+      expect(form).toMatch(/<option value="reviewer" data-hint="Approves or rejects changes/);
+      expect(form).toMatch(/<option value="admin" data-hint="Manages everything/);
 
       const created = await postForm(
         t,

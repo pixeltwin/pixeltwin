@@ -44,6 +44,15 @@ document.addEventListener('click', (event) => {
   input.focus();
 });
 
+// A select marked data-hint-from-option shows the chosen option's data-hint under itself.
+document.addEventListener('change', (event) => {
+  const select = event.target instanceof HTMLSelectElement ? event.target : null;
+  if (!select?.matches('[data-hint-from-option]')) return;
+  const hint = document.getElementById(`${select.id}-hint`);
+  const text = select.selectedOptions[0]?.dataset.hint;
+  if (hint && text) hint.textContent = text;
+});
+
 // Forms marked data-autosubmit save as soon as a field changes (their Save button is for no-JS).
 document.addEventListener('change', (event) => {
   const form = event.target instanceof Element ? event.target.closest('form[data-autosubmit]') : null;
