@@ -163,20 +163,20 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
     // `all` is the no-JavaScript view: side by side, then the diff. The island switches modes.
     <section class="stage" id="stage" data-mode="all" aria-label="Comparison">
       <div class="stage-toolbar" hidden>
-        {props.canReview && <DrawTools areas={areas} />}
-        <div class="view-controls">
-          <label class="onion-control" hidden>
-            <span class="muted">Opacity</span>
-            <input type="range" min="0" max="100" value="50" data-onion />
-          </label>
-          <fieldset class="segmented modes">
-            <legend class="visually-hidden">Compare mode</legend>
-            {modes.map(([mode, label, key]) => (
-              <button type="button" data-mode-button={mode} aria-pressed="false">
-                {label} <kbd>{key}</kbd>
-              </button>
-            ))}
-          </fieldset>
+        <fieldset class="segmented modes">
+          <legend class="visually-hidden">Compare mode</legend>
+          {modes.map(([mode, label, key]) => (
+            <button type="button" data-mode-button={mode} aria-pressed="false">
+              {label} <kbd>{key}</kbd>
+            </button>
+          ))}
+        </fieldset>
+        <label class="onion-control" hidden>
+          <span class="muted">Opacity</span>
+          <input type="range" min="0" max="100" value="50" data-onion />
+        </label>
+        <div class="stage-actions">
+          {props.canReview && <DrawTools areas={areas} />}
           <div class="zoom-controls">
             <button type="button" class="small" data-zoom="toggle" aria-label="Toggle fit and 100% (Z)">
               <span data-zoom-label>Fit</span> <kbd>Z</kbd>

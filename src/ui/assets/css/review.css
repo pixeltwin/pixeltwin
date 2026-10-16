@@ -125,8 +125,8 @@ body.focus main {
   margin: 0;
   font-weight: 400;
 }
-/* Opacity, the compare modes and zoom sit together at the right; drawing tools stay left. */
-.view-controls {
+/* The compare modes and opacity sit at the left; drawing tools and zoom at the right. */
+.stage-actions {
   display: flex;
   align-items: center;
   gap: var(--space-3);
