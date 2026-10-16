@@ -14,11 +14,21 @@ import {
 } from '@pixeltwin/client';
 import { clientFor, finishRun, type PixeltwinOptions, resolveSettings, startRun } from '@pixeltwin/client/run';
 
-/** A WebdriverIO element, or the chainable promise `$()` returns. */
-export type ElementLike = { elementId: string } | PromiseLike<{ elementId: string }>;
+/** A WebdriverIO element. */
+export type WdioElement = { elementId: string };
+
+/**
+ * A WebdriverIO element or several: an element, the chainable promise `$()` returns, an element
+ * array or the chainable promise `$$()` returns.
+ */
+export type ElementLike =
+  | WdioElement
+  | PromiseLike<WdioElement>
+  | Iterable<WdioElement>
+  | PromiseLike<Iterable<WdioElement>>;
 
 export interface WdioCheckOptions {
-  /** Parts never compared: elements (or `$()` results) or rectangles in screenshot pixels. */
+  /** Parts never compared: elements (`$()`, `$$()` results) or rectangles in screenshot pixels. */
   ignore?: (ElementLike | Rect)[];
   /** Merged over the automatic variant (browser + viewport) and the service's `variant`. */
   variant?: Variant;
@@ -38,8 +48,12 @@ export interface BrowserLike {
   takeElementScreenshot(elementId: string): Promise<string>;
   // biome-ignore lint/suspicious/noExplicitAny: WebdriverIO's execute takes any script arguments.
   execute<T>(script: (...args: any[]) => T, ...args: unknown[]): Promise<T>;
+  /**
+   * WebdriverIO 10 takes `{ attachToElement }` (a boolean throws); 8 and 9 take a boolean there and
+   * only test it for truthiness, so the object form works for all three.
+   */
   // biome-ignore lint/suspicious/noExplicitAny: WebdriverIO commands take any arguments.
-  addCommand(name: string, fn: (this: any, ...args: any[]) => unknown, attachToElement?: boolean): void;
+  addCommand(name: string, fn: (this: any, ...args: any[]) => unknown, options?: { attachToElement?: boolean }): void;
 }
 
 interface Measured {
@@ -70,11 +84,31 @@ export class SevereServiceError extends Error {
   }
 }
 
+function isIterable(value: unknown): value is Iterable<unknown> {
+  return (
+    typeof value === 'object' && value !== null && typeof (value as Iterable<unknown>)[Symbol.iterator] === 'function'
+  );
+}
+
 function isElementLike(value: unknown): value is ElementLike {
   return (
+    isIterable(value) ||
     typeof (value as { elementId?: unknown })?.elementId === 'string' ||
     typeof (value as PromiseLike<unknown>)?.then === 'function'
   );
+}
+
+/** Every element the ignore list names: `$$()` results are spread, since `execute` only turns
+ * top-level element arguments into references. */
+async function elementsOf(ignore: ElementLike[]): Promise<WdioElement[]> {
+  const elements: WdioElement[] = [];
+  for (const item of ignore) {
+    const resolved = await item;
+    for (const element of isIterable(resolved) ? resolved : [resolved]) {
+      if (typeof element?.elementId === 'string') elements.push(element);
+    }
+  }
+  return elements;
 }
 
 function decode(base64: string): Uint8Array {
@@ -148,7 +182,7 @@ export class PixeltwinService {
       function (this: { elementId: string }, name: string, options?: WdioCheckOptions) {
         return service.check(browser, this, name, options);
       },
-      true,
+      { attachToElement: true },
     );
   }
 
@@ -170,7 +204,7 @@ export class PixeltwinService {
     this.#client ??= clientFor(settings);
 
     const ignore = options.ignore ?? [];
-    const elements = await Promise.all(ignore.filter(isElementLike).map(async (e) => await e));
+    const elements = await elementsOf(ignore.filter(isElementLike));
     const rects = ignore.filter((r): r is Rect => !isElementLike(r));
     const measured = await target.execute(measure, element, ...elements);
     const image = decode(
