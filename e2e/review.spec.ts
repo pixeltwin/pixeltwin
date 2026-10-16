@@ -204,6 +204,23 @@ test('an older build cannot approve a screen a newer build already approved', as
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${check.id}`));
 });
 
+test('zooming keeps the toolbar still: Ignore and Compare do not move as the zoom label changes', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  const ignore = page.locator('[data-draw="ignore"]');
+  const before = await ignore.boundingBox();
+  const stage = await page.locator('.pane-overlay .viewport').boundingBox();
+  if (!before || !stage) throw new Error('toolbar or stage not on screen');
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  for (const delta of [-300, -300, -600, 200]) {
+    await page.mouse.wheel(0, delta);
+    await expect(page.locator('[data-zoom-label]')).not.toHaveText('Fit');
+    expect((await ignore.boundingBox())?.x).toBe(before.x);
+  }
+});
+
 test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
   await page.keyboard.press('r');
