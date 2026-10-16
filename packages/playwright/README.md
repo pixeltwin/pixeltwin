@@ -118,3 +118,8 @@ step after all shards:
       - run: npx -y @pixeltwin/client finalize --gate
         env: { PIXELTWIN_URL: …, PIXELTWIN_TOKEN: …, PIXELTWIN_PROJECT: shop }
 ```
+
+## Example
+
+A complete project with a demo site, three browser/viewport projects, the gate and a sharded
+GitHub Actions workflow: [`examples/playwright`](../../examples/playwright/README.md).

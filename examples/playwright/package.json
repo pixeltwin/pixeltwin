@@ -1,0 +1,20 @@
+{
+  "name": "pixeltwin-example-playwright",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright Test with pixeltwin: full page, element, ignore regions, variants, the CI gate",
+  "scripts": {
+    "test": "playwright test",
+    "site": "node serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "sdk:local": "cd ../.. && bun scripts/build-sdk.ts pack examples/playwright/vendor"
+  },
+  "devDependencies": {
+    "@pixeltwin/client": "file:vendor/pixeltwin-client-0.1.0.tgz",
+    "@pixeltwin/playwright": "file:vendor/pixeltwin-playwright-0.1.0.tgz",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

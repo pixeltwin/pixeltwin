@@ -120,6 +120,11 @@ PIXELTWIN_URL=http://localhost:8080 PIXELTWIN_TOKEN=pt_… PIXELTWIN_PROJECT=web
 
 The packages are not on npm yet; `bun scripts/build-sdk.ts pack <dir>` builds installable tarballs.
 
+**Examples** to copy: [`examples/playwright`](examples/playwright/README.md) (full page, element,
+ignored clock, Chromium and Firefox on desktop and a phone, sharding with `npx pixeltwin finalize`)
+and [`examples/wdio`](examples/wdio/README.md) (a real Chrome through WebdriverIO, desktop and a
+phone). Each ships a tiny demo site and a GitHub Actions snippet.
+
 ## Development
 
 ```sh
@@ -135,6 +140,13 @@ bun scripts/build-sdk.ts        # SDK packages to packages/*/dist (`pack <dir>` 
 The SDK tests (`test/sdk/`, part of `bun test`) start their own server from source on a free port
 in 19000–19099 with an empty data dir; `test/sdk/playwright.test.ts` runs a real Playwright suite
 (`packages/playwright/test/suite/`) through the SDK, so it needs Chromium (see below).
+
+`bun run examples` (optional, not part of `bun test`) runs both example projects end to end against
+a fresh server on a free port in 19100–19179: it packs the SDK into `examples/*/vendor`, runs
+`npm install`, then new → approve → unchanged with the gate → `DEMO_CHANGE=1` fails the gate.
+It needs npm, Playwright's Chromium and Firefox (`npx playwright install chromium firefox` in
+`examples/playwright`) and, the first time, a network connection for WebdriverIO's chromedriver.
+`bun run examples playwright` or `… wdio` runs one.
 
 Browser tests (Playwright, Chromium) start their own server from source on port 18777
 (`E2E_PORT` to change it); the review flow, dialogs, theme, palette, phone layout and the
