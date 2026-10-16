@@ -323,6 +323,7 @@
               "error",
               "rejected",
               "pending",
+              "outdated",
               "passed"
             ]
           },
@@ -369,13 +370,17 @@
                   },
                   "rejected": {
                     "type": "integer"
+                  },
+                  "outdated": {
+                    "type": "integer"
                   }
                 },
                 "required": [
                   "none",
                   "pending",
                   "approved",
-                  "rejected"
+                  "rejected",
+                  "outdated"
                 ]
               }
             },
@@ -449,6 +454,7 @@
                     "error",
                     "rejected",
                     "pending",
+                    "outdated",
                     "passed"
                   ]
                 },
@@ -578,7 +584,8 @@
               "none",
               "pending",
               "approved",
-              "rejected"
+              "rejected",
+              "outdated"
             ]
           },
           "diff": {
@@ -611,6 +618,13 @@
               "string",
               "null"
             ]
+          },
+          "supersededBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when review is \"outdated\": the check of a newer build of this branch whose approval decided this screen."
           },
           "createdAt": {
             "type": "integer"
@@ -667,6 +681,7 @@
           "reviewedBy",
           "reviewedAt",
           "reviewComment",
+          "supersededBy",
           "createdAt",
           "updatedAt",
           "links"
@@ -3122,7 +3137,8 @@
                 "none",
                 "pending",
                 "approved",
-                "rejected"
+                "rejected",
+                "outdated"
               ]
             },
             "required": false,

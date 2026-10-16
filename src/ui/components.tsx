@@ -62,6 +62,7 @@ export const VERDICT_LABELS: Record<Verdict, string> = {
   error: 'error',
   rejected: 'rejected',
   pending: 'needs review',
+  outdated: 'outdated',
   passed: 'passed',
 };
 
@@ -233,7 +234,13 @@ export function thumbnailSha(check: CheckView): string {
   return check.result === 'changed' && check.diffImageSha ? check.diffImageSha : check.imageSha;
 }
 
-const REVIEW_LABELS = { none: '', pending: 'to review', approved: 'approved', rejected: 'rejected' } as const;
+const REVIEW_LABELS = {
+  none: '',
+  pending: 'to review',
+  approved: 'approved',
+  rejected: 'rejected',
+  outdated: 'outdated',
+} as const;
 
 /** Result and review state of a check: `changed` `to review`, `new` `approved`, … */
 export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {

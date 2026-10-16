@@ -6,6 +6,7 @@ import { appendBaseline, findCurrentBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import { type CheckView, getCheck } from './checks';
 import type { Deps } from './deps';
+import { checkOutdated, outdateOlder, restoreOutdated, supersedingCheck } from './outdated';
 import { parseInput, reviewInputSchema } from './schemas';
 
 type DbDeps = Pick<Deps, 'db'>;
@@ -13,6 +14,11 @@ type DbDeps = Pick<Deps, 'db'>;
 async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): Promise<AppError> {
   const check = await db.selectFrom('checks').select('review').where('id', '=', checkId).executeTakeFirst();
   if (!check) return new AppError('check_not_found', 404, `Check ${checkId} not found.`);
+  if (check.review === 'outdated') {
+    const screen = await screenOf(db, checkId);
+    const newer = screen && (await supersedingCheck(db, screen));
+    if (screen && newer) return checkOutdated(checkId, screen.buildNumber, newer);
+  }
   return new AppError(
     'check_not_reviewable',
     409,
@@ -21,6 +27,35 @@ async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): P
 }
 
 const APPROVABLE: CheckReview[] = ['pending', 'rejected'];
+
+/** The check's screen (project, snapshot, branch) and build number; undefined when it does not exist. */
+async function screenOf(db: Db, checkId: string) {
+  const row = await db
+    .selectFrom('checks')
+    .innerJoin('builds', 'builds.id', 'checks.buildId')
+    .select(['checks.projectId', 'checks.snapshotKey', 'builds.branch', 'builds.number'])
+    .where('checks.id', '=', checkId)
+    .executeTakeFirst();
+  return row && { projectId: row.projectId, snapshotKey: row.snapshotKey, branch: row.branch, buildNumber: row.number };
+}
+
+/**
+ * A newer build of the check's branch already approved its screen: marks the check outdated (if
+ * it was waiting) and returns the 409 to report, or null when the check may be reviewed.
+ */
+async function outdatedGuard(tx: Db, checkId: string): Promise<AppError | null> {
+  const screen = await screenOf(tx, checkId);
+  if (!screen) return null;
+  const newer = await supersedingCheck(tx, screen);
+  if (!newer) return null;
+  await tx
+    .updateTable('checks')
+    .set({ review: 'outdated', supersededBy: newer.id, updatedAt: Date.now() })
+    .where('id', '=', checkId)
+    .where('review', '=', 'pending')
+    .execute();
+  return checkOutdated(checkId, screen.buildNumber, newer);
+}
 
 /** Appends to the check's review history, inside the transaction that made the change. */
 async function recordReview(
@@ -46,7 +81,11 @@ export async function listReviews(deps: DbDeps, checkId: string): Promise<Review
  * approved by a concurrent request). The conditional update makes concurrent approvals of
  * one check produce one baseline.
  */
-async function tryApprove(tx: Db, checkId: string, actor: string, comment: string | null): Promise<boolean> {
+type ApproveOutcome = { approved: true } | { approved: false; error: AppError | null };
+
+async function tryApprove(tx: Db, checkId: string, actor: string, comment: string | null): Promise<ApproveOutcome> {
+  const outdated = await outdatedGuard(tx, checkId);
+  if (outdated) return { approved: false, error: outdated };
   const now = Date.now();
   const updated = await tx
     .updateTable('checks')
@@ -54,7 +93,7 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
     .where('id', '=', checkId)
     .where('review', 'in', APPROVABLE)
     .executeTakeFirst();
-  if (Number(updated.numUpdatedRows) === 0) return false;
+  if (Number(updated.numUpdatedRows) === 0) return { approved: false, error: null };
 
   const check = await tx
     .selectFrom('checks')
@@ -66,6 +105,7 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
       'checks.variant',
       'checks.imageSha',
       'builds.branch',
+      'builds.number',
     ])
     .where('checks.id', '=', checkId)
     .executeTakeFirstOrThrow();
@@ -80,7 +120,13 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
     approvedBy: actor,
   });
   await recordReview(tx, { checkId, projectId: check.projectId, action: 'approved', actor, comment });
-  return true;
+  // Older builds of this branch must not put their screenshot of this screen back over it.
+  await outdateOlder(
+    tx,
+    { projectId: check.projectId, snapshotKey: check.snapshotKey, branch: check.branch, buildNumber: check.number },
+    checkId,
+  );
+  return { approved: true };
 }
 
 export async function approveCheck(
@@ -91,7 +137,8 @@ export async function approveCheck(
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
   await deps.db.transaction().execute(async (tx) => {
-    if (!(await tryApprove(tx, checkId, actor, comment ?? null))) throw await notReviewable(tx, checkId, APPROVABLE);
+    const outcome = await tryApprove(tx, checkId, actor, comment ?? null);
+    if (!outcome.approved) throw outcome.error ?? (await notReviewable(tx, checkId, APPROVABLE));
   });
   return getCheck(deps, checkId);
 }
@@ -104,6 +151,8 @@ export async function rejectCheck(
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
   await deps.db.transaction().execute(async (tx) => {
+    const outdated = await outdatedGuard(tx, checkId);
+    if (outdated) throw outdated;
     const now = Date.now();
     const updated = await tx
       .updateTable('checks')
@@ -164,6 +213,8 @@ export async function resetReview(deps: DbDeps, checkId: string, actor: string):
         );
       }
       await tx.deleteFrom('baselines').where('id', '=', current.id).execute();
+      // The older checks this approval outdated wait for review again.
+      await restoreOutdated(tx, checkId);
     }
     const updated = await tx
       .updateTable('checks')
@@ -193,7 +244,8 @@ export async function approveBuild(deps: DbDeps, buildId: string, actor: string)
       .orderBy('id')
       .execute();
     let approved = 0;
-    for (const { id } of pending) if (await tryApprove(tx, id, actor, null)) approved += 1;
+    // Outdated checks are skipped (and marked so): a newer build already approved their screen.
+    for (const { id } of pending) if ((await tryApprove(tx, id, actor, null)).approved) approved += 1;
     return { approved };
   });
 }

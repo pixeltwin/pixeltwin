@@ -3,6 +3,7 @@ import type { Baseline } from '../db/schema';
 import { AppError } from '../errors';
 import { newId } from '../ids';
 import type { Deps } from './deps';
+import { outdateOlder } from './outdated';
 import { type Page, toPage } from './pagination';
 import { getProjectBySlug } from './projects';
 import { type PageInput, pageInputSchema, parseInput } from './schemas';
@@ -142,6 +143,27 @@ export async function promoteBranch(
         sourceCheckId: baseline.sourceCheckId,
         approvedBy: actor,
       });
+      // Older main builds must not put their screenshot of this screen back over it.
+      if (baseline.sourceCheckId) {
+        const source = await tx
+          .selectFrom('checks')
+          .innerJoin('builds', 'builds.id', 'checks.buildId')
+          .select('builds.number')
+          .where('checks.id', '=', baseline.sourceCheckId)
+          .executeTakeFirst();
+        if (source) {
+          await outdateOlder(
+            tx,
+            {
+              projectId: project.id,
+              snapshotKey: baseline.snapshotKey,
+              branch: project.mainBranch,
+              buildNumber: source.number,
+            },
+            baseline.sourceCheckId,
+          );
+        }
+      }
       promoted += 1;
     }
     return { promoted };

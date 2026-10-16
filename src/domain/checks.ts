@@ -8,6 +8,7 @@ import { resolveBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import type { Deps } from './deps';
 import { loadImage, type PngSize, readPngHeader, sha256Hex, storeImage } from './images';
+import { supersedingCheck } from './outdated';
 import { type Page, toPage } from './pagination';
 import { getProjectById } from './projects';
 import { checkMetaSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
@@ -32,6 +33,7 @@ export interface CheckView {
   reviewedBy: string | null;
   reviewedAt: number | null;
   reviewComment: string | null;
+  supersededBy: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -262,6 +264,18 @@ export async function submitCheck(
   const diffImageSha =
     outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
 
+  // A newer build of this branch may already have approved this screen (a late post to an
+  // older, still open build): then this check is outdated from the start.
+  const initial = initialReview(outcome.result);
+  const newer =
+    initial === 'pending'
+      ? await supersedingCheck(deps.db, {
+          projectId: project.id,
+          snapshotKey: key,
+          branch: build.branch,
+          buildNumber: build.number,
+        })
+      : null;
   const now = Date.now();
   const values = {
     buildId,
@@ -276,7 +290,8 @@ export async function submitCheck(
     colorThreshold,
     tolerancePercent,
     result: outcome.result,
-    review: initialReview(outcome.result),
+    review: newer ? ('outdated' as const) : initial,
+    supersededBy: newer?.id ?? null,
     diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
     reviewedBy: null,
     reviewedAt: null,
@@ -362,7 +377,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
         // Decided in SQL, not from the read above: a review made while the comparison ran stays.
         review: eb
           .case()
-          .when('review', 'in', ['approved', 'rejected'])
+          .when('review', 'in', ['approved', 'rejected', 'outdated'])
           .then(eb.ref('review'))
           .else(sql.lit(initial))
           .end(),

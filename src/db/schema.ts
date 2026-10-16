@@ -2,7 +2,7 @@ import type { Generated, Selectable } from 'kysely';
 
 export const BUILD_STATES = ['open', 'finalized'] as const;
 export const CHECK_RESULTS = ['unchanged', 'changed', 'new', 'error'] as const;
-export const CHECK_REVIEWS = ['none', 'pending', 'approved', 'rejected'] as const;
+export const CHECK_REVIEWS = ['none', 'pending', 'approved', 'rejected', 'outdated'] as const;
 export const USER_ROLES = ['admin', 'reviewer', 'viewer'] as const;
 
 export type BuildState = (typeof BUILD_STATES)[number];
@@ -71,6 +71,8 @@ export interface ChecksTable {
   reviewedBy: string | null;
   reviewedAt: number | null;
   reviewComment: string | null;
+  /** The check whose approval in a newer build of this branch made this one `outdated`. */
+  supersededBy: string | null;
   createdAt: number;
   updatedAt: number;
 }

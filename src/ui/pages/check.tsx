@@ -545,8 +545,32 @@ function Info(props: {
   );
 }
 
-function ActionBar(props: { ui: Ui; check: CheckView; filter: CheckFilter; next: string | null; canReview: boolean }) {
-  const { ui, check, filter, next } = props;
+/** The newer check whose approval made this one outdated, with its build number. */
+interface DecidedBy {
+  checkId: string;
+  buildNumber: number;
+}
+
+function ActionBar(props: {
+  ui: Ui;
+  check: CheckView;
+  filter: CheckFilter;
+  next: string | null;
+  canReview: boolean;
+  decidedBy: DecidedBy | null;
+}) {
+  const { ui, check, filter, next, decidedBy } = props;
+  // An outdated check is not reviewed here: a newer build already decided its screen.
+  if (check.review === 'outdated' && decidedBy) {
+    return (
+      <div class="action-bar">
+        <p class="outdated-note">
+          {`Build #${decidedBy.buildNumber} already approved this screen; this older screenshot can no longer replace it. `}
+          <a href={ui.url(`/ui/checks/${decidedBy.checkId}`)}>{`Open #${decidedBy.buildNumber} →`}</a>
+        </p>
+      </div>
+    );
+  }
   if (!props.canReview) return null;
   const reviewable = check.review === 'pending' || check.review === 'rejected';
   const resettable = check.review === 'approved' || check.review === 'rejected';
@@ -644,6 +668,7 @@ function CheckPage(props: {
   canReview: boolean;
   history: HistoryEntry[];
   areas: Area[];
+  decidedBy: DecidedBy | null;
   notice?: string | undefined;
 }) {
   const { ui, project, build, check, filter, strip } = props;
@@ -727,11 +752,28 @@ function CheckPage(props: {
             canReview={props.canReview}
           />
         </div>
-        <ActionBar ui={ui} check={check} filter={filter} next={next} canReview={props.canReview} />
+        <ActionBar
+          ui={ui}
+          check={check}
+          filter={filter}
+          next={next}
+          canReview={props.canReview}
+          decidedBy={props.decidedBy}
+        />
         <Filmstrip ui={ui} checks={strip} current={check.id} filter={filter} sizes={props.sizes} />
       </div>
     </Layout>
   );
+}
+
+async function decidedByOf(s: Services, checkId: string): Promise<DecidedBy | null> {
+  const row = await s.deps.db
+    .selectFrom('checks')
+    .innerJoin('builds', 'builds.id', 'checks.buildId')
+    .select('builds.number')
+    .where('checks.id', '=', checkId)
+    .executeTakeFirst();
+  return row ? { checkId, buildNumber: row.number } : null;
 }
 
 export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void {
@@ -740,12 +782,13 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const check = await getCheck(s.deps, c.req.param('id'));
     // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
     const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
-    const [project, build, strip, history, areas] = await Promise.all([
+    const [project, build, strip, history, areas, decidedBy] = await Promise.all([
       getProjectById(s.deps, check.projectId),
       getBuild(s.deps, check.buildId),
       listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, limit: 200 }),
       historyOf(s, check.id),
       listAreas(s.deps, check.id),
+      check.supersededBy ? decidedByOf(s, check.supersededBy) : Promise.resolve(null),
     ]);
     const sizes = await imageSizes(s.deps, [
       ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
@@ -763,6 +806,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         canReview={hasPermission(userOf(c), 'check.review')}
         history={history}
         areas={areas}
+        decidedBy={decidedBy}
         notice={noticeOf(c)}
       />,
     );

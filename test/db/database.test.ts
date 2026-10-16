@@ -111,6 +111,7 @@ describe('openDatabase', () => {
         '0003_build_numbers',
         '0004_review_events',
         '0005_snapshot_areas',
+        '0006_outdated_checks',
       ]);
       await handle.close();
     } finally {

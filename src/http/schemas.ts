@@ -65,7 +65,7 @@ export const BuildSchema = z
     state: z.enum(BUILD_STATES),
     createdAt: z.number().int(),
     finalizedAt: z.number().int().nullable(),
-    verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'passed']),
+    verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'outdated', 'passed']),
     counts: z.object({ total: z.number().int(), result: countsBy(CHECK_RESULTS), review: countsBy(CHECK_REVIEWS) }),
   })
   .openapi('Build');
@@ -79,7 +79,7 @@ export const BranchSummarySchema = z
         z.object({
           id: z.string(),
           number: z.number().int(),
-          verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'passed']),
+          verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'outdated', 'passed']),
           createdAt: z.number().int(),
         }),
       )
@@ -161,6 +161,10 @@ export const CheckSchema = z
     reviewedBy: z.string().nullable(),
     reviewedAt: z.number().int().nullable(),
     reviewComment: z.string().nullable(),
+    supersededBy: z.string().nullable().openapi({
+      description:
+        'Set when review is "outdated": the check of a newer build of this branch whose approval decided this screen.',
+    }),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
     links: z.object({

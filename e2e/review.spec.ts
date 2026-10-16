@@ -177,6 +177,32 @@ test('an edited area saves itself 10 seconds after the last change', async ({ re
   expect(areas.items).toEqual([expect.objectContaining({ id: added.area.id, y: 190 })]);
 });
 
+test('an older build cannot approve a screen a newer build already approved', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  // A newer build of main posts the same changed screen and gets it approved.
+  const newer = await seeded.ci.call<{ id: string }>('POST', `/projects/${seeded.slug}/builds`, { branch: 'main' });
+  const old = await seeded.ci.call<{ name: string; variant: Record<string, string>; links: { image: string } }>(
+    'GET',
+    `/checks/${seeded.changed}`,
+  );
+  const image = await (await page.request.get(old.links.image)).body();
+  const check = await seeded.ci.call<{ id: string }>('POST', `/builds/${newer.id}/checks`, {
+    name: old.name,
+    variant: old.variant,
+    imageBase64: image.toString('base64'),
+  });
+  await seeded.ci.call('POST', `/checks/${check.id}/approve`);
+
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.review-head')).toContainText('outdated');
+  await expect(page.locator('.outdated-note')).toContainText('already approved this screen');
+  await expect(page.getByRole('button', { name: /Approve/ })).toHaveCount(0);
+  await page.locator('.outdated-note a').click();
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${check.id}`));
+});
+
 test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
   await page.keyboard.press('r');

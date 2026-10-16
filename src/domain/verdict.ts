@@ -1,6 +1,6 @@
 import { CHECK_RESULTS, CHECK_REVIEWS, type CheckResult, type CheckReview } from '../db/schema';
 
-export type Verdict = 'empty' | 'error' | 'rejected' | 'pending' | 'passed';
+export type Verdict = 'empty' | 'error' | 'rejected' | 'pending' | 'outdated' | 'passed';
 
 export interface BuildCounts {
   total: number;
@@ -22,5 +22,7 @@ export function deriveVerdict(counts: BuildCounts): Verdict {
   if (counts.result.error > 0) return 'error';
   if (counts.review.rejected > 0) return 'rejected';
   if (counts.review.pending > 0) return 'pending';
+  // A newer build of the branch decided these screens; this build is not a success of its own.
+  if (counts.review.outdated > 0) return 'outdated';
   return 'passed';
 }

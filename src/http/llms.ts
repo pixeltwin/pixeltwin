@@ -52,8 +52,9 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 ## Values
 
 check.result:  unchanged | changed | new (no baseline yet) | error (diff failed; see diff.error)
-check.review:  none (nothing to review) | pending | approved | rejected
-build.verdict: empty (no checks) | error | rejected | pending | passed
+check.review:  none (nothing to review) | pending | approved | rejected | outdated (a newer build
+               of the branch approved this screen; it cannot be approved or rejected: 409 check_outdated)
+build.verdict: empty (no checks) | error | rejected | pending | outdated | passed
 
 ## Errors
 

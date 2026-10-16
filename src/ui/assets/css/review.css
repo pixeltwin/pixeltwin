@@ -430,6 +430,10 @@ body.focus main {
   gap: var(--space-2);
   margin-left: auto;
 }
+.outdated-note {
+  margin: 0;
+  color: var(--text-muted);
+}
 .review-buttons button,
 .review-buttons .button {
   min-height: 38px;
