@@ -1,0 +1,186 @@
+# pixeltwin Helm chart values. See README.md next to this file for the two storage modes,
+# upgrades and backups.
+
+image:
+  # The release workflow publishes amd64 and arm64 images to ghcr.io/<owner>/pixeltwin.
+  repository: ghcr.io/OWNER/pixeltwin
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# REQUIRED. The URL people and CI use to reach pixeltwin, without a trailing slash, for example
+# https://vrt.example.com (a path prefix is allowed). The server uses it for:
+#   - links: the setup link in the log, the CI snippets in the UI, /llms.txt, and the path prefix
+#     of every UI link and redirect;
+#   - cookies: the session cookie gets the Secure flag when it starts with https://;
+#   - the CSRF check: browser requests authenticated by cookie (everything but GET/HEAD) must send
+#     an Origin header equal to this URL's origin, or they get 403 csrf_origin_mismatch.
+# Without it the server would assume http://localhost:8080, and logging in through the Ingress
+# would work while every form and button in the UI failed the CSRF check.
+publicUrl: ""
+
+# Where screenshots, baselines and diff images are stored.
+#   local:    files on a PersistentVolumeClaim mounted at /data. One replica only (the volume is
+#             ReadWriteOnce and SQLite allows one writer), Recreate strategy. The database is SQLite
+#             on the same volume unless database.url (or existingSecret) gives a Postgres URL.
+#   postgres: images live in the Postgres database (database.url is required). No volume, any
+#             number of replicas, RollingUpdate. One `pg_dump` backs up everything.
+storage: local
+
+# Ignored in `local` mode, which always runs exactly one replica.
+replicaCount: 1
+
+database:
+  # postgres://user:password@host:5432/pixeltwin. Required when storage is `postgres`; optional in
+  # `local` mode (unset means SQLite on the volume). Written to the chart's Secret. Prefer
+  # existingSecret in production so the password stays out of your values files.
+  url: ""
+  # Connections per pod (DATABASE_POOL_MAX). Keep replicas × poolMax below Postgres' max_connections.
+  poolMax: 20
+
+# First-run setup token (SETUP_TOKEN, at least 16 characters). While no user exists, POST it to
+# /api/v1/setup or open <publicUrl>/ui/setup?token=<token> to create the first admin; once a user
+# exists it is refused. The server never logs it; read it from the Secret (see NOTES).
+# Empty: the chart generates a random one and keeps it in its Secret across upgrades, so every
+# replica accepts the same token (without one, each pod logs its own and only that pod accepts it).
+setupToken: ""
+
+# Use a Secret you manage instead of the one the chart creates. When set, database.url and
+# setupToken are ignored and these keys are read from it (each key is optional, except the
+# database URL in `postgres` mode).
+existingSecret: ""
+existingSecretKeys:
+  databaseUrl: DATABASE_URL
+  setupToken: SETUP_TOKEN
+
+# Parallel diff workers per pod (DIFF_WORKERS), each a thread comparing two images. Empty lets the
+# server pick: its CPU limit (resources.limits.cpu, rounded up) minus one, at least 1, because the
+# main thread parses every request and runs every query. With the default 2-CPU limit that is 1.
+# Set it when you want more parallel diffs per pod; each busy worker adds CPU and memory.
+diffWorkers: ""
+
+# Further server settings; empty means the server's default (see the main README).
+config:
+  logLevel: info          # LOG_LEVEL: debug | info | warn | error
+  diffTimeoutMs: ""       # DIFF_TIMEOUT_MS, default 30000
+  diffQueueMax: ""        # DIFF_QUEUE_MAX, default diffWorkers × 20; 0 never answers 503 server_busy
+  maxImageBytes: ""       # MAX_IMAGE_BYTES, default 10485760 (10 MiB PNG, about 13.4 MB as base64 JSON)
+  maxImagePixels: ""      # MAX_IMAGE_PIXELS, default 40000000
+
+# More environment variables for the container, e.g. [{ name: FOO, value: bar }].
+extraEnv: []
+# envFrom sources, e.g. [{ secretRef: { name: more-settings } }].
+extraEnvFrom: []
+
+# Under load (many CI runs uploading at once, 10 diff workers) one pod uses about 1.5–2 GB of RAM;
+# see docs/load-testing.md. Fewer diff workers need less. Memory limits below ~1.5Gi risk OOM kills
+# during bursts.
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 2560Mi
+
+# Volume for `local` mode (ignored in `postgres` mode). Holds the SQLite database and the images.
+persistence:
+  # false uses an emptyDir: all data is lost when the pod goes. For trying the chart out only.
+  enabled: true
+  # Use a PVC you created yourself instead of creating one.
+  existingClaim: ""
+  # Empty uses the cluster's default StorageClass.
+  storageClass: ""
+  size: 20Gi
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations:
+    # A screenshot upload is up to MAX_IMAGE_BYTES (10 MiB) as multipart, or about 13.4 MB as base64
+    # in JSON. ingress-nginx refuses bodies over 1m by default with 413.
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    # Uploads wait for their diff, up to DIFF_TIMEOUT_MS plus queueing.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    - host: vrt.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: pixeltwin-tls
+  #    hosts:
+  #      - vrt.example.com
+
+# Probes call GET /healthz, which checks the database and the storage.
+probes:
+  # Gives migrations at startup up to failureThreshold × periodSeconds before liveness takes over.
+  startup:
+    enabled: true
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 60
+  readiness:
+    enabled: true
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # Generous on purpose: /healthz also fails when the database is unreachable, and restarting
+  # pixeltwin does not fix the database.
+  liveness:
+    enabled: true
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+# Seconds a terminating pod keeps serving before it gets SIGTERM, so load balancers and the
+# Service stop sending it new requests first (lifecycle.preStop.sleep, Kubernetes 1.30+). 0 disables.
+preStopSleepSeconds: 5
+terminationGracePeriodSeconds: 30
+
+# Only used in `postgres` mode with more than one replica.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Matches the distroless `nonroot` image (uid/gid 65532). fsGroup makes the volume writable for it.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# The root filesystem is read-only; /data and /tmp are writable volumes.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""

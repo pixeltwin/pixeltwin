@@ -1,0 +1,191 @@
+{{- include "pixeltwin.validate" . }}
+{{- $local := eq .Values.storage "local" }}
+{{- $secret := include "pixeltwin.secretName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pixeltwin.fullname" . }}
+  labels:
+    {{- include "pixeltwin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ include "pixeltwin.replicas" . }}
+  revisionHistoryLimit: 5
+  strategy:
+    {{- if $local }}
+    # The volume is ReadWriteOnce and SQLite has one writer: the old pod stops before the new one starts.
+    type: Recreate
+    {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "pixeltwin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pixeltwin.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Restart the pods when the chart's Secret values change.
+        checksum/secret: {{ printf "%s|%s|%s" .Values.database.url .Values.setupToken .Values.existingSecret | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "pixeltwin.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      # Keeps Kubernetes' <SERVICE>_PORT=tcp://… variables out of the environment.
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: pixeltwin
+          image: {{ include "pixeltwin.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: PUBLIC_URL
+              value: {{ .Values.publicUrl | quote }}
+            - name: DATA_DIR
+              value: /data
+            - name: STORAGE
+              value: {{ .Values.storage | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: DATABASE_POOL_MAX
+              value: {{ .Values.database.poolMax | quote }}
+            {{- with .Values.diffWorkers }}
+            - name: DIFF_WORKERS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.diffTimeoutMs }}
+            - name: DIFF_TIMEOUT_MS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if ne (toString .Values.config.diffQueueMax) "" }}
+            - name: DIFF_QUEUE_MAX
+              value: {{ .Values.config.diffQueueMax | quote }}
+            {{- end }}
+            {{- with .Values.config.maxImageBytes }}
+            - name: MAX_IMAGE_BYTES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.maxImagePixels }}
+            - name: MAX_IMAGE_PIXELS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if or .Values.existingSecret .Values.database.url }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.databaseUrl }}{{ else }}DATABASE_URL{{ end }}
+                  # In local mode the user's Secret may leave the database out: SQLite on the volume.
+                  optional: {{ $local }}
+            {{- end }}
+            - name: SETUP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.setupToken }}{{ else }}SETUP_TOKEN{{ end }}
+                  optional: true
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if gt (int .Values.preStopSleepSeconds) 0 }}
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ int .Values.preStopSleepSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if and $local .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-data" (include "pixeltwin.fullname" .)) .Values.persistence.existingClaim }}
+          {{- else if $local }}
+          # persistence.enabled=false: the data dies with the pod.
+          emptyDir: {}
+          {{- else }}
+          # postgres mode keeps images and data in the database; nothing durable is written here.
+          emptyDir:
+            sizeLimit: 1Gi
+          {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

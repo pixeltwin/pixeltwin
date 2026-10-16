@@ -1,0 +1,56 @@
+{{- $full := include "pixeltwin.fullname" . -}}
+{{- $secret := include "pixeltwin.secretName" . -}}
+pixeltwin {{ .Chart.AppVersion }} is deployed as "{{ $full }}" in namespace "{{ .Release.Namespace }}".
+
+  Storage:  {{ .Values.storage }}{{ if eq .Values.storage "local" }} (images on {{ if .Values.persistence.enabled }}the PVC {{ default (printf "%s-data" $full) .Values.persistence.existingClaim }}{{ else }}an emptyDir: DATA IS LOST WITH THE POD{{ end }}){{ end }}
+  Database: {{ if or .Values.database.url .Values.existingSecret }}Postgres (DATABASE_URL from Secret {{ $secret }}){{ else }}SQLite on the volume{{ end }}
+  Replicas: {{ include "pixeltwin.replicas" . }}{{ if and (eq .Values.storage "local") (gt (int .Values.replicaCount) 1) }} (replicaCount={{ .Values.replicaCount }} ignored: local storage runs one replica; use storage=postgres to scale){{ end }}
+  URL:      {{ .Values.publicUrl }}
+
+1. Wait for it:
+
+     kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ $full }}
+
+2. Create the first admin. Until a user exists, whoever has the setup token can do it.
+{{- if .Values.existingSecret }}
+
+   If your Secret {{ $secret }} has a {{ .Values.existingSecretKeys.setupToken }} key, that is the token:
+
+     TOKEN=$(kubectl -n {{ .Release.Namespace }} get secret {{ $secret }} -o jsonpath='{.data.{{ .Values.existingSecretKeys.setupToken }}}' | base64 -d)
+
+   Otherwise each pod generates its own token and logs it with a ready-made link (setupUrl); only
+   the pod that logged a token accepts it, so with several replicas port-forward to that pod:
+
+     kubectl -n {{ .Release.Namespace }} logs deployment/{{ $full }} | grep setupUrl
+{{- else }}
+
+   The token is in the Secret {{ $secret }} (the server does not log it):
+
+     TOKEN=$(kubectl -n {{ .Release.Namespace }} get secret {{ $secret }} -o jsonpath='{.data.SETUP_TOKEN}' | base64 -d)
+{{- end }}
+
+   Then open {{ .Values.publicUrl }}/ui/setup?token=$TOKEN, or use the API:
+
+     curl -X POST {{ .Values.publicUrl }}/api/v1/setup -H 'content-type: application/json' \
+       -d '{"token":"'"$TOKEN"'","email":"you@example.com","password":"at least 10 characters"}'
+
+3. Reach it:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+
+     http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}/ui
+{{- end }}
+{{- else }}
+{{- $host := (urlParse .Values.publicUrl).host }}
+{{- $localPort := "8080" }}
+{{- if regexMatch "^(localhost|127\\.0\\.0\\.1):[0-9]+$" $host }}
+{{- $localPort = regexReplaceAll "^.*:" $host "" }}
+{{- end }}
+
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $full }} {{ $localPort }}:{{ .Values.service.port }}
+
+   publicUrl must be the address in your browser's bar, or the UI's forms fail the CSRF origin
+   check: for a port-forward, install with --set publicUrl=http://localhost:{{ $localPort }}.
+{{- end }}
+
+   CI and agents: {{ .Values.publicUrl }}/llms.txt, API reference at {{ .Values.publicUrl }}/docs.
