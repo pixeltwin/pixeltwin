@@ -68,6 +68,32 @@ describe('compareImages', () => {
     expect(result.diff.pixels).toBe(0);
   });
 
+  test('compare regions limit the comparison to themselves', () => {
+    const twoSquares = makePng(100, 100, WHITE, [
+      { x: 10, y: 10, width: 10, height: 10, color: BLACK },
+      { x: 70, y: 70, width: 10, height: 10, color: BLACK },
+    ]);
+    const onlyFirst = compared(
+      compareImages(job(twoSquares, white, { compareRegions: [{ x: 0, y: 0, width: 50, height: 50 }] })),
+    );
+    expect(onlyFirst.diff.pixels).toBe(100);
+    expect(onlyFirst.diff.regions.map((r) => [r.x, r.y])).toEqual([[10, 10]]);
+    const nothing = compareImages(
+      job(twoSquares, white, { compareRegions: [{ x: 30, y: 30, width: 20, height: 20 }] }),
+    );
+    expect(compared(nothing).result).toBe('unchanged');
+  });
+
+  test('an ignore region inside a compare region still ignores', () => {
+    const result = compareImages(
+      job(withSquare, white, {
+        compareRegions: [{ x: 0, y: 0, width: 50, height: 50 }],
+        ignoreRegions: [{ x: 5, y: 5, width: 20, height: 20 }],
+      }),
+    );
+    expect(compared(result).result).toBe('unchanged');
+  });
+
   test('accepts changes within tolerance but still reports them', () => {
     const result = compared(compareImages(job(withSquare, white, { tolerancePercent: 1.5 })));
     expect(result.result).toBe('unchanged');
