@@ -32,6 +32,18 @@ if (document.body.dataset.role) {
   }
 }
 
+// Password fields: the eye button shows or hides what was typed.
+document.addEventListener('click', (event) => {
+  const button = event.target instanceof Element ? event.target.closest('[data-password-toggle]') : null;
+  const input = button?.parentElement?.querySelector('input');
+  if (!button || !input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  button.setAttribute('aria-pressed', String(show));
+  button.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  input.focus();
+});
+
 // Forms marked data-autosubmit save as soon as a field changes (their Save button is for no-JS).
 document.addEventListener('change', (event) => {
   const form = event.target instanceof Element ? event.target.closest('form[data-autosubmit]') : null;

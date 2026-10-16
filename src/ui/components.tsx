@@ -165,6 +165,35 @@ export function ProjectTabs({
 }
 
 /** A form field with its label, hint and inline error, wired up for screen readers. */
+/**
+ * A password input with an eye button that shows or hides what was typed. The button needs
+ * JavaScript (boot.ts), so it stays hidden without it and the field works as a plain one.
+ */
+export function PasswordField({ children }: { children: Child }) {
+  return (
+    <div class="password-field">
+      {children}
+      <button
+        type="button"
+        class="password-toggle ghost"
+        data-password-toggle
+        aria-label="Show password"
+        aria-pressed="false"
+      >
+        <svg class="icon icon-eye" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+          <circle cx="8" cy="8" r="2" />
+        </svg>
+        <svg class="icon icon-eye-off" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+          <circle cx="8" cy="8" r="2" />
+          <path d="M2.5 2.5l11 11" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export function Field({
   id,
   label,

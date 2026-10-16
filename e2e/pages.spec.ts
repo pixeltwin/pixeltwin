@@ -17,6 +17,18 @@ test('a new token is shown once in the dialog and copies to the clipboard', asyn
   await expect(page.locator('table')).toContainText('GitHub Actions');
 });
 
+test('the eye button shows and hides a password', async ({ browser, baseURL }) => {
+  const page = await (await browser.newContext({ baseURL })).newPage();
+  await page.goto('/ui/login');
+  const password = page.locator('input[name=password]');
+  await password.fill('secret-words');
+  await page.getByRole('button', { name: 'Show password' }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await page.getByRole('button', { name: 'Hide password' }).click();
+  await expect(password).toHaveAttribute('type', 'password');
+  await expect(password).toHaveValue('secret-words');
+});
+
 test('the theme switch applies at once and survives a reload', async ({ reviewerPage: page }) => {
   await open(page, '/ui');
   await page.locator('.menu summary').click();

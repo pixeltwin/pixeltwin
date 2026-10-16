@@ -124,3 +124,40 @@ pre.command {
     margin-top: var(--space-4);
   }
 }
+/* Password fields: an eye button inside the input shows or hides the password (JavaScript only). */
+.password-field {
+  position: relative;
+}
+.password-field input {
+  width: 100%;
+  padding-right: 40px;
+}
+.password-toggle {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 32px;
+  min-height: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  transform: translateY(-50%);
+}
+.js .password-toggle {
+  display: grid;
+  place-items: center;
+}
+.password-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.password-toggle .icon-eye-off,
+.password-toggle[aria-pressed="true"] .icon-eye {
+  display: none;
+}
+.password-toggle[aria-pressed="true"] .icon-eye-off {
+  display: block;
+}

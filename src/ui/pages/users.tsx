@@ -5,7 +5,7 @@ import { hasPermission } from '../../domain/auth/policy';
 import { createUser, deleteUser, listUsers, type UserView, updateUser } from '../../domain/auth/users';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, describedBy, Field, formErrors } from '../components';
+import { Ago, describedBy, Field, formErrors, PasswordField } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { Layout } from '../layout';
 
@@ -43,14 +43,16 @@ function NewUserForm({
         />
       </Field>
       <Field id="user-password" label="Initial password" hint={passwordHint} error={errors.password}>
-        <input
-          name="password"
-          type="password"
-          required
-          minlength={10}
-          autocomplete="new-password"
-          {...describedBy('user-password', passwordHint, errors.password)}
-        />
+        <PasswordField>
+          <input
+            name="password"
+            type="password"
+            required
+            minlength={10}
+            autocomplete="new-password"
+            {...describedBy('user-password', passwordHint, errors.password)}
+          />
+        </PasswordField>
       </Field>
       <Field id="user-role" label="Role" hint={ROLE_HELP} error={errors.role}>
         <select name="role" {...describedBy('user-role', ROLE_HELP, errors.role)}>

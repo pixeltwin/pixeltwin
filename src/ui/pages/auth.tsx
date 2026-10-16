@@ -6,7 +6,7 @@ import { AppError } from '../../errors';
 import { clientIp } from '../../http/client-ip';
 import { clearSessionCookie, setSessionCookie } from '../../http/cookies';
 import type { AppEnv, Services } from '../../http/env';
-import { describedBy, Field, formErrors } from '../components';
+import { describedBy, Field, formErrors, PasswordField } from '../components';
 import { field, safeNext, type Ui, uiOf } from '../context';
 import { Layout } from '../layout';
 
@@ -34,13 +34,15 @@ function LoginPage({ ui, next, email, error }: { ui: Ui; next: string; email?: s
             />
           </Field>
           <Field id="login-password" label="Password">
-            <input
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              required
-              {...describedBy('login-password')}
-            />
+            <PasswordField>
+              <input
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+                {...describedBy('login-password')}
+              />
+            </PasswordField>
           </Field>
           <button class="primary wide" type="submit">
             Log in
@@ -81,14 +83,16 @@ function SetupPage(props: { ui: Ui; token: string; email?: string | undefined; e
             />
           </Field>
           <Field id="setup-password" label="Password" hint={passwordHint} error={errors.password}>
-            <input
-              name="password"
-              type="password"
-              autocomplete="new-password"
-              minlength={10}
-              required
-              {...describedBy('setup-password', passwordHint, errors.password)}
-            />
+            <PasswordField>
+              <input
+                name="password"
+                type="password"
+                autocomplete="new-password"
+                minlength={10}
+                required
+                {...describedBy('setup-password', passwordHint, errors.password)}
+              />
+            </PasswordField>
           </Field>
           <button class="primary wide" type="submit">
             Create admin

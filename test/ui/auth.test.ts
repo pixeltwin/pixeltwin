@@ -148,6 +148,23 @@ describe('UI authentication', () => {
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 
+  test('password fields have an eye button to show the password (shown only with JavaScript)', async () => {
+    t = await createTestApp({ setupToken: 'tok' });
+    const toggle =
+      '<button type="button" class="password-toggle ghost" data-password-toggle="true" aria-label="Show password" aria-pressed="false">';
+    const setup = await html(await t.request('GET', '/ui/setup?token=tok'));
+    expect(setup).toContain('<div class="password-field"><input name="password" type="password"');
+    expect(setup).toContain(toggle);
+    await t.close();
+    t = await createTestApp();
+    const admin = await t.userAs('admin');
+    expect(await html(await t.request('GET', '/ui/login'))).toContain(toggle);
+    expect(await html(await t.request('GET', '/ui/admin/users/new', { as: admin }))).toContain(toggle);
+    const css = await (await t.request('GET', '/ui/assets/app.css')).text();
+    expect(css).toMatch(/\.password-toggle\s*\{[^}]*display:\s*none/);
+    expect(css).toContain('.js .password-toggle');
+  });
+
   test('every page has the pixeltwin mark as its favicon', async () => {
     t = await createTestApp();
     const page = await html(await t.request('GET', '/ui/login'));
