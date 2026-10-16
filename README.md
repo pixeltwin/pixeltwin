@@ -26,6 +26,57 @@ docker logs pixeltwin          # shows the setup link
 The container runs as uid 65532 (distroless `nonroot`). A named volume works as is; a bind-mounted
 directory must be writable by that user, for example `sudo chown -R 65532:65532 ./pixeltwin-data`.
 
+**Docker Compose with Postgres** ([`deploy/docker-compose.postgres.yml`](deploy/docker-compose.postgres.yml)).
+With `STORAGE=postgres` the screenshots live in the database too, so the container keeps no state
+and one `pg_dump` is the whole backup:
+
+```yaml
+# pixeltwin with Postgres. With STORAGE=postgres the database holds everything (screenshots too),
+# so pixeltwin keeps no state of its own and one pg_dump is the whole backup.
+# Set POSTGRES_PASSWORD (and PUBLIC_URL to the address people open) before the first start.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pixeltwin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: pixeltwin
+    volumes:
+      - pixeltwin-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixeltwin -d pixeltwin"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pixeltwin:
+    image: ${PIXELTWIN_IMAGE:-ghcr.io/pixeltwin/pixeltwin:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      DATABASE_URL: postgres://pixeltwin:${POSTGRES_PASSWORD}@db:5432/pixeltwin
+      STORAGE: postgres
+    ports:
+      - "${PIXELTWIN_PORT:-8080}:8080"
+
+volumes:
+  pixeltwin-db:
+```
+
+```sh
+export POSTGRES_PASSWORD='a long random password' PUBLIC_URL=https://vrt.example.com
+docker compose -f deploy/docker-compose.postgres.yml up -d
+docker compose -f deploy/docker-compose.postgres.yml logs pixeltwin      # shows the setup link
+docker compose -f deploy/docker-compose.postgres.yml exec -T db \
+  pg_dump -U pixeltwin pixeltwin > pixeltwin-backup.sql                    # backup
+```
+
+Postgres is also the way to run several replicas: see [Kubernetes](#kubernetes).
+
 **Binary**: download `pixeltwin-<version>-<os>-<arch>` from the GitHub release (check it against
 `SHA256SUMS`), then:
 

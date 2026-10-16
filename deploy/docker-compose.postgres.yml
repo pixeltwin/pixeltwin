@@ -1,0 +1,34 @@
+# pixeltwin with Postgres. With STORAGE=postgres the database holds everything (screenshots too),
+# so pixeltwin keeps no state of its own and one pg_dump is the whole backup.
+# Set POSTGRES_PASSWORD (and PUBLIC_URL to the address people open) before the first start.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pixeltwin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: pixeltwin
+    volumes:
+      - pixeltwin-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixeltwin -d pixeltwin"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pixeltwin:
+    image: ${PIXELTWIN_IMAGE:-ghcr.io/pixeltwin/pixeltwin:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      DATABASE_URL: postgres://pixeltwin:${POSTGRES_PASSWORD}@db:5432/pixeltwin
+      STORAGE: postgres
+    ports:
+      - "${PIXELTWIN_PORT:-8080}:8080"
+
+volumes:
+  pixeltwin-db:
