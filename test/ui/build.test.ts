@@ -142,6 +142,8 @@ describe('UI build page', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
     // An unchanged check's pill says "ok".
     expect(all).toContain('<span class="pill tone-green">ok</span>');
+    // The counts say "ok" for unchanged checks too.
+    expect(all).toContain('1 changed · 1 new · 1 ok');
 
     const pending = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     expect(pending).toMatch(/aria-current="page">Unresolved <span class="count">2<\/span>/);

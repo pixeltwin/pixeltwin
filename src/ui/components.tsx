@@ -130,7 +130,7 @@ export function countsText(counts: BuildCounts): string {
   add(counts.result.new, 'new');
   add(counts.result.error, counts.result.error === 1 ? 'error' : 'errors');
   add(counts.review.rejected, 'rejected');
-  add(counts.result.unchanged, 'unchanged');
+  add(counts.result.unchanged, 'ok');
   return parts.join(' · ');
 }
 
