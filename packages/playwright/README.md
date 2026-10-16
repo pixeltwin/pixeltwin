@@ -155,7 +155,8 @@ ui-tests-2: { extends: .visual, script: npm run test:part2 }
 
 The build page shows `1 of 2 parts finished` meanwhile. When a job never runs (a manual job left
 alone, a cancelled one), the build stays open: an admin finalizes it with **Finalize** on that page,
-or run `npx @pixeltwin/client finalize`. A retried job posts to the same build only while it is open.
+or run `npx @pixeltwin/client finalize`. A retried job opens the build again, replaces its screens' checks
+and finalizes it again when it ends.
 
 ## Example
 

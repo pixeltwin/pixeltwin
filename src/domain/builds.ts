@@ -111,7 +111,16 @@ export async function createBuild(
   const project = await getProjectBySlug(deps, projectSlug);
 
   // The part count is the first one named: a part that opens the build later cannot change it.
+  // A part opening a finalized parallel build is a retried CI job: the build opens again, takes
+  // its screenshots (same screens replace their checks) and is finalized again when it ends.
   const existingBuild = async (existing: Build) => {
+    if (existing.state === 'finalized' && existing.parallelTotal !== null && data.parallelTotal !== undefined) {
+      await deps.db
+        .updateTable('builds')
+        .set({ state: 'open', finalizedAt: null })
+        .where('id', '=', existing.id)
+        .execute();
+    }
     if (existing.parallelTotal === null && data.parallelTotal !== undefined) {
       await deps.db
         .updateTable('builds')

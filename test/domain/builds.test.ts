@@ -101,6 +101,24 @@ describe('builds', () => {
     expect(two.finalizedAt).toBeNumber();
   });
 
+  test('a retried part reopens its finalized parallel build and finalizes it again when it ends', async () => {
+    const open = () => createBuild(deps, 'web', { externalId: 'gitlab-1', parallelTotal: 2 });
+    const { build } = await open();
+    await finalizeBuild(deps, build.id, { part: 'job-1' });
+    await finalizeBuild(deps, build.id, { part: 'job-2' });
+
+    const again = await open();
+    expect(again).toMatchObject({ created: false, build: { id: build.id, state: 'open', finalizedAt: null } });
+    const done = await finalizeBuild(deps, build.id, { part: 'job-3' });
+    expect(done).toMatchObject({ state: 'finalized', partsFinished: 3 });
+    expect(done.finalizedAt).toBeNumber();
+
+    // An ordinary build stays finalized: its CI run reused an id by mistake.
+    const plain = await createBuild(deps, 'web', { externalId: 'ci-1' });
+    await finalizeBuild(deps, plain.build.id);
+    expect((await createBuild(deps, 'web', { externalId: 'ci-1' })).build.state).toBe('finalized');
+  });
+
   test('parts finishing at once finalize the build once', async () => {
     const { build } = await createBuild(deps, 'web', { parallelTotal: 3 });
     await Promise.all(['a', 'b', 'c'].map((part) => finalizeBuild(deps, build.id, { part })));
