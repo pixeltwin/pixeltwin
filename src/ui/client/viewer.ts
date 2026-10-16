@@ -44,10 +44,11 @@ function storeHighlight(on: boolean): void {
 }
 
 /**
- * Draws the diff's changed pixels as a mask over the baseline, the new screenshot and the slider
- * layers, and wires the Changes toggle (and H). Returns its cleanup.
+ * Draws the diff's changed pixels as a mask over this build's screenshot (in Side, and on the
+ * Slider and Onion layers, where it follows this build's half and opacity), and wires the Changes
+ * toggle (and H). Returns its cleanup.
  */
-function mountHighlight(stage: HTMLElement): () => void {
+function mountHighlight(stage: HTMLElement, drawn: () => void): () => void {
   const toggle = stage.querySelector<HTMLButtonElement>('[data-highlight]');
   const diff = stage.querySelector<HTMLImageElement>('.pane-diff img');
   if (!toggle || !diff) return () => {};
@@ -69,8 +70,8 @@ function mountHighlight(stage: HTMLElement): () => void {
       width,
       height,
     );
-    for (const host of stage.querySelectorAll<HTMLElement>('.pane-baseline .shot, .pane-current .shot, .layers')) {
-      const img = host.querySelector('img');
+    for (const host of stage.querySelectorAll<HTMLElement>('.pane-current .shot, .layers')) {
+      const img = host.querySelector<HTMLImageElement>('.layer-top, .shot > img');
       const canvas = document.createElement('canvas');
       canvas.className = 'change-mask';
       canvas.width = width;
@@ -80,6 +81,7 @@ function mountHighlight(stage: HTMLElement): () => void {
       canvas.getContext('2d')?.putImageData(mask, 0, 0);
       host.insertBefore(canvas, host.querySelector(':scope > svg, :scope > .divider'));
     }
+    drawn();
   };
   const flip = () => {
     on = !on;
@@ -134,7 +136,6 @@ export function mountViewer(root: HTMLElement): () => void {
   stage.classList.add('interactive');
   stage.tabIndex = 0;
   if (toolbar) toolbar.hidden = false;
-  cleanups.push(mountHighlight(stage));
 
   let mode: Mode | 'new' = isNew ? 'new' : storedMode();
   if (mode !== 'new' && !available.includes(mode)) mode = 'slider';
@@ -160,6 +161,12 @@ export function mountViewer(root: HTMLElement): () => void {
     if (top) {
       top.style.clipPath = mode === 'slider' ? `inset(0 0 0 ${split * 100}%)` : 'none';
       top.style.opacity = mode === 'onion' ? String(Number(onion?.value ?? 50) / 100) : '1';
+      // Changes are this build's: on the layers they show only where (and as much as) it does.
+      const mask = layers?.querySelector<HTMLElement>('.change-mask');
+      if (mask) {
+        mask.style.clipPath = top.style.clipPath;
+        mask.style.opacity = top.style.opacity;
+      }
     }
     if (divider) {
       divider.hidden = mode !== 'slider';
@@ -316,6 +323,7 @@ export function mountViewer(root: HTMLElement): () => void {
   cleanups.push(() => resize.disconnect());
   for (const img of stage.querySelectorAll('img')) if (!img.complete) listen(img, 'load', () => render());
 
+  cleanups.push(mountHighlight(stage, render));
   if (mode === 'new') render();
   else setMode(mode);
   return () => {
