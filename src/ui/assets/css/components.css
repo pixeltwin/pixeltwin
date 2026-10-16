@@ -170,6 +170,25 @@ input[type="search"],
 textarea {
   width: 100%;
 }
+/* Selects draw their own chevron (two gradient triangles in the theme's muted colour) instead of
+   the platform's, so they match the inputs and buttons next to them in both themes. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: calc(var(--space-3) + 18px);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+select:hover {
+  border-color: var(--text-muted);
+}
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
@@ -360,6 +379,12 @@ tbody tr:hover {
 td input,
 td select {
   width: auto;
+}
+/* In a table row a select is as tall as the buttons beside it. */
+td select {
+  min-height: 28px;
+  padding-block: 0;
+  font-size: var(--text-sm);
 }
 
 /* Tabs: project sections (underline) and filters (chips). */
