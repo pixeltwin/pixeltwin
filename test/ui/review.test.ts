@@ -115,6 +115,27 @@ describe('UI focus mode', () => {
     expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('New snapshot.</p>');
   });
 
+  test('the variant shows as tags, key quiet and value readable, in the header and on the build page', async () => {
+    const variant = { os: 'ios_16.0', device: 'iphone_13_pro_max' };
+    await seedBaseline(t.deps, project, white, { name: 'home', variant });
+    const buildId = await openBuild(t.deps, 'web');
+    const check = (await submit(t.deps, buildId, withSquare, { name: 'home', variant })).check;
+    const tags =
+      '<span class="variant-tag"><span class="variant-key">device</span>iphone 13 pro max</span>' +
+      '<span class="variant-tag"><span class="variant-key">os</span>ios 16.0</span>';
+    const header = await page(`/ui/checks/${check.id}`);
+    expect(header).toContain(tags);
+    // The exact values stay in the tooltip.
+    expect(header).toContain('title="device: iphone_13_pro_max · os: ios_16.0"');
+    expect(header).not.toContain('device=iphone_13_pro_max');
+    expect(await page(`/ui/builds/${buildId}`)).toContain(tags);
+  });
+
+  test('a check without a variant shows no variant line', async () => {
+    const { same } = await seedBuild();
+    expect(await page(`/ui/checks/${same.id}`)).not.toContain('no variant');
+  });
+
   test('a long list of changes starts folded under its count', async () => {
     await seedBaseline(t.deps, project, white, { name: 'home' });
     const buildId = await openBuild(t.deps, 'web');

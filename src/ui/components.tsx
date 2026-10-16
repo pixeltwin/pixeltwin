@@ -17,10 +17,23 @@ export function When({ at }: { at: number | null }) {
   return <time datetime={iso}>{`${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`}</time>;
 }
 
+/**
+ * A check's variant as tags, the key quiet and the value readable (`ios_16.0` → `ios 16.0`); the
+ * exact values are in the tooltip. Nothing for a check without one.
+ */
 export function Variant({ variant }: { variant: Record<string, string> }) {
-  const entries = Object.entries(variant);
-  if (entries.length === 0) return <span class="muted">no variant</span>;
-  return <span class="muted">{entries.map(([k, v]) => `${k}=${v}`).join(' · ')}</span>;
+  const entries = Object.entries(variant).sort(([a], [b]) => a.localeCompare(b));
+  if (entries.length === 0) return null;
+  return (
+    <span class="variant" title={entries.map(([k, v]) => `${k}: ${v}`).join(' · ')}>
+      {entries.map(([k, v]) => (
+        <span class="variant-tag">
+          <span class="variant-key">{k}</span>
+          {v.replaceAll('_', ' ')}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 export function Pager({ newer, older }: { newer?: string | undefined; older?: string | undefined }) {
