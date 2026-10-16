@@ -67,6 +67,18 @@ describe('resetting a review (undo)', () => {
     expect((await findCurrentBaseline(deps.db, project.id, KEY, 'main'))?.sourceCheckId).toBe(newer.id);
   });
 
+  test('an approval a later build was already compared with cannot be undone', async () => {
+    const { check } = await changedCheck();
+    await approveCheck(deps, check.id, 'usr_1');
+    const later = await openBuild(deps);
+    const { check: next } = await submit(deps, later, withSquare);
+    expect(next.baseline?.id).toBeDefined();
+
+    const err = await appError(resetReview(deps, check.id, 'usr_1'));
+    expect(err).toMatchObject({ status: 409, code: 'review_not_resettable' });
+    expect((await getCheck(deps, next.id)).baseline?.id).toBe(next.baseline?.id as string);
+  });
+
   test('only approved or rejected checks can be reset', async () => {
     const { check } = await changedCheck();
     expect(await appError(resetReview(deps, check.id, 'usr_1'))).toMatchObject({

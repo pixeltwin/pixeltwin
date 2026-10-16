@@ -73,7 +73,7 @@ function AreaLayer({ areas, size }: { areas: Area[] | undefined; size: Size | un
   return (
     <svg class="area-layer" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
       {areas.map((a) => (
-        <rect class={`area area-${a.kind}`} x={a.x} y={a.y} width={a.width} height={a.height} />
+        <rect class={`area area-${a.kind}`} x={a.x} y={a.y} width={a.width} height={a.height} data-area={a.id} />
       ))}
     </svg>
   );
@@ -289,7 +289,7 @@ function Areas(props: {
       <h3>Areas</h3>
       <ul>
         {areas.map((a) => (
-          <li class={`area-item area-item-${a.kind}`}>
+          <li class={`area-item area-item-${a.kind}`} data-area-item={a.id}>
             <span>
               <strong>{AREA_VERB[a.kind]}</strong>
               <span class="muted">{` ${areaPlace(a, size)}${a.width}×${a.height} px`}</span>

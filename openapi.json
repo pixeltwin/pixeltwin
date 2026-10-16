@@ -2901,18 +2901,22 @@
                       "properties": {
                         "x": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 0
                         },
                         "y": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 0
                         },
                         "width": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 1
                         },
                         "height": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 1
                         }
                       },
@@ -3652,18 +3656,22 @@
                 "properties": {
                   "x": {
                     "type": "integer",
+                    "maximum": 2147483647,
                     "minimum": 0
                   },
                   "y": {
                     "type": "integer",
+                    "maximum": 2147483647,
                     "minimum": 0
                   },
                   "width": {
                     "type": "integer",
+                    "maximum": 2147483647,
                     "minimum": 1
                   },
                   "height": {
                     "type": "integer",
+                    "maximum": 2147483647,
                     "minimum": 1
                   },
                   "kind": {

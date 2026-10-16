@@ -127,8 +127,8 @@ const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
 /**
  * UI spec §3.5, undo: returns an approved or rejected check to pending. Undoing an approval also
  * deletes the baseline it appended, but only while that baseline is still the current one for
- * its snapshot and branch; otherwise a later approval or a promotion builds on it, and the call
- * fails with 409 review_not_resettable. Allowed on finalized builds, like approve.
+ * its snapshot and branch and no later check was compared with it; otherwise the call fails with
+ * 409 review_not_resettable. Allowed on finalized builds, like approve.
  */
 export async function resetReview(deps: DbDeps, checkId: string, actor: string): Promise<CheckView> {
   await deps.db.transaction().execute(async (tx) => {
@@ -147,6 +147,20 @@ export async function resetReview(deps: DbDeps, checkId: string, actor: string):
           'review_not_resettable',
           409,
           `A newer baseline replaced the one check ${checkId} approved, so the approval cannot be undone.`,
+        );
+      }
+      // A later check compared with this baseline would be left pointing at nothing.
+      const comparedLater = await tx
+        .selectFrom('checks')
+        .select('id')
+        .where('baselineId', '=', current.id)
+        .where('id', '!=', checkId)
+        .executeTakeFirst();
+      if (comparedLater) {
+        throw new AppError(
+          'review_not_resettable',
+          409,
+          `Check ${comparedLater.id} was already compared with the baseline check ${checkId} approved, so the approval cannot be undone.`,
         );
       }
       await tx.deleteFrom('baselines').where('id', '=', current.id).execute();

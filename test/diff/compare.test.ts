@@ -94,6 +94,17 @@ describe('compareImages', () => {
     expect(compared(result).result).toBe('unchanged');
   });
 
+  test('with compare regions, tolerance is a share of the compared pixels', () => {
+    // The square is 100 px: 1% of the canvas, but 4% of a 50×50 compare region.
+    const result = compared(
+      compareImages(
+        job(withSquare, white, { tolerancePercent: 2, compareRegions: [{ x: 0, y: 0, width: 50, height: 50 }] }),
+      ),
+    );
+    expect(result.result).toBe('changed');
+    expect(result.diff.percent).toBe(4);
+  });
+
   test('accepts changes within tolerance but still reports them', () => {
     const result = compared(compareImages(job(withSquare, white, { tolerancePercent: 1.5 })));
     expect(result.result).toBe('unchanged');

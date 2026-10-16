@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
+import { compareImages } from '../../src/diff/compare';
 import { createArea, deleteArea, listAreas } from '../../src/domain/areas';
 import { getBuild } from '../../src/domain/builds';
+import { getCheck } from '../../src/domain/checks';
 import { approveCheck } from '../../src/domain/reviews';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
 import { appError } from '../helpers/errors';
@@ -83,6 +85,48 @@ describe('ignore and compare areas', () => {
     expect(after).toMatchObject({ result: 'unchanged', review: 'approved' });
   });
 
+  test('a review made while the check is compared again is kept', async () => {
+    const slow = await createTestDeps(async (job) => {
+      await Bun.sleep(30);
+      return compareImages(job);
+    });
+    try {
+      const p = await seedProject(slow);
+      await seedBaseline(slow, p, white);
+      const buildId = await openBuild(slow, 'web');
+      const { check } = await submit(slow, buildId, clockOnly);
+      const drawing = createArea(slow, check.id, 'usr_1', { kind: 'ignore', ...overClock });
+      await Bun.sleep(5);
+      await approveCheck(slow, check.id, 'usr_2');
+      expect((await drawing).check).toMatchObject({ result: 'unchanged', review: 'approved' });
+    } finally {
+      await slow.handle.close();
+    }
+  });
+
+  test('two areas drawn at once both count, whichever comparison finishes first', async () => {
+    let calls = 0;
+    // The first comparison (with one area) finishes after the second (with both).
+    const slow = await createTestDeps(async (job) => {
+      calls += 1;
+      if (calls === 2) await Bun.sleep(40);
+      return compareImages(job);
+    });
+    try {
+      const p = await seedProject(slow);
+      await seedBaseline(slow, p, white);
+      const buildId = await openBuild(slow, 'web');
+      const { check } = await submit(slow, buildId, both);
+      const first = createArea(slow, check.id, 'usr_1', { kind: 'ignore', ...overClock });
+      await Bun.sleep(5);
+      await createArea(slow, check.id, 'usr_1', { kind: 'ignore', x: 65, y: 65, width: 20, height: 20 });
+      await first;
+      expect(await getCheck(slow, check.id)).toMatchObject({ result: 'unchanged', review: 'none' });
+    } finally {
+      await slow.handle.close();
+    }
+  });
+
   test('areas belong to their snapshot', async () => {
     const { check } = await changed();
     await createArea(deps, check.id, 'usr_1', { kind: 'ignore', ...overClock });
@@ -104,6 +148,9 @@ describe('ignore and compare areas', () => {
       'check_not_found',
     );
     expect((await appError(deleteArea(deps, check.id, 'are_missing'))).code).toBe('area_not_found');
+    expect(
+      (await appError(createArea(deps, check.id, 'usr_1', { kind: 'ignore', x: 3e9, y: 0, width: 5, height: 5 }))).code,
+    ).toBe('validation_failed');
   });
 });
 

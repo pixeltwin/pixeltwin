@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import type { Baseline, Build, CheckResult, CheckReview, CheckRow } from '../db/schema';
 import { IDENTICAL_SUMMARY } from '../diff/summary';
 import type { DiffData, DiffErrorData, DiffJobResult, Rect, Size } from '../diff/types';
@@ -329,31 +330,48 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
   const image = await loadImage(deps, check.imageSha);
   if (!image) return check;
   const header = readPngHeader(image, deps.limits);
-  const outcome = await evaluate(
-    deps,
-    image,
-    check.imageSha,
-    header,
-    baseline,
-    await regionsFor(deps.db, check.projectId, check.snapshotKey, check.ignoreRegions),
-    check.colorThreshold,
-    check.tolerancePercent,
-  );
-  const diffImageSha =
-    outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
-  const reviewed = check.review === 'approved' || check.review === 'rejected';
-  await deps.db
-    .updateTable('checks')
-    .set({
-      result: outcome.result,
-      diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
-      diffImageSha,
-      ...(reviewed ? {} : { review: initialReview(outcome.result) }),
-      updatedAt: Date.now(),
-    })
-    .where('id', '=', checkId)
-    .execute();
-  return getCheck(deps, checkId);
+  const regions = () => regionsFor(deps.db, check.projectId, check.snapshotKey, check.ignoreRegions);
+  // Areas drawn or deleted while the comparison ran mean it is already out of date: compare again,
+  // so of two quick edits the comparison that saw both is the one that stays.
+  let used = await regions();
+  for (;;) {
+    const outcome = await evaluate(
+      deps,
+      image,
+      check.imageSha,
+      header,
+      baseline,
+      used,
+      check.colorThreshold,
+      check.tolerancePercent,
+    );
+    const latest = await regions();
+    if (JSON.stringify(latest) !== JSON.stringify(used)) {
+      used = latest;
+      continue;
+    }
+    const diffImageSha =
+      outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
+    const initial = initialReview(outcome.result);
+    await deps.db
+      .updateTable('checks')
+      .set((eb) => ({
+        result: outcome.result,
+        diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
+        diffImageSha,
+        // Decided in SQL, not from the read above: a review made while the comparison ran stays.
+        review: eb
+          .case()
+          .when('review', 'in', ['approved', 'rejected'])
+          .then(eb.ref('review'))
+          .else(sql.lit(initial))
+          .end(),
+        updatedAt: Date.now(),
+      }))
+      .where('id', '=', checkId)
+      .execute();
+    return getCheck(deps, checkId);
+  }
 }
 
 export interface CheckNeighbors {

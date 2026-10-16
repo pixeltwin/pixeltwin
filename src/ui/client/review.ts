@@ -233,7 +233,7 @@ async function undo(target: string | null = lastReviewed ?? currentId()): Promis
       await api('POST', `/checks/${target}/reset`);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'review_not_resettable') {
-        toast("Can't undo: a newer baseline exists.", { tone: 'danger' });
+        toast("Can't undo: a newer baseline or a later build builds on this approval.", { tone: 'danger' });
       } else if (err instanceof ApiError && err.code === 'check_not_reviewable') {
         toast('Nothing to undo: this check waits for review.');
       } else if (!(err instanceof ApiError && err.status === 401)) {
@@ -295,7 +295,7 @@ function swipes(): void {
     'touchstart',
     (e) => {
       const target = e.target instanceof Element ? e.target : null;
-      const busyArea = target?.closest('.action-bar, .divider, .stage[data-zoom="free"]');
+      const busyArea = target?.closest('.action-bar, .divider, .stage[data-zoom="free"], .stage[data-drawing]');
       start =
         e.touches.length === 1 && target && root.contains(target) && !busyArea
           ? { x: e.touches[0]?.clientX ?? 0, y: e.touches[0]?.clientY ?? 0 }

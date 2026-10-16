@@ -149,7 +149,7 @@ body.focus main {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: repeating-conic-gradient(var(--checker) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+  background: var(--stage-bg);
 }
 .shot {
   position: relative;
@@ -159,6 +159,10 @@ body.focus main {
   display: block;
   max-width: 100%;
   height: auto;
+  /* A hairline and a soft shadow keep white screenshots apart from the light stage. */
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    0 1px 4px rgb(0 0 0 / 0.08);
 }
 .shot svg {
   position: absolute;
@@ -514,8 +518,9 @@ body.focus main {
   cursor: ew-resize;
 }
 
-/* Ignore and compare areas (Plan 6): amber hatched where pixels are skipped, blue outline where
-   the comparison is limited to. Drawing shows a crosshair and a live rectangle. */
+/* Ignore and compare areas (Plan 6), one colour each wherever they appear (stage, toolbar, list):
+   amber with a dashed outline where pixels are skipped, blue with a solid outline where the
+   comparison is limited to. Drawing shows a crosshair and a live rectangle in the same colour. */
 .area-layer {
   position: absolute;
   inset: 0;
@@ -526,14 +531,14 @@ body.focus main {
 .area {
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
-  stroke-dasharray: 6 4;
 }
 .area-ignore {
-  fill: rgb(245 159 0 / 0.22);
+  fill: rgb(245 159 0 / 0.3);
   stroke: var(--amber-dot);
+  stroke-dasharray: 6 4;
 }
 .area-compare {
-  fill: none;
+  fill: rgb(28 126 214 / 0.14);
   stroke: var(--blue-dot);
 }
 .stage[data-drawing] .viewport {
@@ -543,12 +548,29 @@ body.focus main {
   position: fixed;
   z-index: 50;
   border: 2px dashed var(--amber-dot);
-  background: rgb(245 159 0 / 0.18);
+  background: rgb(245 159 0 / 0.3);
   pointer-events: none;
 }
 .area-draft-compare {
+  border-style: solid;
   border-color: var(--blue-dot);
-  background: rgb(28 126 214 / 0.12);
+  background: rgb(28 126 214 / 0.14);
+}
+.draw-tools [data-draw]::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: var(--space-2);
+  border: 2px dashed var(--amber-dot);
+  border-radius: 2px;
+  background: rgb(245 159 0 / 0.3);
+  vertical-align: -1px;
+}
+.draw-tools [data-draw="compare"]::before {
+  border-style: solid;
+  border-color: var(--blue-dot);
+  background: rgb(28 126 214 / 0.14);
 }
 .draw-tools button[aria-pressed="true"] {
   background: var(--primary);
@@ -584,6 +606,20 @@ body.focus main {
 }
 .area-item-compare {
   border-left-color: var(--blue-dot);
+}
+/* Pointing at an area in the list lights it up on every screenshot. */
+.area-item.is-hot {
+  background: var(--surface-hover);
+}
+.area.is-hot {
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.area-ignore.is-hot {
+  fill: rgb(245 159 0 / 0.5);
+}
+.area-compare.is-hot {
+  fill: rgb(28 126 214 / 0.32);
 }
 .areas .hint {
   margin: var(--space-2) 0 0;

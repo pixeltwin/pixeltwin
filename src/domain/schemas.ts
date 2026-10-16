@@ -11,11 +11,14 @@ export const slugSchema = z
 
 export const branchSchema = z.string().trim().min(1).max(255);
 
+// Coordinates fit a 32-bit integer column (snapshot_areas on Postgres).
+const coordinate = z.number().int().max(2_147_483_647);
+
 export const rectSchema = z.strictObject({
-  x: z.number().int().min(0),
-  y: z.number().int().min(0),
-  width: z.number().int().min(1),
-  height: z.number().int().min(1),
+  x: coordinate.min(0),
+  y: coordinate.min(0),
+  width: coordinate.min(1),
+  height: coordinate.min(1),
 });
 
 export const variantSchema = z

@@ -49,6 +49,10 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   };
 
   let kind: Kind | null = null;
+  /** Ends a drag in progress without saving (set while dragging). */
+  let abandon: (() => void) | null = null;
+  /** Set once the next check replaced this one: a late save must not pull the reviewer back. */
+  let gone = false;
   const setKind = (next: Kind | null) => {
     kind = next;
     if (stage) {
@@ -77,7 +81,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     try {
       await api('POST', `/checks/${checkId}/areas`, { kind: drawn, ...rect });
       toast(ADDED[drawn], { tone: 'success', timeout: 2500 });
-      await changed(checkId);
+      if (!gone) await changed(checkId);
     } catch (err) {
       toast(`Couldn't add the area: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
     }
@@ -105,18 +109,40 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
         draft.style.height = `${Math.abs(y - start.y)}px`;
       };
       place(start.x, start.y);
-      const move = (ev: PointerEvent) => place(ev.clientX, ev.clientY);
-      const up = (ev: PointerEvent) => {
+      const move = (ev: Event) => place((ev as PointerEvent).clientX, (ev as PointerEvent).clientY);
+      // Ends the drag however it ends: a release saves, a cancel or a swap only cleans up.
+      const finish = (ev: Event | null) => {
         viewport.removeEventListener('pointermove', move);
-        viewport.removeEventListener('pointerup', up);
+        viewport.removeEventListener('pointerup', finish);
+        viewport.removeEventListener('pointercancel', finish);
+        viewport.removeEventListener('lostpointercapture', finish);
+        abandon = null;
         draft.remove();
         setKind(null);
-        const rect = toImage(img, start, { x: ev.clientX, y: ev.clientY });
+        if (ev?.type !== 'pointerup') return;
+        const p = ev as PointerEvent;
+        const rect = toImage(img, start, { x: p.clientX, y: p.clientY });
         if (rect) void save(drawing, rect);
       };
+      abandon = () => finish(null);
       viewport.addEventListener('pointermove', move);
-      viewport.addEventListener('pointerup', up);
+      viewport.addEventListener('pointerup', finish);
+      viewport.addEventListener('pointercancel', finish);
+      viewport.addEventListener('lostpointercapture', finish);
     });
+  }
+
+  // Pointing at (or tabbing into) an area in the list lights it up on every screenshot.
+  for (const item of root.querySelectorAll<HTMLElement>('[data-area-item]')) {
+    const rects = [...root.querySelectorAll<SVGElement>(`[data-area="${item.dataset.areaItem}"]`)];
+    const light = (on: boolean) => {
+      item.classList.toggle('is-hot', on);
+      for (const rect of rects) rect.classList.toggle('is-hot', on);
+    };
+    listen(item, 'pointerenter', () => light(true));
+    listen(item, 'pointerleave', () => light(false));
+    listen(item, 'focusin', () => light(true));
+    listen(item, 'focusout', () => light(false));
   }
 
   for (const form of root.querySelectorAll<HTMLFormElement>('form[data-area-delete]')) {
@@ -127,7 +153,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
         try {
           await api('DELETE', `/checks/${checkId}/areas/${areaId}`);
           toast('Area deleted', { timeout: 2000 });
-          await changed(checkId);
+          if (!gone) await changed(checkId);
         } catch (err) {
           toast(`Couldn't delete the area: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
         }
@@ -136,6 +162,8 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   }
 
   return () => {
+    gone = true;
+    abandon?.();
     setKind(null);
     for (const cleanup of cleanups.splice(0)) cleanup();
   };

@@ -135,7 +135,14 @@ export function compareImages(job: DiffJob): DiffJobResult {
     }
   }
 
-  const exactPercent = (pixels / (width * height)) * 100;
+  // With compare regions the share is of the pixels they compare, so a small region is not
+  // drowned by the rest of the canvas; otherwise it is of the whole canvas.
+  let compared = width * height;
+  if (ignore && (job.compareRegions?.length ?? 0) > 0) {
+    compared = 0;
+    for (const skipped of ignore) if (!skipped) compared += 1;
+  }
+  const exactPercent = compared > 0 ? (pixels / compared) * 100 : 0;
   const result = exactPercent > job.tolerancePercent ? 'changed' : 'unchanged';
   const percent = roundPercent(exactPercent);
   const dimensions = sizeChanged

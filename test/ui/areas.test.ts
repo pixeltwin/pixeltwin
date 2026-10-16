@@ -58,6 +58,9 @@ describe('UI areas', () => {
     expect(body).toContain('<strong>Ignored</strong>');
     expect(body).toContain('<strong>Compared</strong>');
     expect(body).toContain(`action="/ui/checks/${check.id}/areas/${area.id}/delete"`);
+    // Pointing at an area in the list lights it up on the screenshots.
+    expect(body).toContain(`height="20" data-area="${area.id}"`);
+    expect(body).toContain(`<li class="area-item area-item-ignore" data-area-item="${area.id}">`);
     expect(await page(`/ui/checks/${check.id}`, viewer)).not.toContain('/delete"');
   });
 
