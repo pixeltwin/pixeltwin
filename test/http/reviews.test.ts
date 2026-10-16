@@ -57,6 +57,33 @@ describe('review, baseline, promotion and image routes', () => {
     expect(await problemOf(again)).toMatchObject({ status: 409, code: 'check_not_reviewable' });
   });
 
+  test('the review history lists who approved, rejected or undid, newest first', async () => {
+    const reviewerToken = await t.tokenAs('web', ['read', 'review']);
+    const { check: c } = await check('main', white);
+    await t.request('POST', `/api/v1/checks/${c.id}/approve`, { as: reviewer, json: { comment: 'fine' } });
+    await t.request('POST', `/api/v1/checks/${c.id}/reset`, { as: reviewerToken });
+    await t.request('POST', `/api/v1/checks/${c.id}/reject`, { as: reviewer });
+
+    const res = await t.request('GET', `/api/v1/checks/${c.id}/reviews`, { as: ci });
+    expect(res.status).toBe(200);
+    const { items } = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(items.map(({ action, actor, comment }) => ({ action, actor, comment }))).toEqual([
+      { action: 'rejected', actor: reviewer.id, comment: null },
+      { action: 'reset', actor: reviewerToken.id, comment: null },
+      { action: 'approved', actor: reviewer.id, comment: 'fine' },
+    ]);
+    expect(items[0]).toMatchObject({ checkId: c.id, createdAt: expect.any(Number) });
+
+    await createProject(t.deps, { slug: 'other', name: 'Other' });
+    const outsider = await t.tokenAs('other', ['read']);
+    expect((await t.request('GET', `/api/v1/checks/${c.id}/reviews`, { as: outsider })).status).toBe(403);
+    expect((await t.request('GET', '/api/v1/checks/chk_missing/reviews', { as: reviewer })).status).toBe(404);
+    const doc = (await (await t.request('GET', '/openapi.json')).json()) as {
+      paths: Record<string, { get?: Record<string, unknown> }>;
+    };
+    expect(doc.paths['/api/v1/checks/{id}/reviews']?.get?.['x-permission']).toBe('project.read');
+  });
+
   test('reset undoes a review; it needs the review permission', async () => {
     const reviewerToken = await t.tokenAs('web', ['read', 'review']);
     const { check: first } = await check('main', white);

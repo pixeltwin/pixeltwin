@@ -131,7 +131,7 @@ describe('command line', () => {
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(lines).toEqual([
-      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers',
+      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers, 0004_review_events',
       'Database is up to date.',
     ]);
   });

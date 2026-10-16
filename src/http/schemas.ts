@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, USER_ROLES } from '../db/schema';
+import { BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
 // Response schemas. They document the API in openapi.json and type-check every handler's output.
@@ -111,6 +111,18 @@ export const DiffSchema = z
 export const DiffErrorSchema = z
   .object({ error: z.object({ code: z.enum(['diff_timeout', 'diff_failed']), message: z.string() }) })
   .openapi('DiffError');
+
+export const ReviewEventSchema = z
+  .object({
+    id: z.string(),
+    checkId: z.string(),
+    projectId: z.string(),
+    action: z.enum(REVIEW_ACTIONS),
+    actor: z.string().openapi({ description: 'The user or project token that acted (an id, like reviewedBy).' }),
+    comment: z.string().nullable(),
+    createdAt: z.number().int(),
+  })
+  .openapi('ReviewEvent');
 
 export const CheckSchema = z
   .object({

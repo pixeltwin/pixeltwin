@@ -37,7 +37,7 @@ describe('resetting a review (undo)', () => {
   test('a rejected check goes back to pending and forgets who rejected it', async () => {
     const { check, buildId } = await changedCheck();
     await rejectCheck(deps, check.id, 'usr_1', { comment: 'wrong colour' });
-    const reset = await resetReview(deps, check.id);
+    const reset = await resetReview(deps, check.id, 'usr_1');
     expect(reset).toMatchObject({ review: 'pending', reviewedBy: null, reviewedAt: null, reviewComment: null });
     expect((await getBuild(deps, buildId)).verdict).toBe('pending');
   });
@@ -47,7 +47,7 @@ describe('resetting a review (undo)', () => {
     await approveCheck(deps, check.id, 'usr_1');
     expect((await findCurrentBaseline(deps.db, project.id, KEY, 'main'))?.sourceCheckId).toBe(check.id);
 
-    const reset = await resetReview(deps, check.id);
+    const reset = await resetReview(deps, check.id, 'usr_1');
     expect(reset).toMatchObject({ review: 'pending', reviewedBy: null });
     expect((await findCurrentBaseline(deps.db, project.id, KEY, 'main'))?.id).toBe(original.id);
     // The check still compares with the baseline it was diffed against.
@@ -61,7 +61,7 @@ describe('resetting a review (undo)', () => {
     const { check: newer } = await submit(deps, later, white);
     await approveCheck(deps, newer.id, 'usr_1');
 
-    const err = await appError(resetReview(deps, check.id));
+    const err = await appError(resetReview(deps, check.id, 'usr_1'));
     expect(err).toMatchObject({ status: 409, code: 'review_not_resettable' });
     expect((await getCheck(deps, check.id)).review).toBe('approved');
     expect((await findCurrentBaseline(deps.db, project.id, KEY, 'main'))?.sourceCheckId).toBe(newer.id);
@@ -69,14 +69,20 @@ describe('resetting a review (undo)', () => {
 
   test('only approved or rejected checks can be reset', async () => {
     const { check } = await changedCheck();
-    expect(await appError(resetReview(deps, check.id))).toMatchObject({ status: 409, code: 'check_not_reviewable' });
-    expect(await appError(resetReview(deps, 'chk_missing'))).toMatchObject({ status: 404, code: 'check_not_found' });
+    expect(await appError(resetReview(deps, check.id, 'usr_1'))).toMatchObject({
+      status: 409,
+      code: 'check_not_reviewable',
+    });
+    expect(await appError(resetReview(deps, 'chk_missing', 'usr_1'))).toMatchObject({
+      status: 404,
+      code: 'check_not_found',
+    });
   });
 
   test('works on finalized builds, like approve', async () => {
     const { check, buildId } = await changedCheck();
     await approveCheck(deps, check.id, 'usr_1');
     await finalizeBuild(deps, buildId);
-    expect((await resetReview(deps, check.id)).review).toBe('pending');
+    expect((await resetReview(deps, check.id, 'usr_1')).review).toBe('pending');
   });
 });

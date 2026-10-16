@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
 import { getCheck } from '../../src/domain/checks';
 import { createProject } from '../../src/domain/projects';
-import { approveCheck } from '../../src/domain/reviews';
+import { approveCheck, rejectCheck, resetReview } from '../../src/domain/reviews';
 import { createTestApp, type TestApp } from '../helpers/app';
 import { BLACK, makePng, WHITE } from '../helpers/png';
 import { openBuild, seedBaseline, submit } from '../helpers/scenario';
@@ -168,11 +168,31 @@ describe('UI focus mode', () => {
     const { changed } = await seedBuild();
     await approveCheck(t.deps, changed.id, reviewer.id);
     const body = await page(`/ui/checks/${changed.id}`);
-    expect(body).toContain('Approved by rev@example.com');
+    expect(body).toContain('<strong>Approved</strong> by rev@example.com');
     expect(body).toContain('data-reviewed-by="rev@example.com"');
     expect(body).toContain(`action="/ui/checks/${changed.id}/reset"`);
     expect(body).not.toContain(`action="/ui/checks/${changed.id}/approve"`);
     expect(await page(`/ui/checks/${changed.id}`, viewer)).not.toContain('/reset"');
+  });
+
+  test('the history lists every review of the check, newest first, undone ones included', async () => {
+    const { changed, fresh } = await seedBuild();
+    const token = await t.tokenAs('web', ['read', 'review']);
+    await approveCheck(t.deps, changed.id, reviewer.id, { comment: 'fine' });
+    await resetReview(t.deps, changed.id, reviewer.id);
+    await rejectCheck(t.deps, changed.id, token.id, { comment: 'too wide' });
+    const body = await page(`/ui/checks/${changed.id}`);
+    expect(body).toContain('<section class="review-history" aria-label="Review history"><h3>History</h3>');
+    const rejected = body.indexOf('<strong>Rejected</strong> by token “test”');
+    const undone = body.indexOf('<strong>Undone</strong> by rev@example.com');
+    const approved = body.indexOf('<strong>Approved</strong> by rev@example.com');
+    expect(rejected).toBeGreaterThan(-1);
+    expect(undone).toBeGreaterThan(rejected);
+    expect(approved).toBeGreaterThan(undone);
+    expect(body).toContain('<span class="comment">“too wide”</span>');
+    expect(body).toContain('<span class="comment">“fine”</span>');
+    expect(body).toContain('data-reviewed-by="token “test”"');
+    expect(await page(`/ui/checks/${fresh.id}`)).not.toContain('class="review-history"');
   });
 
   test('approving moves on to the next check waiting for review, keeping the filter', async () => {

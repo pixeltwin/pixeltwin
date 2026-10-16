@@ -105,7 +105,12 @@ describe('openDatabase', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pixeltwin-'));
     try {
       const handle = openDatabase(`sqlite:${join(dir, 'nested', 'pixeltwin.db')}`);
-      expect(await migrateToLatest(handle.db)).toEqual(['0001_init', '0002_retention_indexes', '0003_build_numbers']);
+      expect(await migrateToLatest(handle.db)).toEqual([
+        '0001_init',
+        '0002_retention_indexes',
+        '0003_build_numbers',
+        '0004_review_events',
+      ]);
       await handle.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

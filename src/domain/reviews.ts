@@ -1,6 +1,7 @@
 import type { Db } from '../db/database';
-import type { CheckReview } from '../db/schema';
+import type { CheckReview, ReviewAction, ReviewEvent } from '../db/schema';
 import { AppError } from '../errors';
+import { newId } from '../ids';
 import { appendBaseline, findCurrentBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import { type CheckView, getCheck } from './checks';
@@ -20,6 +21,24 @@ async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): P
 }
 
 const APPROVABLE: CheckReview[] = ['pending', 'rejected'];
+
+/** Appends to the check's review history, inside the transaction that made the change. */
+async function recordReview(
+  tx: Db,
+  event: { checkId: string; projectId: string; action: ReviewAction; actor: string; comment: string | null },
+): Promise<void> {
+  await tx
+    .insertInto('reviewEvents')
+    .values({ id: newId('rev'), ...event, createdAt: Date.now() })
+    .execute();
+}
+
+/** Who approved, rejected or undid a review of the check, newest first. */
+export async function listReviews(deps: DbDeps, checkId: string): Promise<ReviewEvent[]> {
+  const check = await deps.db.selectFrom('checks').select('id').where('id', '=', checkId).executeTakeFirst();
+  if (!check) throw new AppError('check_not_found', 404, `Check ${checkId} not found.`);
+  return deps.db.selectFrom('reviewEvents').selectAll().where('checkId', '=', checkId).orderBy('id', 'desc').execute();
+}
 
 /**
  * Marks the check approved and appends its image as the new baseline on the build's branch.
@@ -60,6 +79,7 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
     sourceCheckId: checkId,
     approvedBy: actor,
   });
+  await recordReview(tx, { checkId, projectId: check.projectId, action: 'approved', actor, comment });
   return true;
 }
 
@@ -83,14 +103,22 @@ export async function rejectCheck(
   input: unknown = {},
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
-  const now = Date.now();
-  const updated = await deps.db
-    .updateTable('checks')
-    .set({ review: 'rejected', reviewedBy: actor, reviewedAt: now, reviewComment: comment ?? null, updatedAt: now })
-    .where('id', '=', checkId)
-    .where('review', '=', 'pending')
-    .executeTakeFirst();
-  if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(deps.db, checkId, ['pending']);
+  await deps.db.transaction().execute(async (tx) => {
+    const now = Date.now();
+    const updated = await tx
+      .updateTable('checks')
+      .set({ review: 'rejected', reviewedBy: actor, reviewedAt: now, reviewComment: comment ?? null, updatedAt: now })
+      .where('id', '=', checkId)
+      .where('review', '=', 'pending')
+      .executeTakeFirst();
+    if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, ['pending']);
+    const { projectId } = await tx
+      .selectFrom('checks')
+      .select('projectId')
+      .where('id', '=', checkId)
+      .executeTakeFirstOrThrow();
+    await recordReview(tx, { checkId, projectId, action: 'rejected', actor, comment: comment ?? null });
+  });
   return getCheck(deps, checkId);
 }
 
@@ -102,7 +130,7 @@ const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
  * its snapshot and branch; otherwise a later approval or a promotion builds on it, and the call
  * fails with 409 review_not_resettable. Allowed on finalized builds, like approve.
  */
-export async function resetReview(deps: DbDeps, checkId: string): Promise<CheckView> {
+export async function resetReview(deps: DbDeps, checkId: string, actor: string): Promise<CheckView> {
   await deps.db.transaction().execute(async (tx) => {
     const check = await tx
       .selectFrom('checks')
@@ -131,6 +159,7 @@ export async function resetReview(deps: DbDeps, checkId: string): Promise<CheckV
       .executeTakeFirst();
     // A concurrent reset or review changed the state since the read above; the transaction rolls back.
     if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, RESETTABLE);
+    await recordReview(tx, { checkId, projectId: check.projectId, action: 'reset', actor, comment: null });
   });
   return getCheck(deps, checkId);
 }

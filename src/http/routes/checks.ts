@@ -3,13 +3,13 @@ import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
 import { getBuildRow } from '../../domain/builds';
 import { type CheckView, getCheck, listChecks, submitCheck } from '../../domain/checks';
-import { approveCheck, rejectCheck, resetReview } from '../../domain/reviews';
+import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
 import { checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
-import { CheckSchema, json, PageQuerySchema, pageOf, problems } from '../schemas';
+import { CheckSchema, json, PageQuerySchema, pageOf, problems, ReviewEventSchema } from '../schemas';
 
 const CheckPageSchema = pageOf(CheckSchema, 'CheckPage');
 const idParam = z.object({ id: z.string() });
@@ -187,6 +187,23 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   app.openapi(reset, async (c) => {
     const { id } = c.req.valid('param');
     allowProject(c, (await getCheck(s.deps, id)).projectId);
-    return c.json(withLinks(await resetReview(s.deps, id)), 200);
+    return c.json(withLinks(await resetReview(s.deps, id, principalOf(c).id)), 200);
+  });
+
+  const history = defineRoute('project.read', {
+    method: 'get',
+    path: `${API}/checks/{id}/reviews`,
+    tags: ['reviews'],
+    summary: 'Review history of a check: every approval, rejection and undo, newest first',
+    request: { params: idParam },
+    responses: {
+      200: json(z.object({ items: z.array(ReviewEventSchema) }), 'The review history'),
+      ...problems(401, 403, 404),
+    },
+  });
+  app.openapi(history, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    return c.json({ items: await listReviews(s.deps, id) }, 200);
   });
 }

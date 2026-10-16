@@ -1,6 +1,6 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Child } from 'hono/jsx';
-import type { Project } from '../../db/schema';
+import type { Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Region, Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
@@ -8,7 +8,7 @@ import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
-import { approveCheck, rejectCheck, resetReview } from '../../domain/reviews';
+import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
@@ -21,8 +21,7 @@ function isDiffData(diff: CheckView['diff']): diff is DiffData {
 }
 
 /** Who reviewed: a user's email, or the name of the project token that did it. */
-async function reviewerName(s: Services, id: string | null): Promise<string | null> {
-  if (!id) return null;
+async function reviewerName(s: Services, id: string): Promise<string> {
   const user = await s.deps.db.selectFrom('users').select('email').where('id', '=', id).executeTakeFirst();
   if (user) return user.email;
   const token = await s.deps.db.selectFrom('projectTokens').select('name').where('id', '=', id).executeTakeFirst();
@@ -177,8 +176,53 @@ function areaPlace(region: Region, size: Size | undefined): string {
   return size ? `${positionOf(region, size.width, size.height).replace('-', ' ')} · ` : '';
 }
 
-function Info(props: { check: CheckView; branch: string; reviewer: string | null; size: Size | undefined }) {
-  const { check, branch, reviewer, size } = props;
+/** One entry of a check's review history, with the actor's name resolved. */
+interface HistoryEntry {
+  action: ReviewAction;
+  who: string;
+  comment: string | null;
+  at: number;
+}
+
+const HISTORY_VERB: Record<ReviewAction, string> = { approved: 'Approved', rejected: 'Rejected', reset: 'Undone' };
+
+async function historyOf(s: Services, checkId: string): Promise<HistoryEntry[]> {
+  const events = await listReviews(s.deps, checkId);
+  const names = new Map<string, string>();
+  for (const { actor } of events) if (!names.has(actor)) names.set(actor, await reviewerName(s, actor));
+  return events.map((e) => ({
+    action: e.action,
+    who: names.get(e.actor) ?? e.actor,
+    comment: e.comment,
+    at: e.createdAt,
+  }));
+}
+
+/** Who approved, rejected or undid, newest first. The newest entry names the current reviewer. */
+function History({ check, history }: { check: CheckView; history: HistoryEntry[] }) {
+  if (history.length === 0) return null;
+  const reviewed = check.review === 'approved' || check.review === 'rejected';
+  return (
+    <section class="review-history" aria-label="Review history">
+      <h3>History</h3>
+      <ol>
+        {history.map((entry, i) => (
+          <li class={`event event-${entry.action}`} data-reviewed-by={i === 0 && reviewed ? entry.who : undefined}>
+            <span class="event-what">
+              <strong>{HISTORY_VERB[entry.action]}</strong>
+              {` by ${entry.who}`}
+            </span>
+            <Ago at={entry.at} />
+            {entry.comment && <span class="comment">{`“${entry.comment}”`}</span>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function Info(props: { check: CheckView; branch: string; history: HistoryEntry[]; size: Size | undefined }) {
+  const { check, branch, size } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
   const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
   const dims = diff?.dimensions;
@@ -238,13 +282,7 @@ function Info(props: { check: CheckView; branch: string; reviewer: string | null
           {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
         </ul>
       )}
-      {check.reviewedAt !== null && reviewer && (
-        <p class="reviewed" data-reviewed-by={reviewer}>
-          {`${check.review === 'approved' ? 'Approved' : 'Rejected'} by ${reviewer} `}
-          <Ago at={check.reviewedAt} />
-          {check.reviewComment && <span class="comment">{`“${check.reviewComment}”`}</span>}
-        </p>
-      )}
+      <History check={check} history={props.history} />
     </aside>
   );
 }
@@ -346,7 +384,7 @@ function CheckPage(props: {
   strip: CheckView[];
   sizes: Map<string, Size>;
   canReview: boolean;
-  reviewer: string | null;
+  history: HistoryEntry[];
   notice?: string | undefined;
 }) {
   const { ui, project, build, check, filter, strip } = props;
@@ -419,7 +457,7 @@ function CheckPage(props: {
         </div>
         <div class="review-body">
           <Stage ui={ui} check={check} sizes={props.sizes} />
-          <Info check={check} branch={build.branch} reviewer={props.reviewer} size={props.sizes.get(check.imageSha)} />
+          <Info check={check} branch={build.branch} history={props.history} size={props.sizes.get(check.imageSha)} />
         </div>
         <ActionBar ui={ui} check={check} filter={filter} next={next} canReview={props.canReview} />
         <Filmstrip ui={ui} checks={strip} current={check.id} filter={filter} sizes={props.sizes} />
@@ -434,11 +472,11 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const check = await getCheck(s.deps, c.req.param('id'));
     // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
     const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
-    const [project, build, strip, reviewer] = await Promise.all([
+    const [project, build, strip, history] = await Promise.all([
       getProjectById(s.deps, check.projectId),
       getBuild(s.deps, check.buildId),
       listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, limit: 200 }),
-      reviewerName(s, check.reviewedBy),
+      historyOf(s, check.id),
     ]);
     const sizes = await imageSizes(s.deps, [
       ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
@@ -454,7 +492,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         strip={strip.items}
         sizes={sizes}
         canReview={hasPermission(userOf(c), 'check.review')}
-        reviewer={reviewer}
+        history={history}
         notice={noticeOf(c)}
       />,
     );
@@ -491,7 +529,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     if (!hasPermission(userOf(c), 'check.review')) {
       throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
     }
-    const check = await resetReview(s.deps, c.req.param('id'));
+    const check = await resetReview(s.deps, c.req.param('id'), userOf(c).id);
     return c.redirect(ui.url(`/ui/checks/${check.id}?done=reset`), 303);
   });
 }
