@@ -278,6 +278,10 @@
           "projectId": {
             "type": "string"
           },
+          "number": {
+            "type": "integer",
+            "description": "Sequential per project: #1, #2, …"
+          },
           "branch": {
             "type": "string"
           },
@@ -385,6 +389,7 @@
         "required": [
           "id",
           "projectId",
+          "number",
           "branch",
           "baseBranch",
           "externalId",
@@ -415,6 +420,56 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "BranchSummary": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "integer"
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "empty",
+                    "error",
+                    "rejected",
+                    "pending",
+                    "passed"
+                  ]
+                },
+                "createdAt": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "number",
+                "verdict",
+                "createdAt"
+              ]
+            },
+            "description": "The last 10 builds of the branch, newest first"
+          }
+        },
+        "required": [
+          "branch",
+          "latest",
+          "recent"
         ]
       },
       "Check": {
@@ -768,6 +823,102 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "Area": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "snapshotKey": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "compare"
+            ],
+            "description": "ignore: skip these pixels; compare: compare only inside the compare areas."
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "snapshotKey",
+          "kind",
+          "x",
+          "y",
+          "width",
+          "height",
+          "createdBy",
+          "createdAt"
+        ]
+      },
+      "ReviewEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected",
+              "reset"
+            ]
+          },
+          "actor": {
+            "type": "string",
+            "description": "The user or project token that acted (an id, like reviewedBy)."
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "checkId",
+          "projectId",
+          "action",
+          "actor",
+          "comment",
+          "createdAt"
         ]
       },
       "BaselinePage": {
@@ -2392,6 +2543,78 @@
         }
       }
     },
+    "/api/v1/projects/{slug}/branches": {
+      "get": {
+        "tags": [
+          "builds"
+        ],
+        "summary": "List branches with their latest build: main first, then by latest build (at most 50)",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Branches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BranchSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/builds/{id}": {
       "get": {
         "tags": [
@@ -2678,18 +2901,22 @@
                       "properties": {
                         "x": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 0
                         },
                         "y": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 0
                         },
                         "width": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 1
                         },
                         "height": {
                           "type": "integer",
+                          "maximum": 2147483647,
                           "minimum": 1
                         }
                       },
@@ -3226,6 +3453,604 @@
             }
           },
           "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/reset": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Undo a review: back to pending. Undoing an approval removes the baseline it created, unless a newer one replaced it (409 review_not_resettable)",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The check, pending again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Check"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/areas": {
+      "get": {
+        "tags": [
+          "areas"
+        ],
+        "summary": "Ignore and compare areas drawn on the check's snapshot (they apply to every check of it)",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The areas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Area"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "areas"
+        ],
+        "summary": "Draw an area on the check's snapshot; the check is compared again at once",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  "height": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "ignore",
+                      "compare"
+                    ]
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The area and the check compared again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "area": {
+                      "$ref": "#/components/schemas/Area"
+                    },
+                    "check": {
+                      "$ref": "#/components/schemas/Check"
+                    }
+                  },
+                  "required": [
+                    "area",
+                    "check"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/areas/{areaId}": {
+      "patch": {
+        "tags": [
+          "areas"
+        ],
+        "summary": "Move or resize an area (its kind stays); the check is compared again at once",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "areaId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  "height": {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The area and the check compared again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "area": {
+                      "$ref": "#/components/schemas/Area"
+                    },
+                    "check": {
+                      "$ref": "#/components/schemas/Check"
+                    }
+                  },
+                  "required": [
+                    "area",
+                    "check"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "areas"
+        ],
+        "summary": "Delete an area; the check is compared again at once",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "areaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The check compared again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Check"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/reviews": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Review history of a check: every approval, rejection and undo, newest first",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The review history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ReviewEvent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

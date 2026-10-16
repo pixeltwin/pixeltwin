@@ -1,0 +1,171 @@
+/* Design tokens (UI spec §2). Light is the default; dark applies by choice or, in system
+   mode, by the OS setting. Components use only these variables, never raw colours. */
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.08);
+  --duration: 120ms;
+  --topbar-height: 52px;
+  --content-width: 1200px;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --surface-hover: #f0f0f1;
+  --border: #eaeaea;
+  --border-strong: #d4d4d8;
+  --text: #111111;
+  --text-muted: #5f5f66;
+  --primary: #111111;
+  --primary-hover: #333333;
+  --primary-text: #ffffff;
+  --link: #0060df;
+  --focus: #0070f3;
+  --backdrop: rgb(0 0 0 / 0.32);
+  --diff: #e5484d;
+  --diff-fill: rgb(229 72 77 / 0.1);
+  --stage-bg: #f1f1f3;
+  --green: #1a7f37;
+  --green-bg: #e9f9ee;
+  --green-border: #b7ebc6;
+  --green-dot: #2f9e44;
+  --amber: #9a4f00;
+  --amber-bg: #fff4e5;
+  --amber-border: #ffd8a8;
+  --amber-dot: #f59f00;
+  --blue: #0058b8;
+  --blue-bg: #e8f3ff;
+  --blue-border: #b3d7ff;
+  --blue-dot: #1c7ed6;
+  --red: #c11a1a;
+  --red-bg: #fff0f0;
+  --red-border: #ffc9c9;
+  --red-dot: #e03131;
+  --grey: #52525b;
+  --grey-bg: #f4f4f5;
+  --grey-border: #e4e4e7;
+  --grey-dot: #a1a1aa;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --surface: #111113;
+  --surface-2: #1a1a1d;
+  --surface-hover: #202024;
+  --border: #26262b;
+  --border-strong: #3a3a40;
+  --text: #ededed;
+  --text-muted: #a1a1aa;
+  --primary: #ededed;
+  --primary-hover: #ffffff;
+  --primary-text: #0a0a0a;
+  --link: #52a8ff;
+  --focus: #3b9eff;
+  --backdrop: rgb(0 0 0 / 0.6);
+  --diff: #ff6369;
+  --diff-fill: rgb(255 99 105 / 0.14);
+  --stage-bg: #161619;
+  --green: #4ade80;
+  --green-bg: rgb(34 197 94 / 0.12);
+  --green-border: rgb(34 197 94 / 0.32);
+  --green-dot: #22c55e;
+  --amber: #fbbf24;
+  --amber-bg: rgb(245 159 0 / 0.12);
+  --amber-border: rgb(245 159 0 / 0.32);
+  --amber-dot: #f59f00;
+  --blue: #60a5fa;
+  --blue-bg: rgb(28 126 214 / 0.14);
+  --blue-border: rgb(28 126 214 / 0.36);
+  --blue-dot: #3b82f6;
+  --red: #f87171;
+  --red-bg: rgb(224 49 49 / 0.14);
+  --red-border: rgb(224 49 49 / 0.36);
+  --red-dot: #ef4444;
+  --grey: #a1a1aa;
+  --grey-bg: rgb(161 161 170 / 0.12);
+  --grey-border: rgb(161 161 170 / 0.28);
+  --grey-dot: #71717a;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    color-scheme: dark;
+    --bg: #0a0a0a;
+    --surface: #111113;
+    --surface-2: #1a1a1d;
+    --surface-hover: #202024;
+    --border: #26262b;
+    --border-strong: #3a3a40;
+    --text: #ededed;
+    --text-muted: #a1a1aa;
+    --primary: #ededed;
+    --primary-hover: #ffffff;
+    --primary-text: #0a0a0a;
+    --link: #52a8ff;
+    --focus: #3b9eff;
+    --backdrop: rgb(0 0 0 / 0.6);
+    --diff: #ff6369;
+    --diff-fill: rgb(255 99 105 / 0.14);
+    --stage-bg: #161619;
+    --green: #4ade80;
+    --green-bg: rgb(34 197 94 / 0.12);
+    --green-border: rgb(34 197 94 / 0.32);
+    --green-dot: #22c55e;
+    --amber: #fbbf24;
+    --amber-bg: rgb(245 159 0 / 0.12);
+    --amber-border: rgb(245 159 0 / 0.32);
+    --amber-dot: #f59f00;
+    --blue: #60a5fa;
+    --blue-bg: rgb(28 126 214 / 0.14);
+    --blue-border: rgb(28 126 214 / 0.36);
+    --blue-dot: #3b82f6;
+    --red: #f87171;
+    --red-bg: rgb(224 49 49 / 0.14);
+    --red-border: rgb(224 49 49 / 0.36);
+    --red-dot: #ef4444;
+    --grey: #a1a1aa;
+    --grey-bg: rgb(161 161 170 / 0.12);
+    --grey-border: rgb(161 161 170 / 0.28);
+    --grey-dot: #71717a;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration: 0ms;
+  }
+  /* Reduced motion must win over every component's transition, whatever its specificity. */
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    scroll-behavior: auto !important;
+  }
+}

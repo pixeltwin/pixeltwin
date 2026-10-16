@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, USER_ROLES } from '../db/schema';
+import { AREA_KINDS, BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
 // Response schemas. They document the API in openapi.json and type-check every handler's output.
@@ -57,6 +57,7 @@ export const BuildSchema = z
   .object({
     id: z.string(),
     projectId: z.string(),
+    number: z.number().int().openapi({ description: 'Sequential per project: #1, #2, …' }),
     branch: z.string(),
     baseBranch: z.string(),
     externalId: z.string().nullable(),
@@ -68,6 +69,23 @@ export const BuildSchema = z
     counts: z.object({ total: z.number().int(), result: countsBy(CHECK_RESULTS), review: countsBy(CHECK_REVIEWS) }),
   })
   .openapi('Build');
+
+export const BranchSummarySchema = z
+  .object({
+    branch: z.string(),
+    latest: BuildSchema,
+    recent: z
+      .array(
+        z.object({
+          id: z.string(),
+          number: z.number().int(),
+          verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'passed']),
+          createdAt: z.number().int(),
+        }),
+      )
+      .openapi({ description: 'The last 10 builds of the branch, newest first' }),
+  })
+  .openapi('BranchSummary');
 
 const RectSchema = z.object({
   x: z.number().int(),
@@ -93,6 +111,35 @@ export const DiffSchema = z
 export const DiffErrorSchema = z
   .object({ error: z.object({ code: z.enum(['diff_timeout', 'diff_failed']), message: z.string() }) })
   .openapi('DiffError');
+
+export const AreaSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    snapshotKey: z.string(),
+    kind: z.enum(AREA_KINDS).openapi({
+      description: 'ignore: skip these pixels; compare: compare only inside the compare areas.',
+    }),
+    x: z.number().int(),
+    y: z.number().int(),
+    width: z.number().int(),
+    height: z.number().int(),
+    createdBy: z.string(),
+    createdAt: z.number().int(),
+  })
+  .openapi('Area');
+
+export const ReviewEventSchema = z
+  .object({
+    id: z.string(),
+    checkId: z.string(),
+    projectId: z.string(),
+    action: z.enum(REVIEW_ACTIONS),
+    actor: z.string().openapi({ description: 'The user or project token that acted (an id, like reviewedBy).' }),
+    comment: z.string().nullable(),
+    createdAt: z.number().int(),
+  })
+  .openapi('ReviewEvent');
 
 export const CheckSchema = z
   .object({

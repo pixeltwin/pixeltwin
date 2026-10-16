@@ -44,7 +44,7 @@ describe('build and check routes', () => {
     });
   }
 
-  function postMultipart(buildId: string, png: Uint8Array, meta: Record<string, unknown> = {}) {
+  function postMultipart(buildId: string, png: Uint8Array<ArrayBuffer>, meta: Record<string, unknown> = {}) {
     const form = new FormData();
     form.set('image', new File([png], 'shot.png', { type: 'image/png' }));
     form.set('meta', JSON.stringify({ name: 'home', ...meta }));

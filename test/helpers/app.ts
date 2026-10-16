@@ -24,7 +24,12 @@ export interface TestApp {
   request(
     method: string,
     path: string,
-    options?: { as?: As; json?: unknown; body?: string | FormData | Uint8Array; headers?: Record<string, string> },
+    options?: {
+      as?: As;
+      json?: unknown;
+      body?: string | FormData | Uint8Array<ArrayBuffer>;
+      headers?: Record<string, string>;
+    },
   ): Promise<Response>;
   /** Creates a user with `role` and logs them in. */
   userAs(role: UserRole, email?: string): Promise<{ cookie: string; id: string }>;

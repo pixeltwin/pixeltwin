@@ -62,7 +62,7 @@ describe('server end to end', () => {
     const { token } = (await tokenRes.json()) as { token: string };
     const auth = { authorization: `Bearer ${token}` };
 
-    const post = async (buildId: string, png: Uint8Array) => {
+    const post = async (buildId: string, png: Uint8Array<ArrayBuffer>) => {
       const form = new FormData();
       form.set('image', new File([png], 'home.png', { type: 'image/png' }));
       form.set('meta', JSON.stringify({ name: 'home', variant: { browser: 'chromium' } }));
@@ -130,7 +130,10 @@ describe('command line', () => {
   test('migrate applies migrations once', async () => {
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
-    expect(lines).toEqual(['Applied: 0001_init, 0002_retention_indexes', 'Database is up to date.']);
+    expect(lines).toEqual([
+      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers, 0004_review_events, 0005_snapshot_areas',
+      'Database is up to date.',
+    ]);
   });
 
   test('admin reset-password prints a working password', async () => {

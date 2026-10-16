@@ -1,7 +1,8 @@
 import type { Db } from '../db/database';
-import type { CheckReview } from '../db/schema';
+import type { CheckReview, ReviewAction, ReviewEvent } from '../db/schema';
 import { AppError } from '../errors';
-import { appendBaseline } from './baselines';
+import { newId } from '../ids';
+import { appendBaseline, findCurrentBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import { type CheckView, getCheck } from './checks';
 import type { Deps } from './deps';
@@ -20,6 +21,24 @@ async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): P
 }
 
 const APPROVABLE: CheckReview[] = ['pending', 'rejected'];
+
+/** Appends to the check's review history, inside the transaction that made the change. */
+async function recordReview(
+  tx: Db,
+  event: { checkId: string; projectId: string; action: ReviewAction; actor: string; comment: string | null },
+): Promise<void> {
+  await tx
+    .insertInto('reviewEvents')
+    .values({ id: newId('rev'), ...event, createdAt: Date.now() })
+    .execute();
+}
+
+/** Who approved, rejected or undid a review of the check, newest first. */
+export async function listReviews(deps: DbDeps, checkId: string): Promise<ReviewEvent[]> {
+  const check = await deps.db.selectFrom('checks').select('id').where('id', '=', checkId).executeTakeFirst();
+  if (!check) throw new AppError('check_not_found', 404, `Check ${checkId} not found.`);
+  return deps.db.selectFrom('reviewEvents').selectAll().where('checkId', '=', checkId).orderBy('id', 'desc').execute();
+}
 
 /**
  * Marks the check approved and appends its image as the new baseline on the build's branch.
@@ -60,6 +79,7 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
     sourceCheckId: checkId,
     approvedBy: actor,
   });
+  await recordReview(tx, { checkId, projectId: check.projectId, action: 'approved', actor, comment });
   return true;
 }
 
@@ -83,14 +103,78 @@ export async function rejectCheck(
   input: unknown = {},
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
-  const now = Date.now();
-  const updated = await deps.db
-    .updateTable('checks')
-    .set({ review: 'rejected', reviewedBy: actor, reviewedAt: now, reviewComment: comment ?? null, updatedAt: now })
-    .where('id', '=', checkId)
-    .where('review', '=', 'pending')
-    .executeTakeFirst();
-  if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(deps.db, checkId, ['pending']);
+  await deps.db.transaction().execute(async (tx) => {
+    const now = Date.now();
+    const updated = await tx
+      .updateTable('checks')
+      .set({ review: 'rejected', reviewedBy: actor, reviewedAt: now, reviewComment: comment ?? null, updatedAt: now })
+      .where('id', '=', checkId)
+      .where('review', '=', 'pending')
+      .executeTakeFirst();
+    if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, ['pending']);
+    const { projectId } = await tx
+      .selectFrom('checks')
+      .select('projectId')
+      .where('id', '=', checkId)
+      .executeTakeFirstOrThrow();
+    await recordReview(tx, { checkId, projectId, action: 'rejected', actor, comment: comment ?? null });
+  });
+  return getCheck(deps, checkId);
+}
+
+const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
+
+/**
+ * UI spec §3.5, undo: returns an approved or rejected check to pending. Undoing an approval also
+ * deletes the baseline it appended, but only while that baseline is still the current one for
+ * its snapshot and branch and no later check was compared with it; otherwise the call fails with
+ * 409 review_not_resettable. Allowed on finalized builds, like approve.
+ */
+export async function resetReview(deps: DbDeps, checkId: string, actor: string): Promise<CheckView> {
+  await deps.db.transaction().execute(async (tx) => {
+    const check = await tx
+      .selectFrom('checks')
+      .innerJoin('builds', 'builds.id', 'checks.buildId')
+      .select(['checks.review', 'checks.projectId', 'checks.snapshotKey', 'builds.branch'])
+      .where('checks.id', '=', checkId)
+      .executeTakeFirst();
+    if (!check || !RESETTABLE.includes(check.review)) throw await notReviewable(tx, checkId, RESETTABLE);
+
+    if (check.review === 'approved') {
+      const current = await findCurrentBaseline(tx, check.projectId, check.snapshotKey, check.branch);
+      if (current?.sourceCheckId !== checkId) {
+        throw new AppError(
+          'review_not_resettable',
+          409,
+          `A newer baseline replaced the one check ${checkId} approved, so the approval cannot be undone.`,
+        );
+      }
+      // A later check compared with this baseline would be left pointing at nothing.
+      const comparedLater = await tx
+        .selectFrom('checks')
+        .select('id')
+        .where('baselineId', '=', current.id)
+        .where('id', '!=', checkId)
+        .executeTakeFirst();
+      if (comparedLater) {
+        throw new AppError(
+          'review_not_resettable',
+          409,
+          `Check ${comparedLater.id} was already compared with the baseline check ${checkId} approved, so the approval cannot be undone.`,
+        );
+      }
+      await tx.deleteFrom('baselines').where('id', '=', current.id).execute();
+    }
+    const updated = await tx
+      .updateTable('checks')
+      .set({ review: 'pending', reviewedBy: null, reviewedAt: null, reviewComment: null, updatedAt: Date.now() })
+      .where('id', '=', checkId)
+      .where('review', '=', check.review)
+      .executeTakeFirst();
+    // A concurrent reset or review changed the state since the read above; the transaction rolls back.
+    if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, RESETTABLE);
+    await recordReview(tx, { checkId, projectId: check.projectId, action: 'reset', actor, comment: null });
+  });
   return getCheck(deps, checkId);
 }
 

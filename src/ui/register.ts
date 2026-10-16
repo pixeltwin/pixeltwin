@@ -1,13 +1,16 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import type { AppEnv, Services } from '../http/env';
-import { APP_CSS, APP_JS, ASSET_VERSIONS } from './assets';
-import { registerAdminPages } from './pages/admin';
+import { APP_CSS, ASSET_VERSIONS } from './assets';
+import { CLIENT_MODULES, CLIENT_VERSION } from './client-assets';
 import { registerAuthPages } from './pages/auth';
 import { registerBuildPages } from './pages/build';
 import { registerCheckPages } from './pages/check';
 import { registerProjectPages } from './pages/projects';
+import { registerSettingsPages } from './pages/settings';
+import { registerUserPages } from './pages/users';
 import { uiSession } from './session';
+import { registerThemeRoute } from './theme';
 
 /** Spec §8: the server-rendered UI under /ui. Errors on these paths render HTML (see app.ts). */
 export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
@@ -25,11 +28,17 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
       'cache-control': c.req.query('v') === version ? 'public, max-age=31536000, immutable' : 'no-store',
     });
   app.get('/ui/assets/app.css', asset(APP_CSS, 'text/css; charset=utf-8', ASSET_VERSIONS.css));
-  app.get('/ui/assets/app.js', asset(APP_JS, 'text/javascript; charset=utf-8', ASSET_VERSIONS.js));
+  app.get('/ui/assets/:file{[a-z0-9-]+\\.js}', (c) => {
+    const code = CLIENT_MODULES[c.req.param('file').slice(0, -'.js'.length)];
+    if (code === undefined) return c.notFound();
+    return asset(code, 'text/javascript; charset=utf-8', CLIENT_VERSION)(c);
+  });
 
   registerAuthPages(app, s);
+  registerThemeRoute(app, s);
   registerProjectPages(app, s);
   registerBuildPages(app, s);
   registerCheckPages(app, s);
-  registerAdminPages(app, s);
+  registerSettingsPages(app, s);
+  registerUserPages(app, s);
 }

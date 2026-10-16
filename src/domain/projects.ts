@@ -7,6 +7,19 @@ import { createProjectSchema, parseInput, updateProjectSchema } from './schemas'
 
 type DbDeps = Pick<Deps, 'db'>;
 
+/** Every column but the internal build counter, which never leaves the domain. */
+const PROJECT_COLUMNS = [
+  'id',
+  'slug',
+  'name',
+  'mainBranch',
+  'colorThreshold',
+  'tolerancePercent',
+  'retentionDays',
+  'createdAt',
+  'updatedAt',
+] as const;
+
 export async function createProject(deps: DbDeps, input: unknown): Promise<Project> {
   const data = parseInput(createProjectSchema, input);
   const now = Date.now();
@@ -23,19 +36,23 @@ export async function createProject(deps: DbDeps, input: unknown): Promise<Proje
 }
 
 export async function getProjectBySlug(deps: DbDeps, slug: string): Promise<Project> {
-  const project = await deps.db.selectFrom('projects').selectAll().where('slug', '=', slug).executeTakeFirst();
+  const project = await deps.db
+    .selectFrom('projects')
+    .select(PROJECT_COLUMNS)
+    .where('slug', '=', slug)
+    .executeTakeFirst();
   if (!project) throw new AppError('project_not_found', 404, `Project "${slug}" not found.`);
   return project;
 }
 
 export async function getProjectById(deps: DbDeps, id: string): Promise<Project> {
-  const project = await deps.db.selectFrom('projects').selectAll().where('id', '=', id).executeTakeFirst();
+  const project = await deps.db.selectFrom('projects').select(PROJECT_COLUMNS).where('id', '=', id).executeTakeFirst();
   if (!project) throw new AppError('project_not_found', 404, `Project ${id} not found.`);
   return project;
 }
 
 export function listProjects(deps: DbDeps): Promise<Project[]> {
-  return deps.db.selectFrom('projects').selectAll().orderBy('slug').execute();
+  return deps.db.selectFrom('projects').select(PROJECT_COLUMNS).orderBy('slug').execute();
 }
 
 export async function updateProject(deps: DbDeps, slug: string, input: unknown): Promise<Project> {

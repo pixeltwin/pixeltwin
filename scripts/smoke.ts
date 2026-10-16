@@ -12,7 +12,7 @@ export interface SmokeTarget {
   setupToken: string;
 }
 
-function png(width: number, height: number, square?: { x: number; y: number; size: number }): Uint8Array {
+function png(width: number, height: number, square?: { x: number; y: number; size: number }): Uint8Array<ArrayBuffer> {
   const image = new PNG({ width, height });
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -76,7 +76,7 @@ export async function smoke(target: SmokeTarget, log: (line: string) => void = c
         body: '{}',
       })
     ).body.id as string;
-  const post = async (buildId: string, image: Uint8Array) => {
+  const post = async (buildId: string, image: Uint8Array<ArrayBuffer>) => {
     const form = new FormData();
     form.set('image', new File([image], 'home.png', { type: 'image/png' }));
     form.set('meta', JSON.stringify({ name: 'home', variant: { browser: 'smoke' } }));

@@ -1,4 +1,4 @@
-import type { Selectable } from 'kysely';
+import type { Generated, Selectable } from 'kysely';
 
 export const BUILD_STATES = ['open', 'finalized'] as const;
 export const CHECK_RESULTS = ['unchanged', 'changed', 'new', 'error'] as const;
@@ -8,6 +8,10 @@ export const USER_ROLES = ['admin', 'reviewer', 'viewer'] as const;
 export type BuildState = (typeof BUILD_STATES)[number];
 export type CheckResult = (typeof CHECK_RESULTS)[number];
 export type CheckReview = (typeof CHECK_REVIEWS)[number];
+export const REVIEW_ACTIONS = ['approved', 'rejected', 'reset'] as const;
+export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
+export const AREA_KINDS = ['ignore', 'compare'] as const;
+export type AreaKind = (typeof AREA_KINDS)[number];
 export type UserRole = (typeof USER_ROLES)[number];
 
 // Timestamps are epoch milliseconds. JSON values are stored as text.
@@ -20,6 +24,8 @@ export interface ProjectsTable {
   colorThreshold: number;
   tolerancePercent: number;
   retentionDays: number;
+  /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
+  buildSeq: Generated<number>;
   createdAt: number;
   updatedAt: number;
 }
@@ -35,6 +41,8 @@ export interface ImagesTable {
 export interface BuildsTable {
   id: string;
   projectId: string;
+  /** Sequential per project: #1, #2, … */
+  number: number;
   branch: string;
   baseBranch: string;
   externalId: string | null;
@@ -107,6 +115,35 @@ export interface SessionsTable {
   createdAt: number;
 }
 
+/** One approval, rejection or undo of a check (UI spec §5.2, review history). Append-only. */
+export interface ReviewEventsTable {
+  id: string;
+  checkId: string;
+  projectId: string;
+  action: ReviewAction;
+  /** The user or project token that acted, like `checks.reviewed_by`. */
+  actor: string;
+  comment: string | null;
+  createdAt: number;
+}
+
+/**
+ * A rectangle drawn on a snapshot in the UI (Plan 6). `ignore` skips its pixels; `compare`
+ * limits the comparison to the compare areas. Applies to every check of the snapshot.
+ */
+export interface SnapshotAreasTable {
+  id: string;
+  projectId: string;
+  snapshotKey: string;
+  kind: AreaKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  createdBy: string;
+  createdAt: number;
+}
+
 export interface DB {
   projects: ProjectsTable;
   images: ImagesTable;
@@ -116,9 +153,13 @@ export interface DB {
   users: UsersTable;
   projectTokens: ProjectTokensTable;
   sessions: SessionsTable;
+  reviewEvents: ReviewEventsTable;
+  snapshotAreas: SnapshotAreasTable;
 }
 
-export type Project = Selectable<ProjectsTable>;
+export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq'>;
 export type Build = Selectable<BuildsTable>;
 export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;
+export type ReviewEvent = Selectable<ReviewEventsTable>;
+export type SnapshotArea = Selectable<SnapshotAreasTable>;

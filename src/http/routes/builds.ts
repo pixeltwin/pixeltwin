@@ -1,4 +1,5 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
+import { listBranchSummaries } from '../../domain/branches';
 import { createBuild, finalizeBuild, getBuild, getBuildRow, listBuilds } from '../../domain/builds';
 import { getProjectBySlug } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
@@ -6,7 +7,7 @@ import { createBuildSchema } from '../../domain/schemas';
 import { allowProject, principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
-import { BuildSchema, json, PageQuerySchema, pageOf, problems } from '../schemas';
+import { BranchSummarySchema, BuildSchema, json, PageQuerySchema, pageOf, problems } from '../schemas';
 
 const BuildPageSchema = pageOf(BuildSchema, 'BuildPage');
 const idParam = z.object({ id: z.string() });
@@ -49,6 +50,20 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     const { slug } = c.req.valid('param');
     allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     return c.json(await listBuilds(s.deps, slug, c.req.valid('query')), 200);
+  });
+
+  const branches = defineRoute('project.read', {
+    method: 'get',
+    path: `${API}/projects/{slug}/branches`,
+    tags: ['builds'],
+    summary: 'List branches with their latest build: main first, then by latest build (at most 50)',
+    request: { params: z.object({ slug: z.string() }) },
+    responses: { 200: json(z.array(BranchSummarySchema), 'Branches'), ...problems(401, 403, 404) },
+  });
+  app.openapi(branches, async (c) => {
+    const { slug } = c.req.valid('param');
+    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
+    return c.json(await listBranchSummaries(s.deps, slug), 200);
   });
 
   const get = defineRoute('project.read', {

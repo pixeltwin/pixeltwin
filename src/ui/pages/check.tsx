@@ -1,193 +1,629 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
-import type { Project } from '../../db/schema';
-import type { DiffData, DiffErrorData, Size } from '../../diff/types';
+import type { Child } from 'hono/jsx';
+import type { Project, ReviewAction } from '../../db/schema';
+import { positionOf } from '../../diff/summary';
+import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
+import { type Area, deleteArea, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
-import { type CheckNeighbors, type CheckView, checkNeighbors, getCheck } from '../../domain/checks';
+import { type BuildView, getBuild } from '../../domain/builds';
+import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
-import { approveCheck, rejectCheck } from '../../domain/reviews';
+import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Badge, Variant, When } from '../components';
+import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { type CheckFilter, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
-
-type View = 'side' | 'diff';
 
 function isDiffData(diff: CheckView['diff']): diff is DiffData {
   return diff !== null && !('error' in diff);
 }
 
-function Shot({
-  ui,
-  sha,
-  alt,
-  size,
-  regions,
-}: {
+/** Who reviewed: a user's email, or the name of the project token that did it. */
+async function reviewerName(s: Services, id: string): Promise<string> {
+  const user = await s.deps.db.selectFrom('users').select('email').where('id', '=', id).executeTakeFirst();
+  if (user) return user.email;
+  const token = await s.deps.db.selectFrom('projectTokens').select('name').where('id', '=', id).executeTakeFirst();
+  return token ? `token “${token.name}”` : 'a deleted account';
+}
+
+/** A screenshot with region boxes; `soft` boxes only outline (side by side), diff boxes are filled. */
+function Shot(props: {
   ui: Ui;
   sha: string;
   alt: string;
   size?: Size | undefined;
-  regions?: DiffData['regions'];
+  regions?: Region[] | undefined;
+  areas?: Area[] | undefined;
+  soft?: boolean;
 }) {
+  const { ui, sha, alt, size, regions } = props;
   return (
     <div class="shot">
-      <img src={ui.url(`/api/v1/images/${sha}`)} alt={alt} width={size?.width} height={size?.height} />
+      <img
+        src={ui.url(`/api/v1/images/${sha}`)}
+        alt={alt}
+        width={size?.width}
+        height={size?.height}
+        draggable="false"
+      />
       {size && regions && regions.length > 0 && (
         // Region boxes as SVG attributes: the CSP forbids inline styles.
-        <svg viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-          {regions.map((r) => (
-            <rect x={r.x} y={r.y} width={r.width} height={r.height} />
+        <svg
+          class={props.soft ? 'soft' : undefined}
+          viewBox={`0 0 ${size.width} ${size.height}`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {regions.map((r, i) => (
+            <rect x={r.x} y={r.y} width={r.width} height={r.height} data-change={i} />
           ))}
         </svg>
       )}
+      {size && <AreaLayer areas={props.areas} size={size} />}
     </div>
+  );
+}
+
+/** The snapshot's ignore and compare areas, drawn over a screenshot in its own coordinates. */
+function AreaLayer({ areas, size }: { areas: Area[] | undefined; size: Size | undefined }) {
+  if (!size || !areas || areas.length === 0) return null;
+  return (
+    <svg class="area-layer" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
+      {areas.map((a) => (
+        <rect class={`area area-${a.kind}`} x={a.x} y={a.y} width={a.width} height={a.height} data-area={a.id} />
+      ))}
+    </svg>
+  );
+}
+
+const AREA_PLURAL: Record<Area['kind'], string> = { ignore: 'ignore areas', compare: 'compare areas' };
+
+/**
+ * Drawing tools for reviewers (Plan 6): pick a kind, then drag over a screenshot. A snapshot has
+ * one kind of area, so once it has some, the other kind is disabled. The edit bar shows while an
+ * area is being moved or resized (the island needs JavaScript, so it starts hidden).
+ */
+function DrawTools({ areas }: { areas: Area[] }) {
+  const present = areas[0]?.kind;
+  const tool = (kind: Area['kind'], label: string, key: string) => {
+    const blocked = present !== undefined && present !== kind;
+    return (
+      <button
+        type="button"
+        data-draw={kind}
+        data-key={key}
+        data-key-label={`Draw ${kind === 'ignore' ? 'an ignore' : 'a compare'} area`}
+        aria-pressed="false"
+        disabled={blocked}
+        title={blocked ? `Delete the ${AREA_PLURAL[present]} first to use ${AREA_PLURAL[kind]}` : undefined}
+      >
+        {label} <kbd>{key.toUpperCase()}</kbd>
+      </button>
+    );
+  };
+  return (
+    <>
+      <fieldset class="segmented draw-tools">
+        <legend class="visually-hidden">Draw an area</legend>
+        {tool('ignore', 'Ignore area', 'i')}
+        {tool('compare', 'Compare area', 'c')}
+      </fieldset>
+      <div class="area-edit-bar" hidden>
+        <span class="muted">Editing area</span>
+        <button type="button" class="small primary" data-area-save aria-label="Save area">
+          Save <kbd>↵</kbd>
+        </button>
+        <button type="button" class="small" data-area-cancel>
+          Cancel <kbd>Esc</kbd>
+        </button>
+      </div>
+    </>
+  );
+}
+
+/** One image area; the viewport clips, the canvas is what the island zooms and pans. */
+function Pane({ kind, caption, children }: { kind: string; caption: Child; children: Child }) {
+  return (
+    <figure class={`pane pane-${kind}`}>
+      <figcaption>{caption}</figcaption>
+      <div class="viewport">
+        <div class="canvas">{children}</div>
+      </div>
+    </figure>
+  );
+}
+
+function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; areas: Area[]; canReview: boolean }) {
+  const { ui, check, sizes, areas } = props;
+  const diff = isDiffData(check.diff) ? check.diff : null;
+  const baseline = check.baseline;
+  if (!baseline) {
+    return (
+      <section class="stage" id="stage" data-mode="new" aria-label="New snapshot">
+        <div class="panes">
+          <Pane kind="current" caption="New snapshot — no baseline yet">
+            <Shot ui={ui} sha={check.imageSha} alt="new snapshot" size={sizes.get(check.imageSha)} areas={areas} />
+          </Pane>
+        </div>
+      </section>
+    );
+  }
+  const modes: Array<[mode: string, label: string, key: string]> = [
+    ['side', 'Side', '1'],
+    ['slider', 'Slider', '2'],
+    ['onion', 'Onion', '3'],
+  ];
+  if (check.diffImageSha) modes.push(['diff', 'Diff', '4']);
+  const baseSize = sizes.get(baseline.imageSha);
+  const currentSize = sizes.get(check.imageSha);
+  return (
+    // `all` is the no-JavaScript view: side by side, then the diff. The island switches modes.
+    <section class="stage" id="stage" data-mode="all" aria-label="Comparison">
+      <div class="stage-toolbar" hidden>
+        <fieldset class="segmented modes">
+          <legend class="visually-hidden">Compare mode</legend>
+          {modes.map(([mode, label, key]) => (
+            <button type="button" data-mode-button={mode} aria-pressed="false">
+              {label} <kbd>{key}</kbd>
+            </button>
+          ))}
+        </fieldset>
+        {props.canReview && <DrawTools areas={areas} />}
+        <label class="onion-control" hidden>
+          <span class="muted">Opacity</span>
+          <input type="range" min="0" max="100" value="50" data-onion />
+        </label>
+        <div class="zoom-controls">
+          <button type="button" class="small" data-zoom="toggle" aria-label="Toggle fit and 100% (Z)">
+            <span data-zoom-label>Fit</span> <kbd>Z</kbd>
+          </button>
+        </div>
+      </div>
+      <div class="panes">
+        <Pane kind="baseline" caption={`Baseline · ${baseline.branch}`}>
+          <Shot
+            ui={ui}
+            sha={baseline.imageSha}
+            alt="baseline"
+            size={baseSize}
+            regions={diff?.regions}
+            areas={areas}
+            soft
+          />
+        </Pane>
+        <Pane kind="current" caption="This build">
+          <Shot
+            ui={ui}
+            sha={check.imageSha}
+            alt="this build"
+            size={currentSize}
+            regions={diff?.regions}
+            areas={areas}
+            soft
+          />
+        </Pane>
+        {check.diffImageSha && (
+          <Pane kind="diff" caption="Diff · changes in red">
+            <Shot
+              ui={ui}
+              sha={check.diffImageSha}
+              alt="diff"
+              size={sizes.get(check.diffImageSha)}
+              regions={diff?.regions}
+              areas={areas}
+            />
+          </Pane>
+        )}
+        <Pane
+          kind="overlay"
+          caption={
+            <>
+              <span>{`Baseline · ${baseline.branch}`}</span>
+              <span>This build</span>
+            </>
+          }
+        >
+          <div class="layers">
+            <img
+              draggable="false"
+              src={ui.url(`/api/v1/images/${baseline.imageSha}`)}
+              alt=""
+              width={baseSize?.width}
+              height={baseSize?.height}
+            />
+            <img
+              draggable="false"
+              class="layer-top"
+              src={ui.url(`/api/v1/images/${check.imageSha}`)}
+              alt=""
+              width={currentSize?.width}
+              height={currentSize?.height}
+            />
+            <AreaLayer areas={areas} size={currentSize} />
+            <div class="divider" aria-hidden="true" />
+          </div>
+        </Pane>
+      </div>
+    </section>
+  );
+}
+
+/** “top left · ” for an area of an image of known size; empty when the size is unknown. */
+function areaPlace(region: Rect, size: Size | undefined): string {
+  return size ? `${positionOf({ ...region, pixels: 0 }, size.width, size.height).replace('-', ' ')} · ` : '';
+}
+
+/** One entry of a check's review history, with the actor's name resolved. */
+interface HistoryEntry {
+  action: ReviewAction;
+  who: string;
+  comment: string | null;
+  at: number;
+}
+
+const HISTORY_VERB: Record<ReviewAction, string> = { approved: 'Approved', rejected: 'Rejected', reset: 'Undone' };
+
+async function historyOf(s: Services, checkId: string): Promise<HistoryEntry[]> {
+  const events = await listReviews(s.deps, checkId);
+  const names = new Map<string, string>();
+  for (const { actor } of events) if (!names.has(actor)) names.set(actor, await reviewerName(s, actor));
+  return events.map((e) => ({
+    action: e.action,
+    who: names.get(e.actor) ?? e.actor,
+    comment: e.comment,
+    at: e.createdAt,
+  }));
+}
+
+/** Who approved, rejected or undid, newest first. The newest entry names the current reviewer. */
+function History({ check, history }: { check: CheckView; history: HistoryEntry[] }) {
+  if (history.length === 0) return null;
+  const reviewed = check.review === 'approved' || check.review === 'rejected';
+  return (
+    <section class="review-history" aria-label="Review history">
+      <h3>History</h3>
+      <ol>
+        {history.map((entry, i) => (
+          <li class={`event event-${entry.action}`} data-reviewed-by={i === 0 && reviewed ? entry.who : undefined}>
+            <span class="event-what">
+              <strong>{HISTORY_VERB[entry.action]}</strong>
+              {` by ${entry.who}`}
+            </span>
+            <Ago at={entry.at} />
+            {entry.comment && <span class="comment">{`“${entry.comment}”`}</span>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+const AREA_VERB: Record<Area['kind'], string> = { ignore: 'Ignored', compare: 'Compared' };
+
+/** The snapshot's drawn areas, each with what it does and, for reviewers, Delete. */
+function Areas(props: {
+  ui: Ui;
+  check: CheckView;
+  areas: Area[];
+  size: Size | undefined;
+  filter: CheckFilter;
+  canReview: boolean;
+}) {
+  const { ui, check, areas, size } = props;
+  if (areas.length === 0) return null;
+  return (
+    <section class="areas" aria-label="Areas">
+      <h3>Areas</h3>
+      <ul>
+        {areas.map((a) => (
+          <li class={`area-item area-item-${a.kind}`} data-area-item={a.id}>
+            <span>
+              <strong>{AREA_VERB[a.kind]}</strong>
+              <span class="muted">{` ${areaPlace(a, size)}${a.width}×${a.height} px`}</span>
+            </span>
+            {props.canReview && (
+              <span class="area-actions">
+                <button
+                  type="button"
+                  class="small ghost"
+                  data-area-edit={a.id}
+                  hidden
+                  aria-label="Edit this area"
+                  title="Move or resize this area"
+                >
+                  Edit
+                </button>
+                <form
+                  method="post"
+                  action={ui.url(`/ui/checks/${check.id}/areas/${a.id}/delete`)}
+                  data-area-delete={a.id}
+                >
+                  <input type="hidden" name="filter" value={props.filter.key} />
+                  <button type="submit" class="small ghost" aria-label="Delete this area" title="Delete this area">
+                    Delete
+                  </button>
+                </form>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p class="hint">Areas apply to every check of this snapshot, on every branch.</p>
+    </section>
+  );
+}
+
+function Info(props: {
+  ui: Ui;
+  check: CheckView;
+  branch: string;
+  history: HistoryEntry[];
+  size: Size | undefined;
+  areas: Area[];
+  filter: CheckFilter;
+  canReview: boolean;
+}) {
+  const { check, branch, size } = props;
+  const diff = isDiffData(check.diff) ? check.diff : null;
+  const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
+  const dims = diff?.dimensions;
+  return (
+    <aside class="review-info" aria-label="About this check">
+      {diffError && <p class="diff-error">{diffError.message}</p>}
+      <dl class="facts">
+        {diff && (
+          <>
+            <dt>Diff</dt>
+            <dd>{`${diff.percent}%`}</dd>
+          </>
+        )}
+        {diff && (
+          <>
+            <dt>Tolerance</dt>
+            <dd>{`${check.tolerancePercent}%`}</dd>
+          </>
+        )}
+        {diff && diff.regions.length > 0 && (
+          <>
+            <dt>Changes</dt>
+            <dd>{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''}`}</dd>
+          </>
+        )}
+        {check.baseline && (
+          <>
+            <dt>Branch</dt>
+            <dd>
+              <span class="mono">{check.baseline.branch}</span>
+              {check.baseline.fallback && <span class="muted">{` (fallback: ${branch} has none yet)`}</span>}
+            </dd>
+          </>
+        )}
+        {dims && (dims.baseline.width !== dims.current.width || dims.baseline.height !== dims.current.height) && (
+          <>
+            <dt>Size</dt>
+            <dd>{`${dims.baseline.width}×${dims.baseline.height} → ${dims.current.width}×${dims.current.height}`}</dd>
+          </>
+        )}
+      </dl>
+      {diff && diff.regions.length > 0 && (
+        <ul class="regions" aria-label="Changes">
+          {diff.regions.map((r, i) => (
+            <li>
+              <button
+                type="button"
+                class="small ghost"
+                data-change={i}
+                aria-pressed="false"
+                title="Highlight this change on the screenshots"
+              >
+                <span>{`Change ${i + 1}`}</span>
+                <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+              </button>
+            </li>
+          ))}
+          {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
+        </ul>
+      )}
+      <Areas
+        ui={props.ui}
+        check={check}
+        areas={props.areas}
+        size={size}
+        filter={props.filter}
+        canReview={props.canReview}
+      />
+      <History check={check} history={props.history} />
+    </aside>
+  );
+}
+
+function ActionBar(props: { ui: Ui; check: CheckView; filter: CheckFilter; next: string | null; canReview: boolean }) {
+  const { ui, check, filter, next } = props;
+  if (!props.canReview) return null;
+  const reviewable = check.review === 'pending' || check.review === 'rejected';
+  const resettable = check.review === 'approved' || check.review === 'rejected';
+  if (!reviewable && !resettable) return null;
+  return (
+    <div class="action-bar">
+      {resettable && (
+        <form method="post" action={ui.url(`/ui/checks/${check.id}/reset`)} data-reset-form>
+          <button type="submit" class="ghost" data-key="u" data-key-label="Undo review">
+            Undo review <kbd>U</kbd>
+          </button>
+        </form>
+      )}
+      {reviewable && (
+        <form class="review-form" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-review-form>
+          <input type="hidden" name="filter" value={filter.key} />
+          <div class="review-buttons">
+            {check.review === 'pending' && (
+              // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
+              <button
+                type="submit"
+                class="reject"
+                formaction={ui.url(`/ui/checks/${check.id}/reject`)}
+                data-key="r"
+                data-key-label="Reject"
+              >
+                Reject <kbd>R</kbd>
+              </button>
+            )}
+            {next && (
+              <a class="button ghost" href={next} data-skip>
+                Skip
+              </a>
+            )}
+            <button type="submit" class="approve" data-key="a" data-key-label="Approve">
+              Approve <kbd>A</kbd>
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function Filmstrip(props: {
+  ui: Ui;
+  checks: CheckView[];
+  current: string;
+  filter: CheckFilter;
+  sizes: Map<string, Size>;
+}) {
+  const { ui, checks, current, filter } = props;
+  return (
+    <nav class="filmstrip" aria-label="Checks in this build">
+      <ol>
+        {checks.map((c) => {
+          const sha = thumbnailSha(c);
+          const size = props.sizes.get(sha);
+          const state = c.review === 'none' ? c.result : c.review;
+          return (
+            <li>
+              <a
+                class="frame"
+                href={ui.url(`/ui/checks/${c.id}?filter=${filter.key}`)}
+                aria-current={c.id === current ? 'true' : undefined}
+                data-frame={c.id}
+                data-review={c.review}
+              >
+                <img
+                  draggable="false"
+                  src={ui.url(`/api/v1/images/${sha}`)}
+                  alt=""
+                  loading="lazy"
+                  width={size?.width}
+                  height={size?.height}
+                />
+                <Dot tone={toneOf(state)} label={`${c.name}: ${state}`} />
+              </a>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }
 
 function CheckPage(props: {
   ui: Ui;
   project: Project;
+  build: BuildView;
   check: CheckView;
-  view: View;
+  filter: CheckFilter;
+  strip: CheckView[];
   sizes: Map<string, Size>;
-  nav: CheckNeighbors;
   canReview: boolean;
+  history: HistoryEntry[];
+  areas: Area[];
   notice?: string | undefined;
-  error?: string | undefined;
 }) {
-  const { ui, project, check, view, sizes, nav } = props;
-  const diff = isDiffData(check.diff) ? check.diff : null;
-  const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
-  const reviewable = props.canReview && (check.review === 'pending' || check.review === 'rejected');
-  const here = (v: View) => ui.url(`/ui/checks/${check.id}?view=${v}`);
-
+  const { ui, project, build, check, filter, strip } = props;
+  const at = strip.findIndex((c) => c.id === check.id);
+  // When the check is outside the filter (reviewed meanwhile), its neighbours are found by order.
+  const prevCheck = at >= 0 ? strip[at - 1] : strip.filter((c) => c.id < check.id).at(-1);
+  const nextCheck = at >= 0 ? strip[at + 1] : strip.find((c) => c.id > check.id);
+  const href = (c: CheckView | undefined) => (c ? ui.url(`/ui/checks/${c.id}?filter=${filter.key}`) : null);
+  const prev = href(prevCheck);
+  const next = href(nextCheck);
+  const buildHref = ui.url(`/ui/builds/${build.id}?filter=${filter.key}`);
   return (
-    <Layout ui={ui} title={check.name} notice={props.notice} error={props.error}>
-      <p class="muted">
-        <a href={ui.url(`/ui/p/${project.slug}`)}>{project.name}</a>
-        {' / '}
-        <a href={ui.url(`/ui/builds/${check.buildId}`)}>build</a>
-        {nav.previous && (
-          <>
-            {' · '}
-            <a href={ui.url(`/ui/checks/${nav.previous}`)} data-key="k">
-              ← previous <kbd>k</kbd>
-            </a>
-          </>
-        )}
-        {nav.next && (
-          <>
-            {' · '}
-            <a href={ui.url(`/ui/checks/${nav.next}`)} data-key="j">
-              next <kbd>j</kbd> →
-            </a>
-          </>
-        )}
-      </p>
-      <h1>
-        {`${check.name} `}
-        <Badge value={check.result} /> {check.review !== 'none' && <Badge value={check.review} />}
-      </h1>
-      <p class="sub">
-        <Variant variant={check.variant} />
-      </p>
-
-      <div class="layout">
-        <section>
-          {check.baseline && check.diffImageSha && (
-            <nav class="tabs">
-              <a class={view === 'diff' ? 'current' : ''} href={here('diff')}>
-                Diff
+    <Layout
+      ui={ui}
+      title={check.name}
+      notice={props.notice}
+      islands={['review']}
+      project={project.slug}
+      variant="focus"
+      crumbs={[
+        { label: project.name, href: ui.url(`/ui/p/${project.slug}`) },
+        {
+          label: build.branch,
+          href: ui.url(`/ui/p/${project.slug}/builds?branch=${encodeURIComponent(build.branch)}`),
+        },
+        { label: `#${build.number}`, href: ui.url(`/ui/builds/${build.id}`) },
+        { label: check.name },
+      ]}
+    >
+      <div
+        class="review"
+        id="review"
+        data-check={check.id}
+        data-build={build.id}
+        data-build-number={String(build.number)}
+        data-project-href={ui.url(`/ui/p/${project.slug}`)}
+        data-filter={filter.key}
+      >
+        <header class="review-head">
+          <a class="button ghost small" href={buildHref} data-key="escape" data-key-label="Back to the build">
+            {`← #${build.number}`}
+          </a>
+          <div class="review-title">
+            <h1>{check.name}</h1>
+            <Variant variant={check.variant} />
+          </div>
+          <CheckStatus check={check} />
+          <span class="review-nav">
+            {prev && (
+              <a
+                class="button small"
+                href={prev}
+                data-key="k"
+                data-key-label="Previous check"
+                aria-label="Previous check"
+              >
+                ←
               </a>
-              <a class={view === 'side' ? 'current' : ''} href={here('side')}>
-                Side by side
+            )}
+            <span class="review-position">{`${at >= 0 ? at + 1 : '–'} / ${strip.length}`}</span>
+            {next && (
+              <a class="button small" href={next} data-key="j" data-key-label="Next check" aria-label="Next check">
+                →
               </a>
-            </nav>
-          )}
-          {view === 'diff' && check.diffImageSha && diff ? (
-            <figure class="diffview">
-              <figcaption>Changed pixels in red, regions outlined</figcaption>
-              <Shot
-                ui={ui}
-                sha={check.diffImageSha}
-                alt="diff"
-                size={sizes.get(check.diffImageSha)}
-                regions={diff.regions}
-              />
-            </figure>
-          ) : check.baseline ? (
-            <div class="compare">
-              <figure>
-                <figcaption>{`Baseline (${check.baseline.branch})`}</figcaption>
-                <Shot ui={ui} sha={check.baseline.imageSha} alt="baseline" size={sizes.get(check.baseline.imageSha)} />
-              </figure>
-              <figure>
-                <figcaption>This build</figcaption>
-                <Shot ui={ui} sha={check.imageSha} alt="current" size={sizes.get(check.imageSha)} />
-              </figure>
-            </div>
-          ) : (
-            <figure class="diffview">
-              <figcaption>New snapshot: no baseline yet. Approve to make it the baseline.</figcaption>
-              <Shot ui={ui} sha={check.imageSha} alt="current" size={sizes.get(check.imageSha)} />
-            </figure>
-          )}
-        </section>
-
-        <aside class="panel">
-          <dl>
-            <dt>Summary</dt>
-            <dd>{diff?.summary ?? diffError?.message ?? 'New snapshot.'}</dd>
-            {diff && (
-              <>
-                <dt>Changed</dt>
-                <dd>{`${diff.pixels} px (${diff.percent}%), ${diff.regions.length}${diff.regionsTruncated ? '+' : ''} region${diff.regions.length === 1 && !diff.regionsTruncated ? '' : 's'}`}</dd>
-              </>
             )}
-            <dt>Baseline</dt>
-            <dd>
-              {check.baseline
-                ? `${check.baseline.branch}${check.baseline.fallback ? ' (fallback from base branch)' : ''}`
-                : 'none'}
-            </dd>
-            <dt>Thresholds</dt>
-            <dd>{`colour ${check.colorThreshold}, tolerance ${check.tolerancePercent}%`}</dd>
-            {check.reviewedAt !== null && (
-              <>
-                <dt>Reviewed</dt>
-                <dd>
-                  <When at={check.reviewedAt} />
-                  {check.reviewComment && <div>{`“${check.reviewComment}”`}</div>}
-                </dd>
-              </>
-            )}
-          </dl>
-          {reviewable && (
-            <div class="actions">
-              <form class="stack" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-key="a">
-                <button class="approve" type="submit">
-                  Approve <kbd>a</kbd>
-                </button>
-              </form>
-              {check.review === 'pending' && (
-                // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
-                <form class="stack" method="post" action={ui.url(`/ui/checks/${check.id}/reject`)} data-key="r">
-                  <textarea name="comment" rows={2} maxlength={1000} placeholder="Optional comment" />
-                  <button class="reject" type="submit">
-                    Reject <kbd>r</kbd>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-          {nav.nextPending && (
-            <p>
-              <a href={ui.url(`/ui/checks/${nav.nextPending}`)}>Next to review →</a>
-            </p>
-          )}
-        </aside>
+          </span>
+        </header>
+        <div class="progress" data-progress hidden>
+          <span />
+        </div>
+        <div class="review-body">
+          <Stage ui={ui} check={check} sizes={props.sizes} areas={props.areas} canReview={props.canReview} />
+          <Info
+            ui={ui}
+            check={check}
+            branch={build.branch}
+            history={props.history}
+            size={props.sizes.get(check.imageSha)}
+            areas={props.areas}
+            filter={filter}
+            canReview={props.canReview}
+          />
+        </div>
+        <ActionBar ui={ui} check={check} filter={filter} next={next} canReview={props.canReview} />
+        <Filmstrip ui={ui} checks={strip} current={check.id} filter={filter} sizes={props.sizes} />
       </div>
     </Layout>
   );
@@ -197,26 +633,31 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
   app.get('/ui/checks/:id', async (c) => {
     const ui = uiOf(c, s);
     const check = await getCheck(s.deps, c.req.param('id'));
-    const [project, nav, sizes] = await Promise.all([
+    // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
+    const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
+    const [project, build, strip, history, areas] = await Promise.all([
       getProjectById(s.deps, check.projectId),
-      checkNeighbors(s.deps, check),
-      imageSizes(
-        s.deps,
-        [check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
-      ),
+      getBuild(s.deps, check.buildId),
+      listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, limit: 200 }),
+      historyOf(s, check.id),
+      listAreas(s.deps, check.id),
     ]);
-    const asked = c.req.query('view');
-    const view: View = asked === 'side' || asked === 'diff' ? asked : check.result === 'changed' ? 'diff' : 'side';
-    const canReview = hasPermission(userOf(c), 'check.review');
+    const sizes = await imageSizes(s.deps, [
+      ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
+      ...strip.items.map(thumbnailSha),
+    ]);
     return c.html(
       <CheckPage
         ui={ui}
         project={project}
+        build={build}
         check={check}
-        view={view}
+        filter={filter}
+        strip={strip.items}
         sizes={sizes}
-        nav={nav}
-        canReview={canReview}
+        canReview={hasPermission(userOf(c), 'check.review')}
+        history={history}
+        areas={areas}
         notice={noticeOf(c)}
       />,
     );
@@ -231,6 +672,8 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       }
       const form = await c.req.parseBody();
       const comment = field(form, 'comment');
+      const filterKey = field(form, 'filter');
+      const filter = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
       const id = c.req.param('id');
       const review = action === 'approve' ? approveCheck : rejectCheck;
       const check = await review(s.deps, id, user.id, comment ? { comment } : {});
@@ -238,9 +681,31 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       const { nextPending } = await checkNeighbors(s.deps, check);
       const done = action === 'approve' ? 'approved' : 'rejected';
       return c.redirect(
-        ui.url(nextPending ? `/ui/checks/${nextPending}?done=${done}` : `/ui/builds/${check.buildId}?done=${done}`),
+        ui.url(
+          nextPending ? `/ui/checks/${nextPending}?${filter}done=${done}` : `/ui/builds/${check.buildId}?done=${done}`,
+        ),
         303,
       );
     });
   }
+
+  app.post('/ui/checks/:id/areas/:areaId/delete', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
+    }
+    const form = await c.req.parseBody();
+    const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
+    const check = await deleteArea(s.deps, c.req.param('id'), c.req.param('areaId'));
+    return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=area-deleted`), 303);
+  });
+
+  app.post('/ui/checks/:id/reset', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
+    }
+    const check = await resetReview(s.deps, c.req.param('id'), userOf(c).id);
+    return c.redirect(ui.url(`/ui/checks/${check.id}?done=reset`), 303);
+  });
 }

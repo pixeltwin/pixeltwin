@@ -1,0 +1,725 @@
+/* Focus-mode review (UI spec §5). Without JavaScript the stage shows everything stacked
+   (data-mode="all"); the viewer island adds .interactive and switches modes. */
+body.focus main {
+  max-width: none;
+  padding: 0;
+}
+.review {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-height));
+}
+.review-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.review-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.review-title h1 {
+  font-size: var(--text-xl);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.review-position {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.progress {
+  height: 3px;
+  background: var(--surface-2);
+}
+.progress span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--primary);
+  transition: width var(--duration);
+}
+.review-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  min-height: 0;
+}
+
+/* Filmstrip (before the stage rules: its img selector is less specific). */
+.filmstrip {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+}
+.filmstrip ol {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  list-style: none;
+}
+.frame {
+  position: relative;
+  display: block;
+  width: 96px;
+  height: 60px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.frame .dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.frame[aria-current="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+/* Stage. */
+.stage {
+  min-width: 0;
+  padding: var(--space-4);
+}
+.stage:focus-visible {
+  outline-offset: -2px;
+}
+.stage-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.stage-toolbar .segmented {
+  margin: 0;
+}
+.onion-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-weight: 400;
+}
+.zoom-controls {
+  margin-left: auto;
+}
+.panes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.pane {
+  margin: 0;
+  min-width: 0;
+}
+.pane figcaption {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.viewport {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--stage-bg);
+}
+.shot {
+  position: relative;
+}
+.shot img,
+.layers img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  /* A hairline and a soft shadow keep white screenshots apart from the light stage. */
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    0 1px 4px rgb(0 0 0 / 0.08);
+}
+.shot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.shot svg rect {
+  fill: var(--diff-fill);
+  stroke: var(--diff);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.layers {
+  position: relative;
+}
+.layers .layer-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 24px;
+  margin-left: -12px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 11px;
+  width: 2px;
+  background: var(--focus);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
+}
+
+/* No JavaScript: baseline and this build side by side, the diff below, no overlay. */
+.stage[data-mode="all"] .pane-diff {
+  grid-column: 1 / -1;
+}
+.stage[data-mode="all"] .pane-overlay,
+.stage[data-mode="new"] .pane-overlay {
+  display: none;
+}
+.stage[data-mode="new"] .panes {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* With the viewer: sized viewports, transformed canvases, one mode at a time. On phones the page
+   scrolls, so viewports get a height of their own; wide screens size them to the window below. */
+.stage.interactive .viewport {
+  height: max(240px, calc(100dvh - 420px));
+  cursor: grab;
+  touch-action: none;
+}
+.stage.interactive .viewport:active {
+  cursor: grabbing;
+}
+.stage.interactive .canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.stage.interactive .shot img,
+.stage.interactive .layers img {
+  max-width: none;
+}
+.stage.interactive .pane {
+  display: none;
+}
+.stage.interactive[data-mode="side"] .pane-baseline,
+.stage.interactive[data-mode="side"] .pane-current,
+.stage.interactive[data-mode="slider"] .pane-overlay,
+.stage.interactive[data-mode="onion"] .pane-overlay,
+.stage.interactive[data-mode="diff"] .pane-diff,
+.stage.interactive[data-mode="new"] .pane-current {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.stage.interactive:not([data-mode="side"]) .panes {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Wide screens: the review fills the window exactly. Header, action bar and filmstrip keep their
+   height; the stage takes the rest, so nothing falls below the bottom edge. */
+@media (min-width: 901px) {
+  .review:has(.stage.interactive) {
+    height: calc(100dvh - var(--topbar-height));
+    min-height: 0;
+  }
+  .review:has(.stage.interactive) .review-body {
+    min-height: 0;
+  }
+  .review:has(.stage.interactive) .review-info {
+    overflow-y: auto;
+  }
+  .stage.interactive {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .stage.interactive .panes {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .stage.interactive .viewport {
+    flex: 1;
+    height: auto;
+    min-height: 120px;
+  }
+}
+
+/* Info strip. */
+.review-info {
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+.review-info .diff-error {
+  margin-top: 0;
+  color: var(--red);
+  font-weight: 500;
+}
+.facts {
+  gap: var(--space-1) var(--space-4);
+}
+.regions {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.regions button {
+  width: 100%;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.review-history {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.review-history h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.review-history ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* A timeline: a dot per event in the colour of what happened, joined by a thin line. */
+.event {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
+  padding: 0 0 var(--space-3) var(--space-5);
+}
+.event::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--event-dot, var(--text-muted));
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.event:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: var(--border);
+}
+.event-approved {
+  --event-dot: var(--green-dot);
+}
+.event-rejected {
+  --event-dot: var(--red-dot);
+}
+.event-what {
+  overflow-wrap: anywhere;
+}
+.event time {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.event .comment {
+  grid-column: 1 / -1;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Action bar: sticky at the bottom, in thumb reach on phones. */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.review-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+}
+.review-buttons {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.review-buttons button,
+.review-buttons .button {
+  min-height: 38px;
+  padding: 0 var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .review-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-info {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+@media (max-width: 640px) {
+  .panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stage {
+    padding: var(--space-2);
+  }
+  .review-title .muted {
+    display: none;
+  }
+  .review-form {
+    flex-wrap: wrap;
+  }
+  .review-buttons {
+    width: 100%;
+  }
+  .review-buttons > * {
+    flex: 1;
+  }
+}
+.stage.magnified .canvas img {
+  image-rendering: pixelated;
+}
+.reviewed-screen {
+  grid-column: 1 / -1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+}
+.reviewed-screen h2 {
+  margin: 0;
+  font-size: var(--text-2xl);
+}
+.verdict-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Dragging moves the divider or pans; it must never select or drag the images themselves. */
+.stage.interactive .viewport,
+.stage.interactive .viewport img {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+/* Side by side: changed regions are outlined on both images. */
+.shot svg.soft rect {
+  fill: none;
+  stroke-dasharray: 4 3;
+}
+/* A change pointed at (or pinned) in the info strip. */
+.shot svg rect.is-hot {
+  fill: rgb(229 72 77 / 0.3);
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.regions button.is-hot {
+  background: var(--surface-hover);
+}
+.crosshair {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.crosshair::before,
+.crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--focus);
+  opacity: 0.7;
+}
+.crosshair::before {
+  top: 0;
+  bottom: 0;
+  left: var(--x, 0);
+  width: 1px;
+}
+.crosshair::after {
+  left: 0;
+  right: 0;
+  top: var(--y, 0);
+  height: 1px;
+}
+/* A knob on the divider says it can be dragged. */
+.divider::after {
+  content: "‹ ›";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: var(--focus);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+}
+.stage[data-mode="slider"] .viewport {
+  cursor: ew-resize;
+}
+
+/* Ignore and compare areas (Plan 6), one colour each wherever they appear (stage, toolbar, list):
+   amber with a dashed outline where pixels are skipped, blue with a solid outline where the
+   comparison is limited to. Drawing shows a crosshair and a live rectangle in the same colour. */
+.area-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.area {
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.area-ignore {
+  fill: rgb(245 159 0 / 0.3);
+  stroke: var(--amber-dot);
+  stroke-dasharray: 6 4;
+}
+.area-compare {
+  fill: rgb(28 126 214 / 0.14);
+  stroke: var(--blue-dot);
+}
+.stage[data-drawing="ignore"] .viewport,
+.stage[data-drawing="compare"] .viewport {
+  cursor: crosshair;
+}
+/* Reviewers pick an area on the screenshot to move or resize it. */
+.stage[data-areas-editable]:not([data-drawing="ignore"], [data-drawing="compare"]) .area {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+.area.is-editing {
+  stroke-dasharray: none;
+}
+.area-editor {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  border: 2px solid var(--amber-dot);
+  cursor: move;
+  touch-action: none;
+}
+.area-editor-compare {
+  border-color: var(--blue-dot);
+}
+.area-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--amber-dot);
+  border-radius: 2px;
+  background: var(--surface);
+}
+.area-editor-compare .area-handle {
+  border-color: var(--blue-dot);
+}
+.area-handle-nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.area-handle-n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.area-handle-ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.area-handle-e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.area-handle-se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.area-handle-s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.area-handle-sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.area-handle-w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+.area-edit-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.area-edit-bar[hidden],
+.draw-tools[hidden] {
+  display: none;
+}
+.area-edit-bar .muted {
+  font-size: var(--text-sm);
+}
+.area-draft {
+  position: fixed;
+  z-index: 50;
+  border: 2px dashed var(--amber-dot);
+  background: rgb(245 159 0 / 0.3);
+  pointer-events: none;
+}
+.area-draft-compare {
+  border-style: solid;
+  border-color: var(--blue-dot);
+  background: rgb(28 126 214 / 0.14);
+}
+.draw-tools [data-draw]::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: var(--space-2);
+  border: 2px dashed var(--amber-dot);
+  border-radius: 2px;
+  background: rgb(245 159 0 / 0.3);
+  vertical-align: -1px;
+}
+.draw-tools [data-draw="compare"]::before {
+  border-style: solid;
+  border-color: var(--blue-dot);
+  background: rgb(28 126 214 / 0.14);
+}
+.draw-tools button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.areas {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.areas h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.areas ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.area-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--amber-dot);
+}
+.area-item-compare {
+  border-left-color: var(--blue-dot);
+}
+.area-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+/* Pointing at an area in the list lights it up on every screenshot. */
+.area-item.is-hot {
+  background: var(--surface-hover);
+}
+.area.is-hot {
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.area-ignore.is-hot {
+  fill: rgb(245 159 0 / 0.5);
+}
+.area-compare.is-hot {
+  fill: rgb(28 126 214 / 0.32);
+}
+.areas .hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

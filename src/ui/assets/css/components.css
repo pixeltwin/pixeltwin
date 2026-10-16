@@ -1,0 +1,468 @@
+/* Shared components: buttons, forms, pills, dots, tables, panels, tabs. */
+
+/* Buttons. `.primary` is the main action of a page; `.approve`/`.reject` are review actions. */
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration),
+    border-color var(--duration);
+}
+button:hover,
+.button:hover {
+  background: var(--surface-hover);
+  text-decoration: none;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.primary,
+.button.primary,
+button.approve {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+button.primary:hover,
+.button.primary:hover,
+button.approve:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+button.reject,
+button.danger {
+  color: var(--red);
+}
+button.danger:hover,
+button.reject:hover {
+  background: var(--red-bg);
+  border-color: var(--red-border);
+}
+button.ghost {
+  border-color: transparent;
+  background: none;
+}
+button.ghost:hover {
+  background: var(--surface-2);
+}
+button.small,
+.button.small {
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.segmented button,
+.segmented a {
+  min-height: 26px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+}
+.segmented button[aria-pressed="true"],
+.segmented a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  text-align: center;
+}
+button.primary kbd,
+button.approve kbd {
+  background: transparent;
+  border-color: currentColor;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* Forms. */
+form {
+  margin: 0;
+}
+form.inline {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+label,
+legend {
+  display: block;
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  color: var(--text);
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+fieldset label {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  margin: var(--space-1) var(--space-4) 0 0;
+  font-weight: 400;
+}
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  min-height: 34px;
+  padding: var(--space-1) var(--space-3);
+}
+textarea {
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: 0;
+  accent-color: var(--primary);
+}
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+textarea {
+  width: 100%;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+  border-color: var(--focus);
+}
+input[aria-invalid="true"] {
+  border-color: var(--red);
+}
+.hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.field-error {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--red);
+}
+.row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: end;
+  flex-wrap: wrap;
+}
+.row > * {
+  flex: 1;
+  min-width: 160px;
+}
+.row > button {
+  flex: 0;
+}
+
+/* Pills and status dots: one colour role per status (UI spec §2). */
+.pill,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border: 1px solid var(--grey-border);
+  border-radius: var(--radius-full);
+  background: var(--grey-bg);
+  color: var(--grey);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.tone-green,
+.badge.passed,
+.badge.unchanged,
+.badge.approved {
+  border-color: var(--green-border);
+  background: var(--green-bg);
+  color: var(--green);
+}
+.tone-amber,
+.badge.pending,
+.badge.changed {
+  border-color: var(--amber-border);
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.tone-blue,
+.badge.new,
+.badge.open {
+  border-color: var(--blue-border);
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+.tone-red,
+.badge.error,
+.badge.rejected {
+  border-color: var(--red-border);
+  background: var(--red-bg);
+  color: var(--red);
+}
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--grey-dot);
+}
+.dot.tone-green {
+  background: var(--green-dot);
+}
+.dot.tone-amber {
+  background: var(--amber-dot);
+}
+.dot.tone-blue {
+  background: var(--blue-dot);
+}
+.dot.tone-red {
+  background: var(--red-dot);
+}
+.dot.tone-blue.live {
+  box-shadow: 0 0 0 0 var(--blue-dot);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* Surfaces. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+.narrow {
+  max-width: 400px;
+  margin: var(--space-10) auto;
+}
+.secret {
+  font-family: var(--font-mono);
+  word-break: break-all;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+}
+.empty {
+  padding: var(--space-10) var(--space-6);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty h2,
+.empty h3 {
+  color: var(--text);
+  margin: 0 0 var(--space-2);
+}
+dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Tables: a card with rows; collapse to stacked cards on phones. */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+th,
+td {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+th {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+}
+tr:last-child td {
+  border-bottom: 0;
+}
+tbody tr:hover {
+  background: var(--surface-hover);
+}
+td input,
+td select {
+  width: auto;
+}
+
+/* Tabs: project sections (underline) and filters (chips). */
+.tabs {
+  display: flex;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs a {
+  padding: var(--space-2) 0;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.tabs a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.tabs a.current,
+.tabs a[aria-current="page"] {
+  color: var(--text);
+  border-bottom-color: var(--text);
+  font-weight: 550;
+}
+.chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.chips a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.chips a:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+.chips a[aria-current="page"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+.chips .count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  main {
+    padding: var(--space-4) var(--space-3) var(--space-8);
+  }
+  h1 {
+    font-size: var(--text-xl);
+  }
+  table.stack-on-phone,
+  table.stack-on-phone tbody,
+  table.stack-on-phone tr,
+  table.stack-on-phone td {
+    display: block;
+  }
+  table.stack-on-phone thead {
+    display: none;
+  }
+  /* Each row becomes a card whose cells flow like words; empty cells disappear. */
+  table.stack-on-phone tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+  table.stack-on-phone td {
+    padding: 0;
+    border: 0;
+  }
+  table.stack-on-phone td.empty-on-phone {
+    display: none;
+  }
+  table:not(.stack-on-phone) {
+    display: block;
+    overflow-x: auto;
+  }
+}
+.status {
+  display: inline-flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}

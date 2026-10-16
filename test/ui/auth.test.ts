@@ -71,6 +71,23 @@ describe('UI authentication', () => {
     expect(location(await t.request('GET', '/ui/setup'))).toBe('/ui/login');
   });
 
+  test('login and setup are a centred card; setup says where its link comes from and marks bad fields', async () => {
+    t = await createTestApp({ setupToken: 'setup-secret' });
+    const setup = await html(await t.request('GET', '/ui/setup?token=setup-secret'));
+    expect(setup).toContain('class="auth-card"');
+    expect(setup).toContain('the server log');
+    const short = await postForm(t, '/ui/setup', {
+      token: 'setup-secret',
+      email: 'root@example.com',
+      password: 'short',
+    });
+    expect(short.status).toBe(422);
+    expect(await html(short)).toMatch(/id="setup-password"[^>]*aria-invalid="true"/);
+
+    await postForm(t, '/ui/setup', { token: 'setup-secret', email: 'root@example.com', password: PASSWORD });
+    expect(await html(await t.request('GET', '/ui/login'))).toContain('class="auth-card"');
+  });
+
   test('logout ends the session', async () => {
     t = await createTestApp();
     const admin = await t.userAs('admin');
@@ -99,8 +116,8 @@ describe('UI authentication', () => {
     expect((await html(page)).startsWith('<!doctype html>')).toBe(true);
     const css = await t.request('GET', '/ui/assets/app.css');
     expect(css.headers.get('content-type')).toStartWith('text/css');
-    expect(await css.text()).toContain('--accent');
-    expect((await t.request('GET', '/ui/assets/app.js')).headers.get('content-type')).toStartWith('text/javascript');
+    expect(await css.text()).toContain('--primary');
+    expect((await t.request('GET', '/ui/assets/boot.js')).headers.get('content-type')).toStartWith('text/javascript');
     const missing = await t.request('GET', '/ui/nowhere', { as: admin });
     expect(missing.status).toBe(404);
     expect(await html(missing)).toContain('Not found');
@@ -110,7 +127,7 @@ describe('UI authentication', () => {
     t = await createTestApp();
     const page = await html(await t.request('GET', '/ui/login'));
     const css = /href="(\/ui\/assets\/app\.css\?v=[0-9a-f]{12})"/.exec(page)?.[1];
-    const js = /src="(\/ui\/assets\/app\.js\?v=[0-9a-f]{12})"/.exec(page)?.[1];
+    const js = /src="(\/ui\/assets\/boot\.js\?v=[0-9a-f]{12})"/.exec(page)?.[1];
     expect(css).toBeDefined();
     expect(js).toBeDefined();
     const res = await t.request('GET', css ?? '');
@@ -133,7 +150,7 @@ describe('UI authentication', () => {
 
   test('only the current asset version is cached as immutable', async () => {
     t = await createTestApp();
-    for (const path of ['/ui/assets/app.css?v=deadbeef0000', '/ui/assets/app.css', '/ui/assets/app.js?v=0']) {
+    for (const path of ['/ui/assets/app.css?v=deadbeef0000', '/ui/assets/app.css', '/ui/assets/boot.js?v=0']) {
       const res = await t.request('GET', path);
       expect({ path, cache: res.headers.get('cache-control') }).toEqual({ path, cache: 'no-store' });
     }

@@ -16,7 +16,8 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 
 ## Workflow (five calls)
 
-1. Open a build. Reuse \`externalId\` on retries; the same build comes back.
+1. Open a build. Reuse \`externalId\` on retries; the same build comes back. Its \`number\`
+   counts builds per project (#1, #2, …), as the web UI shows them.
 
    curl -X POST ${api}/projects/<slug>/builds \\
      -H "Authorization: Bearer $PIXELTWIN_TOKEN" -H "Content-Type: application/json" \\
@@ -41,7 +42,12 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
    curl -X POST ${api}/builds/<buildId>/finalize -H "Authorization: Bearer $PIXELTWIN_TOKEN"
 
 5. Act on \`verdict\`. Only \`passed\` is success. Changes wait for a human (or a token with the
-   \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject.
+   \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject. /reset undoes either.
+   A screen part that always changes (a clock, an ad) can be skipped for good: POST
+   ${api}/checks/<checkId>/areas {"kind":"ignore","x":…,"y":…,"width":…,"height":…} applies
+   to every later check of that snapshot; kind "compare" compares only inside such areas.
+   A snapshot has one kind of area (409 area_kind_conflict otherwise). PATCH
+   ${api}/checks/<checkId>/areas/<areaId> {"x":…,"y":…,"width":…,"height":…} moves one.
 
 ## Values
 

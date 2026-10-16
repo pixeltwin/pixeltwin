@@ -43,6 +43,8 @@ export interface DiffJob {
   /** null: only validate that `current` decodes. */
   baseline: Uint8Array | null;
   ignoreRegions: Rect[];
+  /** When not empty, only pixels inside these rectangles are compared (UI-drawn compare areas). */
+  compareRegions?: Rect[];
   colorThreshold: number;
   tolerancePercent: number;
   /**

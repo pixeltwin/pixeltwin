@@ -35,15 +35,24 @@ function cropMask(mask: Uint8Array, fullWidth: number, width: number, height: nu
   return out;
 }
 
-/** One byte per pixel, 1 inside any ignore region. */
-function ignoreMaskFor(regions: Rect[], width: number, height: number): Uint8Array | null {
-  if (regions.length === 0) return null;
+function fillRect(mask: Uint8Array, r: Rect, value: number, width: number, height: number): void {
+  const x1 = Math.min(width, r.x + r.width);
+  const y1 = Math.min(height, r.y + r.height);
+  for (let y = Math.max(0, r.y); y < y1; y++) mask.fill(value, y * width + Math.max(0, r.x), y * width + x1);
+}
+
+/**
+ * One byte per pixel, 1 where the comparison skips the pixel: everything outside the compare
+ * regions (when there are any), and everything inside an ignore region.
+ */
+function ignoreMaskFor(ignore: Rect[], compare: Rect[], width: number, height: number): Uint8Array | null {
+  if (ignore.length === 0 && compare.length === 0) return null;
   const mask = new Uint8Array(width * height);
-  for (const r of regions) {
-    const x1 = Math.min(width, r.x + r.width);
-    const y1 = Math.min(height, r.y + r.height);
-    for (let y = Math.max(0, r.y); y < y1; y++) mask.fill(1, y * width + Math.max(0, r.x), y * width + x1);
+  if (compare.length > 0) {
+    mask.fill(1);
+    for (const r of compare) fillRect(mask, r, 0, width, height);
   }
+  for (const r of ignore) fillRect(mask, r, 1, width, height);
   return mask;
 }
 
@@ -84,7 +93,7 @@ export function compareImages(job: DiffJob): DiffJobResult {
   const overlapHeight = Math.min(current.height, baseline.height);
   const sizeChanged = current.width !== baseline.width || current.height !== baseline.height;
 
-  const ignore = ignoreMaskFor(job.ignoreRegions, width, height);
+  const ignore = ignoreMaskFor(job.ignoreRegions, job.compareRegions ?? [], width, height);
   const overlapIgnore = ignore && sizeChanged ? cropMask(ignore, width, overlapWidth, overlapHeight) : ignore;
   const overlapDiff = new Uint8Array(overlapWidth * overlapHeight * 4);
   pixelmatch(
@@ -126,7 +135,14 @@ export function compareImages(job: DiffJob): DiffJobResult {
     }
   }
 
-  const exactPercent = (pixels / (width * height)) * 100;
+  // With compare regions the share is of the pixels they compare, so a small region is not
+  // drowned by the rest of the canvas; otherwise it is of the whole canvas.
+  let compared = width * height;
+  if (ignore && (job.compareRegions?.length ?? 0) > 0) {
+    compared = 0;
+    for (const skipped of ignore) if (!skipped) compared += 1;
+  }
+  const exactPercent = compared > 0 ? (pixels / compared) * 100 : 0;
   const result = exactPercent > job.tolerancePercent ? 'changed' : 'unchanged';
   const percent = roundPercent(exactPercent);
   const dimensions = sizeChanged

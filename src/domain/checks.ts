@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import type { Baseline, Build, CheckResult, CheckReview, CheckRow } from '../db/schema';
 import { IDENTICAL_SUMMARY } from '../diff/summary';
 import type { DiffData, DiffErrorData, DiffJobResult, Rect, Size } from '../diff/types';
@@ -72,19 +73,46 @@ function invalidImage(message: string): AppError {
   return new AppError('invalid_image', 422, message);
 }
 
+/** What a comparison skips: the check's own ignore regions plus the snapshot's drawn areas. */
+interface SnapshotRegions {
+  ignore: Rect[];
+  compare: Rect[];
+}
+
+async function regionsFor(
+  db: Deps['db'],
+  projectId: string,
+  snapshotKey: string,
+  checkIgnore: Rect[],
+): Promise<SnapshotRegions> {
+  const areas = await db
+    .selectFrom('snapshotAreas')
+    .select(['kind', 'x', 'y', 'width', 'height'])
+    .where('projectId', '=', projectId)
+    .where('snapshotKey', '=', snapshotKey)
+    .orderBy('id')
+    .execute();
+  const rect = ({ x, y, width, height }: Rect) => ({ x, y, width, height });
+  return {
+    ignore: [...checkIgnore, ...areas.filter((a) => a.kind === 'ignore').map(rect)],
+    compare: areas.filter((a) => a.kind === 'compare').map(rect),
+  };
+}
+
 async function evaluate(
   deps: Deps,
   image: Uint8Array,
   imageSha: string,
   header: PngSize,
   baseline: Baseline | null,
-  ignoreRegions: Rect[],
+  regions: SnapshotRegions,
   colorThreshold: number,
   tolerancePercent: number,
 ): Promise<Outcome> {
   const job = {
     current: image,
-    ignoreRegions,
+    ignoreRegions: regions.ignore,
+    compareRegions: regions.compare,
     colorThreshold,
     tolerancePercent,
     maxPixels: deps.limits.maxImagePixels,
@@ -225,7 +253,7 @@ export async function submitCheck(
     imageSha,
     header,
     resolved?.baseline ?? null,
-    meta.ignoreRegions,
+    await regionsFor(deps.db, project.id, key, meta.ignoreRegions),
     colorThreshold,
     tolerancePercent,
   );
@@ -285,6 +313,67 @@ export async function submitCheck(
   return { check: toCheckView(row), created };
 }
 
+/**
+ * Compares a check with its baseline again, after the snapshot's areas changed (Plan 6). The
+ * result and diff follow the new comparison; a check nobody reviewed yet gets the review state a
+ * new check with this result would get, a reviewed one keeps its review.
+ */
+export async function recomputeCheck(deps: Deps, checkId: string): Promise<CheckView> {
+  const check = await getCheck(deps, checkId);
+  if (!check.baseline) return check;
+  const baseline = await deps.db
+    .selectFrom('baselines')
+    .selectAll()
+    .where('id', '=', check.baseline.id)
+    .executeTakeFirst();
+  if (!baseline) return check;
+  const image = await loadImage(deps, check.imageSha);
+  if (!image) return check;
+  const header = readPngHeader(image, deps.limits);
+  const regions = () => regionsFor(deps.db, check.projectId, check.snapshotKey, check.ignoreRegions);
+  // Areas drawn or deleted while the comparison ran mean it is already out of date: compare again,
+  // so of two quick edits the comparison that saw both is the one that stays.
+  let used = await regions();
+  for (;;) {
+    const outcome = await evaluate(
+      deps,
+      image,
+      check.imageSha,
+      header,
+      baseline,
+      used,
+      check.colorThreshold,
+      check.tolerancePercent,
+    );
+    const latest = await regions();
+    if (JSON.stringify(latest) !== JSON.stringify(used)) {
+      used = latest;
+      continue;
+    }
+    const diffImageSha =
+      outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
+    const initial = initialReview(outcome.result);
+    await deps.db
+      .updateTable('checks')
+      .set((eb) => ({
+        result: outcome.result,
+        diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
+        diffImageSha,
+        // Decided in SQL, not from the read above: a review made while the comparison ran stays.
+        review: eb
+          .case()
+          .when('review', 'in', ['approved', 'rejected'])
+          .then(eb.ref('review'))
+          .else(sql.lit(initial))
+          .end(),
+        updatedAt: Date.now(),
+      }))
+      .where('id', '=', checkId)
+      .execute();
+    return getCheck(deps, checkId);
+  }
+}
+
 export interface CheckNeighbors {
   previous: string | null;
   next: string | null;
@@ -314,4 +403,17 @@ export async function checkNeighbors(
     next: next?.id ?? null,
     nextPending: pendingAfter?.id ?? pendingFirst?.id ?? null,
   };
+}
+
+/** The build's first check waiting for review, in posting order; null when none waits. */
+export async function firstPendingCheckId(deps: Pick<Deps, 'db'>, buildId: string): Promise<string | null> {
+  const row = await deps.db
+    .selectFrom('checks')
+    .select('id')
+    .where('buildId', '=', buildId)
+    .where('review', '=', 'pending')
+    .orderBy('id')
+    .limit(1)
+    .executeTakeFirst();
+  return row?.id ?? null;
 }

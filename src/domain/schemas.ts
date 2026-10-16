@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AREA_KINDS } from '../db/schema';
 import { validationError } from '../errors';
 
 // Input schemas shared by the domain and (in Plan 2) the HTTP layer. Objects are strict:
@@ -10,11 +11,14 @@ export const slugSchema = z
 
 export const branchSchema = z.string().trim().min(1).max(255);
 
+// Coordinates fit a 32-bit integer column (snapshot_areas on Postgres).
+const coordinate = z.number().int().max(2_147_483_647);
+
 export const rectSchema = z.strictObject({
-  x: z.number().int().min(0),
-  y: z.number().int().min(0),
-  width: z.number().int().min(1),
-  height: z.number().int().min(1),
+  x: coordinate.min(0),
+  y: coordinate.min(0),
+  width: coordinate.min(1),
+  height: coordinate.min(1),
 });
 
 export const variantSchema = z
@@ -57,6 +61,12 @@ export const checkMetaSchema = z.strictObject({
   colorThreshold: colorThreshold.optional(),
   tolerancePercent: tolerancePercent.optional(),
 });
+
+/** An ignore or compare area drawn on a snapshot (Plan 6). */
+export const areaInputSchema = rectSchema.extend({ kind: z.enum(AREA_KINDS) });
+
+/** Moving or resizing an area; its kind stays (delete it and draw the other kind instead). */
+export const areaUpdateSchema = rectSchema;
 
 export const reviewInputSchema = z.strictObject({
   comment: z.string().trim().max(1000).optional(),
