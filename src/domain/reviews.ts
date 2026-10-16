@@ -9,6 +9,10 @@ import type { Deps } from './deps';
 import { checkOutdated, outdateOlder, restoreOutdated, supersedingCheck } from './outdated';
 import { parseInput, reviewInputSchema } from './schemas';
 
+/** The actor of an approval made by the project's auto-approve-new setting (no user or token). */
+export const AUTO_APPROVER = 'auto';
+export const AUTO_APPROVE_COMMENT = 'New screenshot approved automatically (project setting).';
+
 type DbDeps = Pick<Deps, 'db'>;
 
 async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): Promise<AppError> {

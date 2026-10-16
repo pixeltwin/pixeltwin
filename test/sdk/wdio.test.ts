@@ -272,6 +272,22 @@ describe('PixeltwinService', () => {
       expect((await fake.check('home', { ignore: [fake.el('clock')], failOnChange: false }))?.result).toBe('changed');
       await run.launcher.onComplete();
     });
+
+    test('failOnChange passes a new screenshot the project approved automatically', async () => {
+      const token = await server.newProject('wdio-auto');
+      const patched = await fetch(`${server.url}/api/v1/projects/wdio-auto`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: server.cookie, origin: server.url },
+        body: JSON.stringify({ autoApproveNew: true }),
+      });
+      expect(patched.status).toBe(200);
+      const run = services({ project: 'wdio-auto', token, failOnChange: true });
+      await run.launcher.onPrepare({});
+      const fake = fakeBrowser(RED);
+      run.worker.before({}, [], fake.browser);
+      expect(await fake.check('home')).toMatchObject({ result: 'new', review: 'approved' });
+      await run.launcher.onComplete();
+    });
   });
 
   test('an Appium phone: variant from the capabilities, no DOM, run-wide ignore regions', async () => {

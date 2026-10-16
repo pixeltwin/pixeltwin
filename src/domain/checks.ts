@@ -11,6 +11,7 @@ import { loadImage, type PngSize, readPngHeader, sha256Hex, storeImage } from '.
 import { supersedingCheck } from './outdated';
 import { type Page, toPage } from './pagination';
 import { getProjectById } from './projects';
+import { AUTO_APPROVE_COMMENT, AUTO_APPROVER, approveCheck } from './reviews';
 import { checkMetaSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
 import { snapshotKey } from './snapshot-key';
 
@@ -387,6 +388,15 @@ export async function submitCheck(
       .execute();
     return !existing;
   });
+  if (project.autoApproveNew && outcome.result === 'new' && values.review === 'pending') {
+    const { id } = await deps.db
+      .selectFrom('checks')
+      .select('id')
+      .where('buildId', '=', buildId)
+      .where('snapshotKey', '=', key)
+      .executeTakeFirstOrThrow();
+    await approveCheck(deps, id, AUTO_APPROVER, { comment: AUTO_APPROVE_COMMENT });
+  }
   const row = await checksWithJoins(deps)
     .where('checks.buildId', '=', buildId)
     .where('checks.snapshotKey', '=', key)

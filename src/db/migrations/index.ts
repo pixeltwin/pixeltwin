@@ -7,6 +7,7 @@ import * as m0005 from './0005_snapshot_areas';
 import * as m0006 from './0006_outdated_checks';
 import * as m0007 from './0007_stored_objects';
 import * as m0008 from './0008_parallel_builds';
+import * as m0009 from './0009_auto_approve_new';
 
 // Static list: a compiled binary has no migrations directory to scan.
 const migrations: Record<string, Migration> = {
@@ -18,6 +19,7 @@ const migrations: Record<string, Migration> = {
   '0006_outdated_checks': m0006,
   '0007_stored_objects': m0007,
   '0008_parallel_builds': m0008,
+  '0009_auto_approve_new': m0009,
 };
 
 export const migrationProvider: MigrationProvider = {

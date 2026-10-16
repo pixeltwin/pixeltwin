@@ -50,12 +50,13 @@ describe('build numbers', () => {
   });
 
   test('the migration numbers existing builds by creation time and continues after them', async () => {
+    // Read before going down: the domain's project columns come from later migrations.
+    const web = await getProjectBySlug(deps, 'web');
+    const app = await getProjectBySlug(deps, 'app');
     const migrator = new Migrator({ db: deps.db, provider: migrationProvider });
     const down = await migrator.migrateTo('0002_retention_indexes');
     expect(down.error).toBeUndefined();
     try {
-      const web = await getProjectBySlug(deps, 'web');
-      const app = await getProjectBySlug(deps, 'app');
       // Ids out of creation order on purpose; equal times fall back to the id.
       const rows: Array<[id: string, projectId: string, createdAt: number]> = [
         ['bld_c', web.id, 1000],
@@ -76,6 +77,7 @@ describe('build numbers', () => {
         '0006_outdated_checks',
         '0007_stored_objects',
         '0008_parallel_builds',
+        '0009_auto_approve_new',
       ]);
     }
     const numbers = await deps.db.selectFrom('builds').select(['id', 'number']).orderBy('id').execute();

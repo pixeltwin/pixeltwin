@@ -164,6 +164,10 @@
           "retentionDays": {
             "type": "integer"
           },
+          "autoApproveNew": {
+            "type": "boolean",
+            "description": "A new screenshot (no baseline yet) is approved as soon as it arrives"
+          },
           "createdAt": {
             "type": "integer"
           },
@@ -179,6 +183,7 @@
           "colorThreshold",
           "tolerancePercent",
           "retentionDays",
+          "autoApproveNew",
           "createdAt",
           "updatedAt"
         ]
@@ -1924,6 +1929,10 @@
                     "minimum": 1,
                     "maximum": 3650,
                     "default": 5
+                  },
+                  "autoApproveNew": {
+                    "type": "boolean",
+                    "default": false
                   }
                 },
                 "required": [
@@ -2111,6 +2120,9 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 3650
+                  },
+                  "autoApproveNew": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false

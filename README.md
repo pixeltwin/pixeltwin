@@ -123,6 +123,10 @@ on `PORT` answers; the Docker image uses it).
 Builds older than a project's retention period (5 days by default, set per project; baselines are always kept) and images
 nothing references any more are deleted by an hourly job.
 
+A project can approve new screenshots automatically (Settings, or `"autoApproveNew": true` on
+`PATCH /api/v1/projects/{slug}`): a screen with no baseline yet becomes one as soon as it arrives,
+recorded in its review history as approved by auto-approve, and only changes wait for review.
+
 ### Kubernetes
 
 A Helm chart is in [`deploy/helm/pixeltwin`](deploy/helm/pixeltwin/README.md). It has two modes:

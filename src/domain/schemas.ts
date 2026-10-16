@@ -34,6 +34,8 @@ const projectSettings = {
   colorThreshold,
   tolerancePercent,
   retentionDays: z.number().int().min(1).max(3650),
+  /** A new screenshot (no baseline yet) is approved as soon as it arrives. */
+  autoApproveNew: z.boolean(),
 };
 
 export const createProjectSchema = z.strictObject({
@@ -45,6 +47,7 @@ export const createProjectSchema = z.strictObject({
   tolerancePercent: projectSettings.tolerancePercent.default(0),
   // CI often runs several times a day; baselines are kept whatever the retention.
   retentionDays: projectSettings.retentionDays.default(5),
+  autoApproveNew: projectSettings.autoApproveNew.default(false),
 });
 
 export const updateProjectSchema = z.strictObject(projectSettings).partial();

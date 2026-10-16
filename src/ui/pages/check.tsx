@@ -10,7 +10,7 @@ import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
-import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
+import { AUTO_APPROVER, approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
@@ -24,6 +24,7 @@ function isDiffData(diff: CheckView['diff']): diff is DiffData {
 
 /** Who reviewed: a user's email, or the name of the project token that did it. */
 async function reviewerName(s: Services, id: string): Promise<string> {
+  if (id === AUTO_APPROVER) return 'auto-approve (project setting)';
   const user = await s.deps.db.selectFrom('users').select('email').where('id', '=', id).executeTakeFirst();
   if (user) return user.email;
   const token = await s.deps.db.selectFrom('projectTokens').select('name').where('id', '=', id).executeTakeFirst();

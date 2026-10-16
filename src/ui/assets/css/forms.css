@@ -57,7 +57,8 @@ button.wide {
 .danger-zone .panel {
   border-color: var(--red-border);
 }
-label.scope {
+label.scope,
+label.option {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);

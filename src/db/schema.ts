@@ -24,6 +24,8 @@ export interface ProjectsTable {
   colorThreshold: number;
   tolerancePercent: number;
   retentionDays: number;
+  /** 1: a new screenshot is approved as soon as it arrives. The domain's Project has a boolean. */
+  autoApproveNew: Generated<number>;
   /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
   buildSeq: Generated<number>;
   createdAt: number;
@@ -170,7 +172,7 @@ export interface DB {
   storedObjects: StoredObjectsTable;
 }
 
-export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq'>;
+export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew'> & { autoApproveNew: boolean };
 export type Build = Selectable<BuildsTable>;
 export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;

@@ -101,6 +101,7 @@ describe('review history', () => {
       '0006_outdated_checks',
       '0007_stored_objects',
       '0008_parallel_builds',
+      '0009_auto_approve_new',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([

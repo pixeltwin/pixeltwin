@@ -118,7 +118,20 @@ describe('UI administration', () => {
         colorThreshold: 0.2,
         tolerancePercent: 0.5,
         retentionDays: 30,
+        autoApproveNew: false,
       });
+
+      // The checkbox: ticked saves true, left out (unticked) saves false.
+      await postForm(
+        t,
+        '/ui/p/web/settings',
+        { name: 'Web shop', mainBranch: 'trunk', retentionDays: '30', autoApproveNew: 'on' },
+        admin,
+      );
+      expect((await getProjectBySlug(t.deps, 'web')).autoApproveNew).toBe(true);
+      expect(await get('/ui/p/web/settings')).toMatch(/name="autoApproveNew"[^>]*checked/);
+      await postForm(t, '/ui/p/web/settings', { name: 'Web shop', mainBranch: 'trunk', retentionDays: '30' }, admin);
+      expect((await getProjectBySlug(t.deps, 'web')).autoApproveNew).toBe(false);
 
       const bad = await postForm(
         t,

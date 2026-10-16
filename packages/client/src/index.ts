@@ -1,6 +1,7 @@
 export { type ClientOptions, PixeltwinClient, SDK_VERSION } from './client.js';
 export {
   type FieldError,
+  failsOnChange,
   PixeltwinCheckError,
   PixeltwinError,
   PixeltwinGateError,

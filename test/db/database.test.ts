@@ -51,7 +51,7 @@ describe('database', () => {
   test('round-trips camelCase columns, numbers and epoch-ms timestamps', async () => {
     await handle.db.insertInto('projects').values(project('prj_1', 'web')).execute();
     const row = await handle.db.selectFrom('projects').selectAll().executeTakeFirstOrThrow();
-    expect(row).toEqual({ ...project('prj_1', 'web'), buildSeq: 0 });
+    expect(row).toEqual({ ...project('prj_1', 'web'), buildSeq: 0, autoApproveNew: 0 });
     expect(typeof row.createdAt).toBe('number');
   });
 
@@ -114,6 +114,7 @@ describe('openDatabase', () => {
         '0006_outdated_checks',
         '0007_stored_objects',
         '0008_parallel_builds',
+        '0009_auto_approve_new',
       ]);
       await handle.close();
     } finally {

@@ -6,6 +6,7 @@ import {
   type Check,
   type CheckInput,
   cssBoxToPixels,
+  failsOnChange,
   PixeltwinCheckError,
   type PixeltwinClient,
   PixeltwinGateError,
@@ -308,7 +309,7 @@ export class PixeltwinService {
     );
     const url = client.checkUrl(check);
     await this.#options.onResult?.({ name, check, url, images: () => imagesOf(client, check) });
-    if ((options.failOnChange ?? settings.failOnChange) && check.result !== 'unchanged') {
+    if ((options.failOnChange ?? settings.failOnChange) && failsOnChange(check)) {
       throw new PixeltwinCheckError(check, url);
     }
     return check;

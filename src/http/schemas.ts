@@ -29,6 +29,9 @@ export const ProjectSchema = z
     colorThreshold: z.number(),
     tolerancePercent: z.number(),
     retentionDays: z.number().int(),
+    autoApproveNew: z
+      .boolean()
+      .openapi({ description: 'A new screenshot (no baseline yet) is approved as soon as it arrives' }),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
   })

@@ -3,6 +3,7 @@ import {
   type CheckInput,
   type CssToPixels,
   cssBoxToPixels,
+  failsOnChange,
   PixeltwinCheckError,
   type PixeltwinClient,
   pngSize,
@@ -196,7 +197,7 @@ export class Pixeltwin {
       },
     );
     await this.#report(client, check, name);
-    if ((options.failOnChange ?? settings.failOnChange) && check.result !== 'unchanged') {
+    if ((options.failOnChange ?? settings.failOnChange) && failsOnChange(check)) {
       throw new PixeltwinCheckError(check, client.checkUrl(check));
     }
     return check;

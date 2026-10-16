@@ -53,8 +53,16 @@ export class PixeltwinNetworkError extends Error {
 }
 
 /**
- * A check that is not `unchanged` while `failOnChange` is on: thrown from the check call, so the
- * test fails right there, with the result and the link to review it.
+ * Whether `failOnChange` fails this check: anything but unchanged, unless it is approved already
+ * (a new screenshot the project approves automatically).
+ */
+export function failsOnChange(check: Check): boolean {
+  return check.result !== 'unchanged' && !(check.result !== 'error' && check.review === 'approved');
+}
+
+/**
+ * A check that is not `unchanged` (nor approved already) while `failOnChange` is on: thrown from
+ * the check call, so the test fails right there, with the result and the link to review it.
  */
 export class PixeltwinCheckError extends Error {
   readonly check: Check;

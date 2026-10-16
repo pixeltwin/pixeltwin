@@ -107,6 +107,20 @@ function SettingsPage(props: {
               );
             })}
           </div>
+          <label class="option">
+            <input
+              type="checkbox"
+              name="autoApproveNew"
+              checked={props.values ? props.values.autoApproveNew === 'on' : project.autoApproveNew}
+            />
+            <span>
+              <strong>Approve new screenshots automatically</strong>{' '}
+              <span class="muted">
+                A screenshot with no baseline yet becomes the baseline as soon as it arrives; only changes wait for
+                review.
+              </span>
+            </span>
+          </label>
           <div class="form-actions">
             <button class="primary" type="submit">
               Save settings
@@ -238,7 +252,13 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
     const form = await c.req.parseBody();
     const values: Record<string, string> = {};
     for (const f of FIELDS) values[f.name] = field(form, f.name) ?? '';
-    const input: Record<string, unknown> = { name: values.name, mainBranch: values.mainBranch };
+    // An unticked checkbox is not sent at all.
+    values.autoApproveNew = field(form, 'autoApproveNew') === 'on' ? 'on' : '';
+    const input: Record<string, unknown> = {
+      name: values.name,
+      mainBranch: values.mainBranch,
+      autoApproveNew: values.autoApproveNew === 'on',
+    };
     for (const name of NUMBER_FIELDS) if (values[name]) input[name] = Number(values[name]);
     try {
       await updateProject(s.deps, slug, input);

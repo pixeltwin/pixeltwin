@@ -17,9 +17,16 @@ const PROJECT_COLUMNS = [
   'colorThreshold',
   'tolerancePercent',
   'retentionDays',
+  'autoApproveNew',
   'createdAt',
   'updatedAt',
 ] as const;
+
+type ProjectRow = Omit<Project, 'autoApproveNew'> & { autoApproveNew: number };
+
+function toProject(row: ProjectRow): Project {
+  return { ...row, autoApproveNew: Number(row.autoApproveNew) === 1 };
+}
 
 /**
  * Creates a project. Without a slug, one is made from the name; when that is taken, the next free
@@ -38,7 +45,10 @@ export async function createProject(deps: DbDeps, input: unknown): Promise<Proje
       updatedAt: now,
     };
     try {
-      await deps.db.insertInto('projects').values(project).execute();
+      await deps.db
+        .insertInto('projects')
+        .values({ ...project, autoApproveNew: project.autoApproveNew ? 1 : 0 })
+        .execute();
       return project;
     } catch (err) {
       if (!isUniqueViolation(err)) throw err;
@@ -56,26 +66,31 @@ export async function getProjectBySlug(deps: DbDeps, slug: string): Promise<Proj
     .where('slug', '=', slug)
     .executeTakeFirst();
   if (!project) throw new AppError('project_not_found', 404, `Project "${slug}" not found.`);
-  return project;
+  return toProject(project);
 }
 
 export async function getProjectById(deps: DbDeps, id: string): Promise<Project> {
   const project = await deps.db.selectFrom('projects').select(PROJECT_COLUMNS).where('id', '=', id).executeTakeFirst();
   if (!project) throw new AppError('project_not_found', 404, `Project ${id} not found.`);
-  return project;
+  return toProject(project);
 }
 
-export function listProjects(deps: DbDeps): Promise<Project[]> {
-  return deps.db.selectFrom('projects').select(PROJECT_COLUMNS).orderBy('slug').execute();
+export async function listProjects(deps: DbDeps): Promise<Project[]> {
+  return (await deps.db.selectFrom('projects').select(PROJECT_COLUMNS).orderBy('slug').execute()).map(toProject);
 }
 
 export async function updateProject(deps: DbDeps, slug: string, input: unknown): Promise<Project> {
   const changes = parseInput(updateProjectSchema, input);
   const project = await getProjectBySlug(deps, slug);
   const updated: Project = { ...project, ...changes, updatedAt: Date.now() };
+  const { autoApproveNew, ...columns } = changes;
   await deps.db
     .updateTable('projects')
-    .set({ ...changes, updatedAt: updated.updatedAt })
+    .set({
+      ...columns,
+      ...(autoApproveNew === undefined ? {} : { autoApproveNew: autoApproveNew ? 1 : 0 }),
+      updatedAt: updated.updatedAt,
+    })
     .where('id', '=', project.id)
     .execute();
   return updated;
