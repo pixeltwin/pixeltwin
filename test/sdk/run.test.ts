@@ -271,4 +271,34 @@ describe('run lifecycle against a real server', () => {
     expect(noRun.status).toBe(1);
     expect(noRun.stderr).toContain('PIXELTWIN_EXTERNAL_ID');
   });
+
+  test('`pixeltwin promote` copies a branch to main after the merge, all or some screens', async () => {
+    const env = {
+      PATH: process.env.PATH,
+      PIXELTWIN_URL: server.url,
+      PIXELTWIN_TOKEN: server.token,
+      PIXELTWIN_PROJECT: 'run',
+    };
+    const build = await client.openBuild('run', { branch: 'feature/promo' });
+    await client.postCheck(build.id, { name: 'promo a', image: png(110) });
+    const b = await client.postCheck(build.id, { name: 'promo b', image: png(120) });
+    await client.approveBuild(build.id);
+    const cli = (args: string[]) =>
+      spawnSync(process.execPath, ['packages/client/src/bin.ts', ...args], { cwd: REPO, env, encoding: 'utf8' });
+
+    const dry = cli(['promote', 'feature/promo', '--dry-run']);
+    expect(dry.status).toBe(0);
+    expect(dry.stdout).toContain('promo a');
+    expect(dry.stdout).toContain('promo b');
+    expect(dry.stdout).toContain('2 screens would change on main');
+
+    const some = cli(['promote', 'feature/promo', '--only', b.snapshotKey]);
+    expect(some.status).toBe(0);
+    expect(some.stdout).toContain('Promoted 1 screen of feature/promo to main');
+    const rest = cli(['promote', 'feature/promo']);
+    expect(rest.stdout).toContain('Promoted 1 screen of feature/promo to main');
+    expect(cli(['promote', 'feature/promo']).stdout).toContain('Nothing to promote');
+    expect(cli(['promote']).status).toBe(2);
+    expect(cli(['promote', 'main']).status).toBe(1);
+  });
 });

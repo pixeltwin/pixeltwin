@@ -70,6 +70,7 @@ export const NOTICES: Record<string, string> = {
   rejected: 'Rejected.',
   reset: 'Review undone.',
   'area-added': 'Ignore area added.',
+  promoted: 'Promoted to main. Main builds still waiting on those screens are outdated now.',
   'area-deleted': 'Area deleted.',
   'approved-all': 'All pending checks approved.',
   'project-created': 'Project created.',

@@ -1,8 +1,8 @@
 // The API shapes the SDK reads, as in openapi.json.
 
-export type Verdict = 'empty' | 'error' | 'rejected' | 'pending' | 'passed';
+export type Verdict = 'empty' | 'error' | 'rejected' | 'pending' | 'outdated' | 'passed';
 export type CheckResult = 'unchanged' | 'changed' | 'new' | 'error';
-export type CheckReview = 'none' | 'pending' | 'approved' | 'rejected';
+export type CheckReview = 'none' | 'pending' | 'approved' | 'rejected' | 'outdated';
 export type Variant = Record<string, string>;
 
 export interface Rect {
@@ -16,6 +16,16 @@ export interface BuildCounts {
   total: number;
   result: Record<CheckResult, number>;
   review: Record<CheckReview, number>;
+}
+
+/** A branch screen whose baseline differs from main's: what a promotion would change. */
+export interface PromotionCandidate {
+  snapshotKey: string;
+  name: string;
+  variant: Record<string, string>;
+  branchImageSha: string;
+  mainImageSha: string | null;
+  approvedAt: number;
 }
 
 export interface Build {

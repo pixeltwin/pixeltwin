@@ -135,6 +135,36 @@ describe('review, baseline, promotion and image routes', () => {
     expect(mainOnly.items).toHaveLength(1);
   });
 
+  test('the promotion candidates, then promoting only some of them', async () => {
+    for (const name of ['home', 'cart']) {
+      const { check: c } = await check('feature/login', withSquare, name);
+      await t.request('POST', `/api/v1/checks/${c.id}/approve`, { as: reviewer });
+    }
+    const listed = await t.request('GET', '/api/v1/projects/web/branches/feature%2Flogin/promote', { as: ci });
+    const { items } = (await listed.json()) as { items: Array<{ snapshotKey: string; name: string }> };
+    expect(items.map((i) => i.name)).toEqual(['cart', 'home']);
+
+    const some = await t.request('POST', '/api/v1/projects/web/branches/feature%2Flogin/promote', {
+      as: ci,
+      json: { snapshotKeys: [snapshotKey('cart', {})] },
+    });
+    expect(await some.json()).toEqual({ promoted: 1 });
+    const left = (await (
+      await t.request('GET', '/api/v1/projects/web/branches/feature%2Flogin/promote', { as: ci })
+    ).json()) as { items: Array<{ name: string }> };
+    expect(left.items.map((i) => i.name)).toEqual(['home']);
+
+    const bad = await t.request('POST', '/api/v1/projects/web/branches/feature%2Flogin/promote', {
+      as: ci,
+      json: { snapshotKeys: ['nope'] },
+    });
+    expect(await problemOf(bad)).toMatchObject({ status: 422, code: 'snapshot_not_on_branch' });
+    const doc = (await (await t.request('GET', '/openapi.json')).json()) as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+    };
+    expect(doc.paths['/api/v1/projects/{slug}/branches/{branch}/promote']?.get?.['x-permission']).toBe('project.read');
+  });
+
   test('promoting the main branch is a 400', async () => {
     const res = await t.request('POST', '/api/v1/projects/web/branches/main/promote', { as: ci });
     expect(await problemOf(res)).toMatchObject({ status: 400, code: 'invalid_promotion' });

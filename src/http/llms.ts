@@ -52,6 +52,11 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
    A snapshot has one kind of area (409 area_kind_conflict otherwise). PATCH
    ${api}/checks/<checkId>/areas/<areaId> {"x":…,"y":…,"width":…,"height":…} moves one.
 
+6. After merging a branch, promote it so main does not ask to review the same screens again:
+   GET ${api}/projects/<slug>/branches/<branch>/promote lists the screens that differ from main;
+   POST the same URL (optionally {"snapshotKeys":[…]} to pick some) copies their baselines to
+   main. URL-encode the branch (feature%2Flogin). Needs the write scope.
+
 ## Values
 
 check.result:  unchanged | changed | new (no baseline yet) | error (diff failed; see diff.error)

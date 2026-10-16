@@ -114,6 +114,20 @@ describe('checks outdated by a newer approval', () => {
     expect(await getCheck(deps, two.check.id)).toMatchObject({ review: 'outdated', supersededBy: feature.check.id });
   });
 
+  test('a promotion also outdates main builds made after the branch build, that still wait for review', async () => {
+    const feature = await changed(square(30), { branch: 'feature/x' });
+    await approveCheck(deps, feature.check.id, 'usr_1');
+    // Merged: main runs with the new screen before anyone promotes.
+    const afterMerge = await changed(square(30));
+    expect(afterMerge.check.review).toBe('pending');
+    await promoteBranch(deps, 'web', 'feature/x', 'usr_1');
+    expect(await getCheck(deps, afterMerge.check.id)).toMatchObject({
+      review: 'outdated',
+      supersededBy: feature.check.id,
+    });
+    expect((await getBuild(deps, afterMerge.buildId)).verdict).toBe('outdated');
+  });
+
   test('comparing an outdated check again (an area changed) keeps it outdated', async () => {
     const two = await changed(square(10));
     const four = await changed(square(30));

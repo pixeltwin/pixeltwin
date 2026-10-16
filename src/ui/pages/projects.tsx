@@ -2,6 +2,7 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
 import { hasPermission } from '../../domain/auth/policy';
 import { listProjectTokens } from '../../domain/auth/tokens';
+import { type PromotionCandidate, promoteBranch, promotionCandidates } from '../../domain/baselines';
 import { type BranchSummary, listBranchSummaries } from '../../domain/branches';
 import { type BuildView, listBuilds } from '../../domain/builds';
 import { firstPendingCheckId } from '../../domain/checks';
@@ -215,7 +216,15 @@ function NewProjectPage(props: { ui: Ui; values?: FormValues; errors?: Record<st
   );
 }
 
-function Lane(props: { ui: Ui; slug: string; summary: BranchSummary; reviewHref?: string | undefined }) {
+function Lane(props: {
+  ui: Ui;
+  slug: string;
+  summary: BranchSummary;
+  reviewHref?: string | undefined;
+  /** Screens this branch would change on main, for admins; 0 or undefined hides Promote. */
+  promotable?: number | undefined;
+  mainBranch: string;
+}) {
   const { ui, slug, summary } = props;
   const build = summary.latest;
   return (
@@ -228,6 +237,15 @@ function Lane(props: { ui: Ui; slug: string; summary: BranchSummary; reviewHref?
         {summary.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
         <BuildStatus build={build} />
         <span class="lane-meta">
+          {props.promotable ? (
+            <a
+              class="button small"
+              href={ui.url(`/ui/p/${slug}/promote?branch=${encodeURIComponent(summary.branch)}`)}
+              title={`Copy this branch's baselines to ${props.mainBranch}`}
+            >
+              {`Promote ${props.promotable} to ${props.mainBranch}`}
+            </a>
+          ) : null}
           {props.reviewHref && (
             <a class="button small" href={props.reviewHref}>
               Review
@@ -266,6 +284,7 @@ function BranchesPage(props: {
   review: { href: string; count: number } | null;
   /** Per branch: its latest build's first check waiting for review. */
   laneReviews: Map<string, string>;
+  lanePromotions: Map<string, number>;
   canManage: boolean;
   onboarding?: { hasToken: boolean; publicUrl: string } | undefined;
   notice?: string | undefined;
@@ -320,7 +339,14 @@ function BranchesPage(props: {
           data-live-watch={running ? undefined : ''}
         >
           {summaries.map((summary) => (
-            <Lane ui={ui} slug={project.slug} summary={summary} reviewHref={props.laneReviews.get(summary.branch)} />
+            <Lane
+              ui={ui}
+              slug={project.slug}
+              summary={summary}
+              reviewHref={props.laneReviews.get(summary.branch)}
+              promotable={props.lanePromotions.get(summary.branch)}
+              mainBranch={project.mainBranch}
+            />
           ))}
         </div>
       )}
@@ -433,7 +459,108 @@ function AllBuildsPage(props: {
   );
 }
 
+/** Choose the screens of a branch to copy to main: each shows main now → the branch. */
+function PromotePage(props: { ui: Ui; project: Project; branch: string; candidates: PromotionCandidate[] }) {
+  const { ui, project, branch, candidates } = props;
+  const image = (sha: string, alt: string) => (
+    <img class="promote-thumb" src={ui.url(`/api/v1/images/${sha}`)} alt={alt} loading="lazy" />
+  );
+  return (
+    <Layout
+      ui={ui}
+      title={`Promote ${branch}`}
+      crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: `Promote ${branch}` }]}
+      project={project.slug}
+    >
+      <div class="page-head">
+        <div>
+          <h1>{`Promote ${branch} to ${project.mainBranch}`}</h1>
+          <p class="sub">
+            {`The checked screens' baselines from ${branch} become ${project.mainBranch}'s, so ${project.mainBranch} does not ask to review them again after the merge. Uncheck what should wait.`}
+          </p>
+        </div>
+      </div>
+      {candidates.length === 0 ? (
+        <div class="empty">
+          <h3>Nothing to promote</h3>
+          <p class="muted">{`${project.mainBranch} already has every screen of ${branch} as it is.`}</p>
+          <a class="button" href={ui.url(`/ui/p/${project.slug}`)}>
+            Back to branches
+          </a>
+        </div>
+      ) : (
+        <form method="post" action={ui.url(`/ui/p/${project.slug}/promote`)}>
+          <input type="hidden" name="branch" value={branch} />
+          <ul class="promote-list">
+            {candidates.map((c) => (
+              <li>
+                <label class="promote-item">
+                  <input type="checkbox" name="snapshotKey" value={c.snapshotKey} checked />
+                  <span class="promote-name">
+                    <strong>{c.name}</strong>
+                    <span class="muted">
+                      {Object.entries(c.variant)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join(' · ') || 'no variant'}
+                    </span>
+                  </span>
+                  <span class="promote-images">
+                    {c.mainImageSha ? (
+                      image(c.mainImageSha, `${project.mainBranch} now`)
+                    ) : (
+                      <span class="promote-none muted">new on {project.mainBranch}</span>
+                    )}
+                    <span aria-hidden="true">→</span>
+                    {image(c.branchImageSha, branch)}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div class="dialog-actions">
+            <a class="button" href={ui.url(`/ui/p/${project.slug}`)}>
+              Cancel
+            </a>
+            <button class="primary" type="submit">
+              {`Promote checked to ${project.mainBranch}`}
+            </button>
+          </div>
+        </form>
+      )}
+    </Layout>
+  );
+}
+
 export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): void {
+  const requirePromote = (c: Parameters<typeof uiOf>[0]) => {
+    if (!hasPermission(userOf(c), 'check.write')) {
+      throw new AppError('forbidden', 403, 'Only admins can promote a branch.');
+    }
+  };
+
+  app.get('/ui/p/:slug/promote', async (c) => {
+    const ui = uiOf(c, s);
+    requirePromote(c);
+    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const branch = (c.req.query('branch') ?? '').trim();
+    const candidates = await promotionCandidates(s.deps, project.slug, branch);
+    return c.html(<PromotePage ui={ui} project={project} branch={branch} candidates={candidates} />);
+  });
+
+  app.post('/ui/p/:slug/promote', async (c) => {
+    const ui = uiOf(c, s);
+    requirePromote(c);
+    const form = await c.req.parseBody({ all: true });
+    const slug = c.req.param('slug');
+    const branch = field(form, 'branch') ?? '';
+    const raw = form.snapshotKey;
+    const snapshotKeys = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).filter(
+      (k): k is string => typeof k === 'string',
+    );
+    await promoteBranch(s.deps, slug, branch, userOf(c).id, { snapshotKeys });
+    return c.redirect(ui.url(`/ui/p/${slug}?done=promoted`), 303);
+  });
+
   const requireCreate = (ui: Ui) => {
     if (!ui.user || !hasPermission(ui.user, 'project.admin')) {
       throw new AppError('forbidden', 403, 'Only admins can create projects.');
@@ -490,6 +617,14 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
       if (first) laneReviews.set(x.branch, ui.url(`/ui/checks/${first}?filter=pending`));
     }
     const newest = waiting[0] && laneReviews.get(waiting[0].branch);
+    // Admins (who may promote) see on each other lane how many screens it would change on main.
+    const lanePromotions = new Map<string, number>();
+    if (hasPermission(userOf(c), 'check.write')) {
+      for (const x of summaries) {
+        if (x.branch === project.mainBranch) continue;
+        lanePromotions.set(x.branch, (await promotionCandidates(s.deps, slug, x.branch)).length);
+      }
+    }
     const review = newest ? { href: newest, count: pendingIn(summaries) } : null;
 
     const onboarding =
@@ -503,6 +638,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
         summaries={summaries}
         review={review}
         laneReviews={laneReviews}
+        lanePromotions={lanePromotions}
         canManage={canManage}
         onboarding={onboarding}
         notice={noticeOf(c)}

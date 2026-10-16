@@ -1009,6 +1009,43 @@
           "approvedBy",
           "createdAt"
         ]
+      },
+      "PromotionCandidate": {
+        "type": "object",
+        "properties": {
+          "snapshotKey": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "branchImageSha": {
+            "type": "string"
+          },
+          "mainImageSha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approvedAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshotKey",
+          "name",
+          "variant",
+          "branchImageSha",
+          "mainImageSha",
+          "approvedAt"
+        ]
       }
     },
     "parameters": {}
@@ -4209,12 +4246,119 @@
       }
     },
     "/api/v1/projects/{slug}/branches/{branch}/promote": {
+      "get": {
+        "tags": [
+          "baselines"
+        ],
+        "summary": "What promoting the branch would change: its screens whose baseline differs from main's",
+        "description": "URL-encode the branch name: `feature%2Flogin`.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "branch",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Screens that would change on main",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PromotionCandidate"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "baselines"
         ],
-        "summary": "Copy a branch's current baselines to the main branch (after merging)",
-        "description": "URL-encode the branch name: `feature%2Flogin`.",
+        "summary": "Copy a branch's current baselines to the main branch (after merging), all or some",
+        "description": "URL-encode the branch name: `feature%2Flogin`. Without a body every differing screen is promoted; `snapshotKeys` picks some.",
         "x-permission": "check.write",
         "security": [
           {
@@ -4242,6 +4386,27 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "snapshotKeys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "maxItems": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Number of baselines promoted",

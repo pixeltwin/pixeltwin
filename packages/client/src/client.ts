@@ -1,6 +1,15 @@
 import { type FieldError, PixeltwinError, PixeltwinNetworkError } from './errors.js';
 import { toPixelRect } from './png.js';
-import type { Build, Check, CheckInput, CheckResult, CheckReview, OpenBuildInput, Page } from './types.js';
+import type {
+  Build,
+  Check,
+  CheckInput,
+  CheckResult,
+  CheckReview,
+  OpenBuildInput,
+  Page,
+  PromotionCandidate,
+} from './types.js';
 
 export const SDK_VERSION = '0.1.0';
 
@@ -131,6 +140,23 @@ export class PixeltwinClient {
   /** Closes the build to new checks and returns its verdict. Idempotent. */
   async finalize(buildId: string): Promise<Build> {
     return (await this.#request<Build>('POST', `/builds/${encodeURIComponent(buildId)}/finalize`)).data;
+  }
+
+  /** The branch's screens whose baseline differs from main's: what `promote` would copy. */
+  async promotionCandidates(project: string, branch: string): Promise<PromotionCandidate[]> {
+    const path = `/projects/${encodeURIComponent(project)}/branches/${encodeURIComponent(branch)}/promote`;
+    return (await this.#request<{ items: PromotionCandidate[] }>('GET', path)).data.items;
+  }
+
+  /**
+   * Copies the branch's baselines to main (after merging), all differing screens or only
+   * `snapshotKeys`. Needs the `write` scope.
+   */
+  async promote(project: string, branch: string, snapshotKeys?: string[]): Promise<{ promoted: number }> {
+    const path = `/projects/${encodeURIComponent(project)}/branches/${encodeURIComponent(branch)}/promote`;
+    return (
+      await this.#request<{ promoted: number }>('POST', path, snapshotKeys ? { json: { snapshotKeys } } : undefined)
+    ).data;
   }
 
   /** Approves every pending check of the build (needs the `review` scope). */

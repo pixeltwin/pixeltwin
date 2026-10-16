@@ -5,6 +5,7 @@ import {
   baselineHistory,
   findCurrentBaseline,
   promoteBranch,
+  promotionCandidates,
   resolveBaseline,
 } from '../../src/domain/baselines';
 import { createProject } from '../../src/domain/projects';
@@ -73,6 +74,37 @@ describe('baselines', () => {
     expect((await findCurrentBaseline(deps.db, project.id, 'k2', 'main'))?.imageSha).toBe(SHA_C);
     expect((await findCurrentBaseline(deps.db, project.id, 'k2', 'main'))?.approvedBy).toBe('usr_2');
     expect(await promoteBranch(deps, 'web', 'feature/login', 'usr_2')).toEqual({ promoted: 0 });
+  });
+
+  test('the promotion candidates are the branch screens that differ from main', async () => {
+    await add('k1', 'main', SHA_A);
+    await add('k1', 'feature/login', SHA_B);
+    await add('k2', 'feature/login', SHA_C);
+    await add('k3', 'feature/login', SHA_A);
+    await add('k3', 'main', SHA_A);
+    const candidates = await promotionCandidates(deps, 'web', 'feature/login');
+    expect(candidates.map((c) => [c.snapshotKey, c.branchImageSha, c.mainImageSha])).toEqual([
+      ['k1', SHA_B, SHA_A],
+      ['k2', SHA_C, null],
+    ]);
+    expect((await appError(promotionCandidates(deps, 'web', 'main'))).code).toBe('invalid_promotion');
+  });
+
+  test('a promotion can take only some screens', async () => {
+    await add('k1', 'main', SHA_A);
+    await add('k1', 'feature/login', SHA_B);
+    await add('k2', 'feature/login', SHA_C);
+    expect(await promoteBranch(deps, 'web', 'feature/login', 'usr_2', { snapshotKeys: ['k2'] })).toEqual({
+      promoted: 1,
+    });
+    expect((await findCurrentBaseline(deps.db, project.id, 'k1', 'main'))?.imageSha).toBe(SHA_A);
+    expect((await findCurrentBaseline(deps.db, project.id, 'k2', 'main'))?.imageSha).toBe(SHA_C);
+    // The rest can follow later.
+    expect((await promotionCandidates(deps, 'web', 'feature/login')).map((c) => c.snapshotKey)).toEqual(['k1']);
+    const unknown = await appError(promoteBranch(deps, 'web', 'feature/login', 'usr_2', { snapshotKeys: ['nope'] }));
+    expect(unknown).toMatchObject({ status: 422, code: 'snapshot_not_on_branch' });
+    // An empty choice promotes nothing (it does not mean "everything").
+    expect(await promoteBranch(deps, 'web', 'feature/login', 'usr_2', { snapshotKeys: [] })).toEqual({ promoted: 0 });
   });
 
   test('promoting the main branch is rejected', async () => {

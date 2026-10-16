@@ -1,5 +1,5 @@
 import type { Db } from '../db/database';
-import type { Baseline } from '../db/schema';
+import type { Baseline, Project } from '../db/schema';
 import { AppError } from '../errors';
 import { newId } from '../ids';
 import type { Deps } from './deps';
@@ -96,20 +96,86 @@ export async function baselineHistory(
   return { items: result.items.map(toBaselineView), nextCursor: result.nextCursor };
 }
 
+/** A branch screen whose current baseline differs from main's (or main has none). */
+export interface PromotionCandidate {
+  snapshotKey: string;
+  name: string;
+  variant: Record<string, string>;
+  branchImageSha: string;
+  /** main's current baseline image; null when main has none for this screen. */
+  mainImageSha: string | null;
+  /** When the branch baseline was approved. */
+  approvedAt: number;
+}
+
+/** The branch's latest baseline per screen, newest first by approval. */
+async function latestBranchBaselines(db: Db, projectId: string, branch: string): Promise<Baseline[]> {
+  const rows = await db
+    .selectFrom('baselines')
+    .selectAll()
+    .where('projectId', '=', projectId)
+    .where('branch', '=', branch)
+    .orderBy('createdAt', 'desc')
+    .orderBy('id', 'desc')
+    .execute();
+  const latest = new Map<string, Baseline>();
+  for (const row of rows) if (!latest.has(row.snapshotKey)) latest.set(row.snapshotKey, row);
+  return [...latest.values()];
+}
+
+async function candidatesOf(
+  db: Db,
+  project: Project,
+  branch: string,
+): Promise<Array<PromotionCandidate & { baseline: Baseline }>> {
+  const out: Array<PromotionCandidate & { baseline: Baseline }> = [];
+  for (const baseline of await latestBranchBaselines(db, project.id, branch)) {
+    const main = await findCurrentBaseline(db, project.id, baseline.snapshotKey, project.mainBranch);
+    if (main?.imageSha === baseline.imageSha) continue;
+    out.push({
+      snapshotKey: baseline.snapshotKey,
+      name: baseline.name,
+      variant: JSON.parse(baseline.variant) as Record<string, string>,
+      branchImageSha: baseline.imageSha,
+      mainImageSha: main?.imageSha ?? null,
+      approvedAt: baseline.createdAt,
+      baseline,
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name) || a.snapshotKey.localeCompare(b.snapshotKey));
+}
+
+function assertPromotable(project: Project, branch: string): void {
+  if (branch === project.mainBranch) {
+    throw new AppError('invalid_promotion', 400, `Branch "${branch}" is the main branch; there is nothing to promote.`);
+  }
+}
+
+/** What promoting `branch` would change on main: its screens that differ from main, by name. */
+export async function promotionCandidates(
+  deps: Pick<Deps, 'db'>,
+  projectSlug: string,
+  branch: string,
+): Promise<PromotionCandidate[]> {
+  const project = await getProjectBySlug(deps, projectSlug);
+  assertPromotable(project, branch);
+  return (await candidatesOf(deps.db, project, branch)).map(({ baseline: _baseline, ...candidate }) => candidate);
+}
+
 /**
- * Copies the current baseline of every snapshot on `branch` to the project's main branch,
- * skipping snapshots whose main baseline already has the same image. Idempotent.
+ * Copies the branch's current baselines to the main branch (after merging), all of them or only
+ * `snapshotKeys`. Screens main already has unchanged are skipped. Every main check of a promoted
+ * screen that still waits for review becomes outdated: main has decided that screen now.
  */
 export async function promoteBranch(
   deps: Pick<Deps, 'db'>,
   projectSlug: string,
   branch: string,
   actor: string,
+  options: { snapshotKeys?: string[] } = {},
 ): Promise<{ promoted: number }> {
   const project = await getProjectBySlug(deps, projectSlug);
-  if (branch === project.mainBranch) {
-    throw new AppError('invalid_promotion', 400, `Branch "${branch}" is the main branch; there is nothing to promote.`);
-  }
+  assertPromotable(project, branch);
   return deps.db.transaction().execute(async (tx) => {
     // Lock the project row (a no-op update) so concurrent promotions run one after another;
     // each then sees the main baselines the previous one appended.
@@ -118,21 +184,21 @@ export async function promoteBranch(
       .set((eb) => ({ slug: eb.ref('slug') }))
       .where('id', '=', project.id)
       .execute();
-    const rows = await tx
-      .selectFrom('baselines')
-      .selectAll()
-      .where('projectId', '=', project.id)
-      .where('branch', '=', branch)
-      .orderBy('createdAt', 'desc')
-      .orderBy('id', 'desc')
-      .execute();
-    const latest = new Map<string, Baseline>();
-    for (const row of rows) if (!latest.has(row.snapshotKey)) latest.set(row.snapshotKey, row);
-
-    let promoted = 0;
-    for (const baseline of latest.values()) {
-      const main = await findCurrentBaseline(tx, project.id, baseline.snapshotKey, project.mainBranch);
-      if (main?.imageSha === baseline.imageSha) continue;
+    let chosen = await candidatesOf(tx, project, branch);
+    if (options.snapshotKeys) {
+      const onBranch = new Set((await latestBranchBaselines(tx, project.id, branch)).map((b) => b.snapshotKey));
+      const missing = options.snapshotKeys.filter((key) => !onBranch.has(key));
+      if (missing.length > 0) {
+        throw new AppError(
+          'snapshot_not_on_branch',
+          422,
+          `Branch "${branch}" has no baseline for ${missing.map((k) => `"${k}"`).join(', ')}.`,
+        );
+      }
+      const keys = new Set(options.snapshotKeys);
+      chosen = chosen.filter((c) => keys.has(c.snapshotKey));
+    }
+    for (const { baseline } of chosen) {
       await appendBaseline(tx, {
         projectId: project.id,
         snapshotKey: baseline.snapshotKey,
@@ -143,29 +209,21 @@ export async function promoteBranch(
         sourceCheckId: baseline.sourceCheckId,
         approvedBy: actor,
       });
-      // Older main builds must not put their screenshot of this screen back over it.
+      // Every main build that still waits on this screen is decided by the promotion, also those
+      // made after the branch build (a run right after the merge).
       if (baseline.sourceCheckId) {
-        const source = await tx
-          .selectFrom('checks')
-          .innerJoin('builds', 'builds.id', 'checks.buildId')
-          .select('builds.number')
-          .where('checks.id', '=', baseline.sourceCheckId)
-          .executeTakeFirst();
-        if (source) {
-          await outdateOlder(
-            tx,
-            {
-              projectId: project.id,
-              snapshotKey: baseline.snapshotKey,
-              branch: project.mainBranch,
-              buildNumber: source.number,
-            },
-            baseline.sourceCheckId,
-          );
-        }
+        await outdateOlder(
+          tx,
+          {
+            projectId: project.id,
+            snapshotKey: baseline.snapshotKey,
+            branch: project.mainBranch,
+            buildNumber: Number.MAX_SAFE_INTEGER,
+          },
+          baseline.sourceCheckId,
+        );
       }
-      promoted += 1;
     }
-    return { promoted };
+    return { promoted: chosen.length };
   });
 }

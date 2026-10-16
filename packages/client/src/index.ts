@@ -12,6 +12,7 @@ export type {
   DiffError,
   OpenBuildInput,
   Page,
+  PromotionCandidate,
   Rect,
   Variant,
   Verdict,

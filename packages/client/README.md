@@ -31,6 +31,8 @@ if (done.verdict !== 'passed') process.exitCode = 1;  // empty | error | rejecte
 | `finalize(buildId)` | idempotent |
 | `waitForVerdict(buildId, { timeoutMs, intervalMs? })` | polls while the verdict is `pending` |
 | `approveBuild(buildId)` | needs the `review` scope |
+| `promotionCandidates(project, branch)` | the branch's screens whose baseline differs from main's |
+| `promote(project, branch, snapshotKeys?)` | copies them to main, all or some; needs the `write` scope |
 | `buildUrl(id)`, `checkUrl(check)` | links into the web UI |
 
 **Errors.** The server's problem responses become `PixeltwinError` with `status`, `code` (branch
@@ -51,6 +53,20 @@ npx @pixeltwin/client finalize [--gate] [--wait <seconds>] [--build <id>]
 
 It finds the build the shards posted to (by `PIXELTWIN_BUILD_ID`, `PIXELTWIN_EXTERNAL_ID` or the CI
 run id), finalizes it, prints the summary and exits 1 when gated and the verdict is not `passed`.
+
+## `pixeltwin promote`
+
+The CI step after merging a branch: its approved baselines become the main branch's, so main does
+not ask to review the same screens again. Main builds still waiting on those screens become
+`outdated`.
+
+```sh
+npx @pixeltwin/client promote feature/login              # every screen that differs from main
+npx @pixeltwin/client promote feature/login --dry-run    # list them
+npx @pixeltwin/client promote feature/login --only <snapshot key> --only <snapshot key>
+```
+
+Admins can do the same in the web UI: Promote on the branch's lane, with a checkbox per screen.
 
 `@pixeltwin/client/run` exports the run lifecycle the integrations share (`resolveSettings`,
 `startRun`, `finishRun`, `summaryLines`), for wiring pixeltwin into another runner.

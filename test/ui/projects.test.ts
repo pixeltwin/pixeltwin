@@ -3,6 +3,7 @@ import type { Project } from '../../src/db/schema';
 import { createProjectToken } from '../../src/domain/auth/tokens';
 import { finalizeBuild } from '../../src/domain/builds';
 import { createProject, listProjects } from '../../src/domain/projects';
+import { approveCheck } from '../../src/domain/reviews';
 import { createTestApp, type TestApp } from '../helpers/app';
 import { BLACK, makePng, WHITE } from '../helpers/png';
 import { openBuild, seedBaseline, submit } from '../helpers/scenario';
@@ -155,6 +156,34 @@ describe('UI projects', () => {
       // Nothing runs, but a new build may arrive any time: the page keeps watching, more slowly.
       expect(settled).toContain('data-islands="live"');
       expect(settled).toContain('data-live="lanes" data-live-watch=""');
+    });
+
+    test('admins promote a branch to main from its lane, choosing the screens', async () => {
+      await createProject(t.deps, { slug: 'shop', name: 'Shop' });
+      const build = await openBuild(t.deps, 'shop', { branch: 'feature/new' });
+      const home = (await submit(t.deps, build, withSquare, { name: 'home' })).check;
+      const cart = (await submit(t.deps, build, withSquare, { name: 'cart' })).check;
+      await approveCheck(t.deps, home.id, admin.id);
+      await approveCheck(t.deps, cart.id, admin.id);
+
+      const lanes = await html(await t.request('GET', '/ui/p/shop', { as: admin }));
+      expect(lanes).toContain('href="/ui/p/shop/promote?branch=feature%2Fnew"');
+      expect(lanes).toContain('Promote 2 to main');
+      expect(await html(await t.request('GET', '/ui/p/shop', { as: viewer }))).not.toContain('/promote?');
+
+      const page = await html(await t.request('GET', '/ui/p/shop/promote?branch=feature%2Fnew', { as: admin }));
+      expect(page).toContain('Promote feature/new to main');
+      expect(page).toMatch(/<input type="checkbox" name="snapshotKey" value="[^"]+" checked=""/);
+      expect(page.match(/name="snapshotKey"/g)).toHaveLength(2);
+      expect(page).toContain('new on main');
+
+      const homeKey = home.snapshotKey;
+      const res = await postForm(t, '/ui/p/shop/promote', { branch: 'feature/new', snapshotKey: homeKey }, admin);
+      expect(location(res)).toBe('/ui/p/shop?done=promoted');
+      const left = await html(await t.request('GET', '/ui/p/shop/promote?branch=feature%2Fnew', { as: admin }));
+      expect(left.match(/name="snapshotKey"/g)).toHaveLength(1);
+      expect((await t.request('GET', '/ui/p/shop/promote?branch=feature%2Fnew', { as: viewer })).status).toBe(403);
+      expect((await postForm(t, '/ui/p/shop/promote', { branch: 'feature/new' }, viewer)).status).toBe(403);
     });
 
     test('a lane whose latest build waits for review links straight to it', async () => {
