@@ -142,7 +142,15 @@ await browser.pixeltwinCheck('home', { ignore: [$('.clock')] });
 PIXELTWIN_URL=http://localhost:8080 PIXELTWIN_TOKEN=pt_… PIXELTWIN_PROJECT=web PIXELTWIN_GATE=1 npx playwright test
 ```
 
-The packages are not on npm yet; `bun scripts/build-sdk.ts pack <dir>` builds installable tarballs.
+Until the packages are on npm, install them from a GitHub release (no token needed); install the
+client with the framework package, which depends on it:
+
+```sh
+R=https://github.com/pixeltwin/pixeltwin/releases/download/v0.1.0
+npm install -D $R/pixeltwin-client-0.1.0.tgz $R/pixeltwin-playwright-0.1.0.tgz   # or pixeltwin-wdio-0.1.0.tgz
+```
+
+`bun scripts/build-sdk.ts pack <dir>` builds the same tarballs from a checkout.
 
 **Examples** to copy: [`examples/playwright`](examples/playwright/README.md) (full page, element,
 ignored clock, Chromium and Firefox on desktop and a phone, sharding with `npx pixeltwin finalize`)
@@ -194,9 +202,13 @@ docker stop pixeltwin-pg
 
 ### Releasing
 
-Bump `src/version.ts`, commit, then push a tag `v<version>`. The release workflow checks that the tag
-matches, runs the tests and the smoke test, attaches the binaries and `SHA256SUMS` to a GitHub
-release, and pushes the image to GHCR. GHCR packages start private: after the first release, open
+Bump the version in `src/version.ts`, the Helm chart's `appVersion` and `packages/*/package.json`
+(their `version` and the `@pixeltwin/client` dependency), commit, then push a tag `v<version>`. The release workflow checks that the tag
+matches, runs the tests and the smoke test, attaches the binaries, `SHA256SUMS` and the SDK tarballs
+to a GitHub release, and pushes the image to GHCR. With an `NPM_TOKEN` repository secret (an npm
+automation token that can publish `@pixeltwin/*`) it also publishes the SDK packages to npm, with
+provenance; without one that job only leaves a notice. The SDK packages carry the server's version
+(a test checks). GHCR packages start private: after the first release, open
 the package's settings on GitHub and set its visibility to public, or `docker pull` will ask for a
 login.
 

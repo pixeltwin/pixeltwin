@@ -31,12 +31,44 @@ jobs:
       - run: bun test
       - run: bun scripts/build.ts all
       - run: bun scripts/smoke.ts dist/pixeltwin-*-linux-x64
+      - run: bun scripts/build-sdk.ts pack dist/sdk
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
             dist/pixeltwin-*
             dist/SHA256SUMS
+            dist/sdk/*.tgz
+
+  npm:
+    needs: binaries
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    runs-on: ubuntu-24.04
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/build-sdk.ts
+      - name: Publish the SDK (skipped without an NPM_TOKEN secret)
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::No NPM_TOKEN secret: the SDK is on the GitHub release only."
+            exit 0
+          fi
+          (cd packages/client && npm publish --provenance --access public)
+          (cd packages/playwright && npm publish --provenance --access public)
+          (cd packages/wdio && npm publish --provenance --access public)
 
   image:
     needs: binaries
