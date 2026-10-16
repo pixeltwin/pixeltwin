@@ -275,6 +275,9 @@ body.focus main {
   }
   .review:has(.stage.interactive) .review-info {
     overflow-y: auto;
+    /* Room for the scrollbar from the start: unfolding the changes must not narrow the strip
+       and rewrap the lines above. */
+    scrollbar-gutter: stable;
   }
   .stage.interactive {
     display: flex;
