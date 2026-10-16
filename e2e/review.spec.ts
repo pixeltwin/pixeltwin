@@ -49,7 +49,7 @@ test('a small window still shows the filmstrip, with the stage shrinking instead
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
-test('toasts appear at the top, in the colour of what happened, never over the buttons', async ({
+test('toasts appear top right, all the same size, in the colour of what happened, never over the buttons', async ({
   reviewerPage: page,
   seeded,
 }) => {
@@ -67,9 +67,44 @@ test('toasts appear at the top, in the colour of what happened, never over the b
     button.y + button.height <= toast.y;
   expect(apart).toBe(true);
   expect(toast.y).toBeLessThan(200);
+  const viewport = page.viewportSize();
+  expect(viewport && toast.x + toast.width).toBeGreaterThan((viewport?.width ?? 0) - 40);
 
   await page.keyboard.press('r');
-  await expect(page.locator('.toast').last()).toHaveClass(/tone-danger/);
+  const rejected = page.locator('.toast.tone-danger');
+  await expect(rejected).toHaveCount(1);
+  const other = await rejected.boundingBox();
+  expect(other && [other.width, other.height]).toEqual([toast.width, toast.height]);
+});
+
+test('a reviewer draws an ignore area over the change; the check is compared again at once', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.review-head')).toContainText('changed');
+  await page.keyboard.press('i');
+  await expect(page.locator('#stage')).toHaveAttribute('data-drawing', 'ignore');
+  // The red button sits at (40,220), 130×30, on the 480×300 screenshot; drag around it.
+  const img = page.locator('.pane-overlay img.layer-top');
+  const box = await img.boundingBox();
+  if (!box) throw new Error('screenshot not on screen');
+  const at = (x: number, y: number) => ({ x: box.x + (x / 480) * box.width, y: box.y + (y / 300) * box.height });
+  const from = at(30, 210);
+  const to = at(190, 260);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.locator('.toast').last()).toContainText('Ignore area added');
+  await expect(page.locator('.review-head')).toContainText('unchanged');
+  await expect(page.locator('.area-item')).toHaveCount(1);
+  await expect(page.locator('.pane-current .area-ignore')).toHaveCount(1);
+
+  await page.locator('.area-item').getByRole('button', { name: 'Delete this area' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Area deleted');
+  await expect(page.locator('.area-item')).toHaveCount(0);
+  await expect(page.locator('.review-head')).toContainText('changed');
 });
 
 test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {

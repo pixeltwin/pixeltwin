@@ -192,7 +192,8 @@ export function mountViewer(root: HTMLElement): () => void {
       { passive: false },
     );
     listen(viewport, 'pointerdown', (e) => {
-      if (e.button !== 0) return;
+      // While an area is being drawn (areas.ts), a drag draws instead of panning.
+      if (e.button !== 0 || stage.dataset.drawing) return;
       // No text selection or native image drag: either would paint over the images.
       e.preventDefault();
       viewport.setPointerCapture(e.pointerId);

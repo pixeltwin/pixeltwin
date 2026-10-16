@@ -4,6 +4,8 @@
 import { createHash } from 'node:crypto';
 // @ts-expect-error -- a `type: 'text'` import is a string at runtime; TypeScript sees the module.
 import api from './client/api.ts' with { type: 'text' };
+// @ts-expect-error -- see above.
+import areas from './client/areas.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import boot from './client/boot.ts' with { type: 'text' };
 // @ts-expect-error -- see above
@@ -37,6 +39,7 @@ import zoom from './client/zoom.ts' with { type: 'text' };
 
 const SOURCES: Record<string, string> = {
   api,
+  areas,
   boot,
   copy,
   dialog,

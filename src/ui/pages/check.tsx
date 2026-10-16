@@ -2,7 +2,8 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Child } from 'hono/jsx';
 import type { Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
-import type { DiffData, DiffErrorData, Region, Size } from '../../diff/types';
+import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
+import { type Area, deleteArea, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
@@ -35,6 +36,7 @@ function Shot(props: {
   alt: string;
   size?: Size | undefined;
   regions?: Region[] | undefined;
+  areas?: Area[] | undefined;
   soft?: boolean;
 }) {
   const { ui, sha, alt, size, regions } = props;
@@ -60,7 +62,35 @@ function Shot(props: {
           ))}
         </svg>
       )}
+      {size && <AreaLayer areas={props.areas} size={size} />}
     </div>
+  );
+}
+
+/** The snapshot's ignore and compare areas, drawn over a screenshot in its own coordinates. */
+function AreaLayer({ areas, size }: { areas: Area[] | undefined; size: Size | undefined }) {
+  if (!size || !areas || areas.length === 0) return null;
+  return (
+    <svg class="area-layer" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
+      {areas.map((a) => (
+        <rect class={`area area-${a.kind}`} x={a.x} y={a.y} width={a.width} height={a.height} />
+      ))}
+    </svg>
+  );
+}
+
+/** Drawing tools for reviewers (Plan 6): pick a kind, then drag over a screenshot. */
+function DrawTools() {
+  return (
+    <fieldset class="segmented draw-tools">
+      <legend class="visually-hidden">Draw an area</legend>
+      <button type="button" data-draw="ignore" data-key="i" data-key-label="Draw an ignore area" aria-pressed="false">
+        Ignore area <kbd>I</kbd>
+      </button>
+      <button type="button" data-draw="compare" data-key="c" data-key-label="Draw a compare area" aria-pressed="false">
+        Compare area <kbd>C</kbd>
+      </button>
+    </fieldset>
   );
 }
 
@@ -76,7 +106,8 @@ function Pane({ kind, caption, children }: { kind: string; caption: Child; child
   );
 }
 
-function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<string, Size> }) {
+function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; areas: Area[]; canReview: boolean }) {
+  const { ui, check, sizes, areas } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
   const baseline = check.baseline;
   if (!baseline) {
@@ -84,7 +115,7 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
       <section class="stage" id="stage" data-mode="new" aria-label="New snapshot">
         <div class="panes">
           <Pane kind="current" caption="New snapshot — no baseline yet">
-            <Shot ui={ui} sha={check.imageSha} alt="new snapshot" size={sizes.get(check.imageSha)} />
+            <Shot ui={ui} sha={check.imageSha} alt="new snapshot" size={sizes.get(check.imageSha)} areas={areas} />
           </Pane>
         </div>
       </section>
@@ -110,6 +141,7 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
             </button>
           ))}
         </fieldset>
+        {props.canReview && <DrawTools />}
         <label class="onion-control" hidden>
           <span class="muted">Opacity</span>
           <input type="range" min="0" max="100" value="50" data-onion />
@@ -122,10 +154,26 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
       </div>
       <div class="panes">
         <Pane kind="baseline" caption={`Baseline · ${baseline.branch}`}>
-          <Shot ui={ui} sha={baseline.imageSha} alt="baseline" size={baseSize} regions={diff?.regions} soft />
+          <Shot
+            ui={ui}
+            sha={baseline.imageSha}
+            alt="baseline"
+            size={baseSize}
+            regions={diff?.regions}
+            areas={areas}
+            soft
+          />
         </Pane>
         <Pane kind="current" caption="This build">
-          <Shot ui={ui} sha={check.imageSha} alt="this build" size={currentSize} regions={diff?.regions} soft />
+          <Shot
+            ui={ui}
+            sha={check.imageSha}
+            alt="this build"
+            size={currentSize}
+            regions={diff?.regions}
+            areas={areas}
+            soft
+          />
         </Pane>
         {check.diffImageSha && (
           <Pane kind="diff" caption="Diff · changes in red">
@@ -135,6 +183,7 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
               alt="diff"
               size={sizes.get(check.diffImageSha)}
               regions={diff?.regions}
+              areas={areas}
             />
           </Pane>
         )}
@@ -163,6 +212,7 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
               width={currentSize?.width}
               height={currentSize?.height}
             />
+            <AreaLayer areas={areas} size={currentSize} />
             <div class="divider" aria-hidden="true" />
           </div>
         </Pane>
@@ -172,8 +222,8 @@ function Stage({ ui, check, sizes }: { ui: Ui; check: CheckView; sizes: Map<stri
 }
 
 /** “top left · ” for an area of an image of known size; empty when the size is unknown. */
-function areaPlace(region: Region, size: Size | undefined): string {
-  return size ? `${positionOf(region, size.width, size.height).replace('-', ' ')} · ` : '';
+function areaPlace(region: Rect, size: Size | undefined): string {
+  return size ? `${positionOf({ ...region, pixels: 0 }, size.width, size.height).replace('-', ' ')} · ` : '';
 }
 
 /** One entry of a check's review history, with the actor's name resolved. */
@@ -221,7 +271,59 @@ function History({ check, history }: { check: CheckView; history: HistoryEntry[]
   );
 }
 
-function Info(props: { check: CheckView; branch: string; history: HistoryEntry[]; size: Size | undefined }) {
+const AREA_VERB: Record<Area['kind'], string> = { ignore: 'Ignored', compare: 'Compared' };
+
+/** The snapshot's drawn areas, each with what it does and, for reviewers, Delete. */
+function Areas(props: {
+  ui: Ui;
+  check: CheckView;
+  areas: Area[];
+  size: Size | undefined;
+  filter: CheckFilter;
+  canReview: boolean;
+}) {
+  const { ui, check, areas, size } = props;
+  if (areas.length === 0) return null;
+  return (
+    <section class="areas" aria-label="Areas">
+      <h3>Areas</h3>
+      <ul>
+        {areas.map((a) => (
+          <li class={`area-item area-item-${a.kind}`}>
+            <span>
+              <strong>{AREA_VERB[a.kind]}</strong>
+              <span class="muted">{` ${areaPlace(a, size)}${a.width}×${a.height} px`}</span>
+            </span>
+            {props.canReview && (
+              <form
+                method="post"
+                action={ui.url(`/ui/checks/${check.id}/areas/${a.id}/delete`)}
+                data-area-delete={a.id}
+              >
+                <input type="hidden" name="filter" value={props.filter.key} />
+                <button type="submit" class="small ghost" aria-label="Delete this area" title="Delete this area">
+                  Delete
+                </button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p class="hint">Areas apply to every check of this snapshot, on every branch.</p>
+    </section>
+  );
+}
+
+function Info(props: {
+  ui: Ui;
+  check: CheckView;
+  branch: string;
+  history: HistoryEntry[];
+  size: Size | undefined;
+  areas: Area[];
+  filter: CheckFilter;
+  canReview: boolean;
+}) {
   const { check, branch, size } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
   const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
@@ -245,7 +347,7 @@ function Info(props: { check: CheckView; branch: string; history: HistoryEntry[]
         {diff && diff.regions.length > 0 && (
           <>
             <dt>Changes</dt>
-            <dd>{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''} area${diff.regions.length === 1 && !diff.regionsTruncated ? '' : 's'}`}</dd>
+            <dd>{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''}`}</dd>
           </>
         )}
         {check.baseline && (
@@ -265,16 +367,16 @@ function Info(props: { check: CheckView; branch: string; history: HistoryEntry[]
         )}
       </dl>
       {diff && diff.regions.length > 0 && (
-        <ul class="regions" aria-label="Changed areas">
+        <ul class="regions" aria-label="Changes">
           {diff.regions.map((r, i) => (
             <li>
               <button
                 type="button"
                 class="small ghost"
                 data-region={`${r.x},${r.y},${r.width},${r.height}`}
-                title="Zoom to this area"
+                title="Zoom to this change"
               >
-                <span>{`Area ${i + 1}`}</span>
+                <span>{`Change ${i + 1}`}</span>
                 <span class="muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
               </button>
             </li>
@@ -282,6 +384,14 @@ function Info(props: { check: CheckView; branch: string; history: HistoryEntry[]
           {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
         </ul>
       )}
+      <Areas
+        ui={props.ui}
+        check={check}
+        areas={props.areas}
+        size={size}
+        filter={props.filter}
+        canReview={props.canReview}
+      />
       <History check={check} history={props.history} />
     </aside>
   );
@@ -385,6 +495,7 @@ function CheckPage(props: {
   sizes: Map<string, Size>;
   canReview: boolean;
   history: HistoryEntry[];
+  areas: Area[];
   notice?: string | undefined;
 }) {
   const { ui, project, build, check, filter, strip } = props;
@@ -456,8 +567,17 @@ function CheckPage(props: {
           <span />
         </div>
         <div class="review-body">
-          <Stage ui={ui} check={check} sizes={props.sizes} />
-          <Info check={check} branch={build.branch} history={props.history} size={props.sizes.get(check.imageSha)} />
+          <Stage ui={ui} check={check} sizes={props.sizes} areas={props.areas} canReview={props.canReview} />
+          <Info
+            ui={ui}
+            check={check}
+            branch={build.branch}
+            history={props.history}
+            size={props.sizes.get(check.imageSha)}
+            areas={props.areas}
+            filter={filter}
+            canReview={props.canReview}
+          />
         </div>
         <ActionBar ui={ui} check={check} filter={filter} next={next} canReview={props.canReview} />
         <Filmstrip ui={ui} checks={strip} current={check.id} filter={filter} sizes={props.sizes} />
@@ -472,11 +592,12 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const check = await getCheck(s.deps, c.req.param('id'));
     // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
     const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
-    const [project, build, strip, history] = await Promise.all([
+    const [project, build, strip, history, areas] = await Promise.all([
       getProjectById(s.deps, check.projectId),
       getBuild(s.deps, check.buildId),
       listChecks(s.deps, check.buildId, { result: filter.result, review: filter.review, limit: 200 }),
       historyOf(s, check.id),
+      listAreas(s.deps, check.id),
     ]);
     const sizes = await imageSizes(s.deps, [
       ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
@@ -493,6 +614,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         sizes={sizes}
         canReview={hasPermission(userOf(c), 'check.review')}
         history={history}
+        areas={areas}
         notice={noticeOf(c)}
       />,
     );
@@ -523,6 +645,17 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       );
     });
   }
+
+  app.post('/ui/checks/:id/areas/:areaId/delete', async (c) => {
+    const ui = uiOf(c, s);
+    if (!hasPermission(userOf(c), 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
+    }
+    const form = await c.req.parseBody();
+    const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
+    const check = await deleteArea(s.deps, c.req.param('id'), c.req.param('areaId'));
+    return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=area-deleted`), 303);
+  });
 
   app.post('/ui/checks/:id/reset', async (c) => {
     const ui = uiOf(c, s);

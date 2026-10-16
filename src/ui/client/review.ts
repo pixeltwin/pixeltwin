@@ -2,6 +2,7 @@
 // Approve and Reject call the API, then the next check's server-rendered page replaces #review;
 // pages are fetched ahead, so moving on is instant. Without JavaScript the same forms post.
 import { ApiError, api, basePath, fetchPage } from './api.ts';
+import { mountAreas } from './areas.ts';
 import { onKey } from './keys.ts';
 import { adjacent, type Frame, nextPending } from './queue.ts';
 import { toast } from './toast.ts';
@@ -31,6 +32,7 @@ const TONES: Record<string, string> = {
 
 let root: HTMLElement;
 let unmountViewer: () => void = () => {};
+let unmountAreas: () => void = () => {};
 let busy = false;
 let initialPending = 0;
 let lastReviewed: string | null = null;
@@ -109,6 +111,7 @@ async function show(id: string): Promise<void> {
     return;
   }
   unmountViewer();
+  unmountAreas();
   const fresh = document.importNode(next, true);
   root.replaceWith(fresh);
   root = fresh;
@@ -118,7 +121,14 @@ async function show(id: string): Promise<void> {
   history.replaceState(null, '', url);
   paint();
   unmountViewer = mountViewer(root);
+  unmountAreas = mountAreas(root, reload);
   prefetchNext();
+}
+
+/** Shows the check again from the server, after its areas changed and it was compared again. */
+async function reload(id: string): Promise<void> {
+  forget(id);
+  await show(id);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
@@ -312,6 +322,7 @@ export function init(): void {
   root = found;
   initialPending = frames().filter((f) => f.review === 'pending').length;
   unmountViewer = mountViewer(root);
+  unmountAreas = mountAreas(root, reload);
   paint();
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);

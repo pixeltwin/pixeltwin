@@ -119,9 +119,9 @@ describe('UI focus mode', () => {
   test('changed areas are named by where they are, and each zooms to itself', async () => {
     const { changed } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}`);
-    expect(body).toContain('<dt>Changes</dt><dd>1 area</dd>');
+    expect(body).toContain('<dt>Changes</dt><dd>1</dd>');
     expect(body).toContain(
-      '<button type="button" class="small ghost" data-region="10,10,10,10" title="Zoom to this area"><span>Area 1</span><span class="muted">top left · 10×10 px</span></button>',
+      '<button type="button" class="small ghost" data-region="10,10,10,10" title="Zoom to this change"><span>Change 1</span><span class="muted">top left · 10×10 px</span></button>',
     );
     expect(body).not.toContain('at (10,10)');
   });
