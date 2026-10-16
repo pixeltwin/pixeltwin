@@ -73,7 +73,7 @@ test('Compare on the promote page zooms main, the branch and the diff together',
   const viewport = page.locator('.promote-viewport').first();
   const box = await viewport.boundingBox();
   if (!box) throw new Error('compare not open');
-  const images = page.locator('.promote-large > figure:not(.promote-slider-pane) img');
+  const images = page.locator('.promote-large > figure:not(.promote-onion-pane) img');
   await expect(images).toHaveCount(3);
   const zoomed = async () => {
     for (const i of [0, 1, 2]) await expect(images.nth(i)).toHaveAttribute('style', /scale\((?!1\))/);
@@ -99,18 +99,15 @@ test('Compare on the promote page zooms main, the branch and the diff together',
   await zoomed();
   await page.getByRole('button', { name: 'Fit' }).first().click();
 
-  // The slider follows the pointer: no dragging needed.
-  await page.getByRole('button', { name: 'Slider' }).first().click();
-  const slider = page.locator('.promote-slider').first();
-  await expect(slider).toBeVisible();
+  // Onion: the branch over main, faded with the range.
+  await page.getByRole('button', { name: 'Onion' }).first().click();
+  const onion = page.locator('.promote-onion').first();
+  await expect(onion).toBeVisible();
   await expect(viewport).toBeHidden();
-  const top = slider.locator('.promote-top-layer');
-  const area = await slider.boundingBox();
-  if (!area) throw new Error('slider not on screen');
-  await page.mouse.move(area.x + area.width * 0.8, area.y + area.height / 2);
-  await expect(top).toHaveAttribute('style', /inset\(0(px)? 0(px)? 0(px)? 8\d/);
-  await page.mouse.move(area.x + area.width * 0.2, area.y + area.height / 2, { steps: 4 });
-  await expect(top).toHaveAttribute('style', /inset\(0(px)? 0(px)? 0(px)? [12]\d/);
+  const top = onion.locator('.promote-top-layer');
+  await expect(top).toHaveAttribute('style', /opacity: 0\.5/);
+  await page.locator('[data-promote-opacity]').first().fill('80');
+  await expect(top).toHaveAttribute('style', /opacity: 0\.8/);
 });
 
 test('the theme switch applies at once and survives a reload', async ({ reviewerPage: page }) => {

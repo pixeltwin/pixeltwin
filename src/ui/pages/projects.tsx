@@ -548,10 +548,24 @@ function PromotePage(props: {
                           <button type="button" data-promote-mode="side" aria-pressed="true">
                             Side by side
                           </button>
-                          <button type="button" data-promote-mode="slider" aria-pressed="false">
-                            Slider
+                          <button type="button" data-promote-mode="onion" aria-pressed="false">
+                            Onion
                           </button>
                         </fieldset>
+                      )}
+                      {c.mainImageSha && (
+                        <label class="promote-opacity" hidden>
+                          <span class="muted">{`${main} now`}</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value="50"
+                            data-promote-opacity
+                            aria-label={`How much of ${branch} shows over ${main}`}
+                          />
+                          <span class="muted">{branch}</span>
+                        </label>
                       )}
                       <span class="promote-zoom">
                         <button type="button" class="small" data-promote-zoom="out" aria-label="Zoom out">
@@ -565,7 +579,9 @@ function PromotePage(props: {
                         </button>
                       </span>
                     </div>
-                    <p class="hint">Click or scroll to zoom, drag to move. In Slider, move the pointer across.</p>
+                    <p class="hint">
+                      Click or scroll to zoom, drag to move. In Onion, fade between main and the branch.
+                    </p>
                     <div class={showDiff ? 'promote-large three' : 'promote-large'} data-mode="side">
                       <figure>
                         <figcaption>{`${main} now`}</figcaption>
@@ -590,15 +606,12 @@ function PromotePage(props: {
                         </figure>
                       )}
                       {c.mainImageSha && (
-                        <figure class="promote-slider-pane">
-                          <div class="promote-viewport promote-slider">
+                        <figure class="promote-onion-pane">
+                          <div class="promote-viewport promote-onion">
                             {image(imageUrl(c.mainImageSha), `${main} now`, 'promote-full')}
                             <div class="promote-top-layer">
                               {image(imageUrl(c.branchImageSha), branch, 'promote-full')}
                             </div>
-                            <div class="promote-divider" aria-hidden="true" />
-                            <span class="promote-tag promote-tag-left">{`${main} now`}</span>
-                            <span class="promote-tag promote-tag-right">{branch}</span>
                           </div>
                         </figure>
                       )}

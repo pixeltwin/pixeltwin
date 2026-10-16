@@ -204,16 +204,16 @@ describe('UI projects', () => {
       // Compare zooms all three images together (the promote island).
       expect(page).toContain('data-islands="promote"');
       expect(page).toContain('<div class="promote-viewport">');
-      expect(page).toContain('Click or scroll to zoom, drag to move. In Slider, move the pointer across.');
-      // Tools (JavaScript only): Side by side or Slider, and zoom out, fit, in.
+      expect(page).toContain('Click or scroll to zoom, drag to move. In Onion, fade between main and the branch.');
+      // Tools (JavaScript only): Side by side or Onion, its opacity, and zoom out, fit, in.
       expect(page).toContain('<div class="promote-tools" hidden="">');
-      expect(page).toContain('data-promote-mode="slider"');
+      expect(page).toContain('data-promote-mode="onion"');
+      expect(page).not.toContain('data-promote-mode="slider"');
       for (const z of ['out', 'fit', 'in']) expect(page).toContain(`data-promote-zoom="${z}"`);
-      // The slider lays the branch over main, each side labelled on the image.
-      expect(page).toContain('<div class="promote-viewport promote-slider">');
-      expect(page).toContain('<div class="promote-divider" aria-hidden="true"></div>');
-      expect(page).toContain('<span class="promote-tag promote-tag-left">main now</span>');
-      expect(page).toContain('<span class="promote-tag promote-tag-right">feature/new</span>');
+      // Onion lays the branch over main; the range fades from main to the branch.
+      expect(page).toContain('<div class="promote-viewport promote-onion">');
+      expect(page).toMatch(/<input type="range" min="0" max="100" value="50" data-promote-opacity/);
+      expect(page).not.toContain('promote-divider');
       expect(page).toContain('new on main');
 
       const png = await t.request('GET', diffUrl.replace('&amp;', '&'), { as: admin });

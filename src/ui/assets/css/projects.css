@@ -417,76 +417,30 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-/* Labels on the slider, each on its own side, so it is clear which image is which. */
-.promote-tag {
-  position: absolute;
-  top: var(--space-2);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-sm);
-  background: rgb(17 17 17 / 0.72);
-  color: #fff;
-  font-size: var(--text-xs);
-  pointer-events: none;
+.promote-opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 400;
 }
-.promote-tag-left {
-  left: var(--space-2);
-}
-.promote-tag-right {
-  right: var(--space-2);
-}
-/* Side by side shows the separate images; the slider shows only its own pane, full width. */
-.promote-large[data-mode="side"] .promote-slider-pane,
-.promote-large[data-mode="slider"] > figure:not(.promote-slider-pane) {
+.promote-opacity[hidden] {
   display: none;
 }
-.promote-large[data-mode="slider"] {
+/* Side by side shows the separate images; Onion shows only its own pane, full width. */
+.promote-large[data-mode="side"] .promote-onion-pane,
+.promote-large[data-mode="onion"] > figure:not(.promote-onion-pane) {
+  display: none;
+}
+.promote-large[data-mode="onion"] {
   grid-template-columns: minmax(0, 1fr);
-}
-.promote-slider-pane figcaption {
-  display: flex;
-  justify-content: space-between;
-}
-.promote-slider {
-  cursor: ew-resize;
-  user-select: none;
-}
-.promote-slider.zoomed {
-  cursor: grab;
 }
 .promote-top-layer {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  clip-path: inset(0 0 0 50%);
-}
-.promote-divider {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 2px;
-  margin-left: -1px;
-  background: var(--focus);
-  pointer-events: none;
-}
-/* A knob in the middle of the divider, like the review slider. */
-.promote-divider::after {
-  content: "‹ ›";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--focus);
-  color: #fff;
-  font-size: var(--text-sm);
-  font-weight: 700;
-  line-height: 1;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+  opacity: 0.5;
 }
 @media (max-width: 760px) {
   .promote-row {

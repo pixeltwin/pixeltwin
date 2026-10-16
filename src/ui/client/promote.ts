@@ -1,7 +1,7 @@
-// Promote page, Compare: side by side (main, branch, diff) or a slider (the branch over main).
+// Promote page, Compare: side by side (main, branch, diff) or onion (the branch faded over main).
 // A click zooms in where it lands, the wheel (or a pinch) zooms at the pointer, a drag moves, and
 // − / Fit / + do the same from the toolbar. Every image of a screen shares one view, so the same
-// spot stays side by side. In the slider the divider follows the pointer: no dragging needed.
+// spot stays side by side.
 import { clampPan, fitView, MAX_SCALE, panBy, type Size, type View, zoomAt } from './zoom.ts';
 
 /** A press that moves less than this is a click (zoom in), not a drag (move). */
@@ -14,12 +14,11 @@ function mount(group: HTMLElement): void {
   if (!first) return;
   const tools = group.parentElement?.querySelector<HTMLElement>('.promote-tools');
   const label = tools?.querySelector<HTMLElement>('[data-promote-zoom-label]');
-  const slider = group.querySelector<HTMLElement>('.promote-slider');
-  const topLayer = slider?.querySelector<HTMLElement>('.promote-top-layer');
-  const divider = slider?.querySelector<HTMLElement>('.promote-divider');
+  const topLayer = group.querySelector<HTMLElement>('.promote-onion .promote-top-layer');
+  const opacityControl = tools?.querySelector<HTMLElement>('.promote-opacity');
+  const opacity = opacityControl?.querySelector<HTMLInputElement>('[data-promote-opacity]');
   /** null: fitted by CSS (the page's own layout). */
   let view: View | null = null;
-  let split = 0.5;
 
   const visible = () => viewports.filter((v) => v.offsetParent !== null);
   const image = (): Size => ({ width: first.naturalWidth || 1, height: first.naturalHeight || 1 });
@@ -43,8 +42,7 @@ function mount(group: HTMLElement): void {
       img.style.height = `${img.naturalHeight}px`;
       img.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
     }
-    if (topLayer) topLayer.style.clipPath = `inset(0 0 0 ${split * 100}%)`;
-    if (divider) divider.style.left = `${split * 100}%`;
+    if (topLayer && opacity) topLayer.style.opacity = String(Number(opacity.value) / 100);
     if (label) label.textContent = view ? `${Math.round((view.scale / fit().scale) * 100)}%` : 'Fit';
   };
 
@@ -74,9 +72,11 @@ function mount(group: HTMLElement): void {
       button.addEventListener('click', () => {
         group.dataset.mode = button.dataset.promoteMode;
         for (const b of modes) b.setAttribute('aria-pressed', String(b === button));
+        if (opacityControl) opacityControl.hidden = button.dataset.promoteMode !== 'onion';
         setView(null);
       });
     }
+    opacity?.addEventListener('input', render);
     tools.querySelector('[data-promote-zoom="in"]')?.addEventListener('click', () => zoomBy(2));
     tools.querySelector('[data-promote-zoom="out"]')?.addEventListener('click', () => view && zoomBy(0.5));
     tools.querySelector('[data-promote-zoom="fit"]')?.addEventListener('click', () => setView(null));
@@ -95,15 +95,6 @@ function mount(group: HTMLElement): void {
       },
       { passive: false },
     );
-    // The slider's divider follows the pointer while no button is pressed.
-    if (viewport === slider) {
-      viewport.addEventListener('pointermove', (e) => {
-        if (e.buttons !== 0) return;
-        const r = viewport.getBoundingClientRect();
-        split = Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1)));
-        render();
-      });
-    }
     viewport.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
