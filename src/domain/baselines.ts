@@ -218,7 +218,7 @@ export async function promoteBranch(
             projectId: project.id,
             snapshotKey: baseline.snapshotKey,
             branch: project.mainBranch,
-            buildNumber: Number.MAX_SAFE_INTEGER,
+            buildNumber: null,
           },
           baseline.sourceCheckId,
         );

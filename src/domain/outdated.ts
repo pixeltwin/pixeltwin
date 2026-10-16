@@ -30,22 +30,29 @@ export async function supersedingCheck(db: Db, screen: Screen): Promise<{ id: st
   return row ? { id: row.id, buildNumber: Number(row.buildNumber) } : null;
 }
 
-/** After `by` (in build `buildNumber`) became the baseline: the screen's pending checks in older builds are outdated. */
-export async function outdateOlder(db: Db, screen: Screen, by: string): Promise<void> {
+/**
+ * After `by` (in build `buildNumber`) became the baseline: the screen's pending checks in older
+ * builds are outdated; with `buildNumber: null`, in every build of the branch (a promotion).
+ */
+export async function outdateOlder(
+  db: Db,
+  screen: Omit<Screen, 'buildNumber'> & { buildNumber: number | null },
+  by: string,
+): Promise<void> {
   await db
     .updateTable('checks')
     .set({ review: 'outdated', supersededBy: by, updatedAt: Date.now() })
     .where('projectId', '=', screen.projectId)
     .where('snapshotKey', '=', screen.snapshotKey)
     .where('review', '=', 'pending')
-    .where('buildId', 'in', (eb) =>
-      eb
+    .where('buildId', 'in', (eb) => {
+      const builds = eb
         .selectFrom('builds')
         .select('id')
         .where('projectId', '=', screen.projectId)
-        .where('branch', '=', screen.branch)
-        .where('number', '<', screen.buildNumber),
-    )
+        .where('branch', '=', screen.branch);
+      return screen.buildNumber === null ? builds : builds.where('number', '<', screen.buildNumber);
+    })
     .execute();
 }
 
