@@ -3,7 +3,7 @@ import { getBuildRow } from '../../domain/builds';
 import { getCheck } from '../../domain/checks';
 import { noisyScreens, type ScreenHistory, screenHistory } from '../../domain/flaky';
 import { getProjectBySlug } from '../../domain/projects';
-import { allowProject } from '../auth';
+
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { json, problems, ScreenHistorySchema } from '../schemas';
@@ -31,7 +31,6 @@ export function registerFlakyRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(history, async (c) => {
     const check = await getCheck(s.deps, c.req.valid('param').id);
-    allowProject(c, check.projectId);
     const { branch } = await getBuildRow(s.deps, check.buildId);
     const screen = await screenHistory(s.deps, { projectId: check.projectId, snapshotKey: check.snapshotKey, branch });
     if (!screen) throw new Error(`check ${check.id} is missing from its own history`);
@@ -51,7 +50,6 @@ export function registerFlakyRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(noisy, async (c) => {
     const project = await getProjectBySlug(s.deps, c.req.valid('param').slug);
-    allowProject(c, project.id);
     return c.json({ items: (await noisyScreens(s.deps, project.id)).map(historyJson) }, 200);
   });
 }

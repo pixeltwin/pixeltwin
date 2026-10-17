@@ -32,6 +32,7 @@ describe('personal tokens (POST /api/v1/auth/token)', () => {
   }
 
   test('email and password give a pu_ token that acts as the user, with their role', async () => {
+    const check = await changedCheck();
     await t.userAs('reviewer', 'rev@example.com');
     const res = await tokenFor('rev@example.com');
     expect(res.status).toBe(201);
@@ -42,7 +43,6 @@ describe('personal tokens (POST /api/v1/auth/token)', () => {
     // No cookie: the token is the credential.
     expect(res.headers.get('set-cookie')).toBeNull();
 
-    const check = await changedCheck();
     const approve = await t.request('POST', `/api/v1/checks/${check.id}/approve`, {
       headers: { authorization: `Bearer ${body.token}`, origin: 'null' },
     });
@@ -53,9 +53,9 @@ describe('personal tokens (POST /api/v1/auth/token)', () => {
   });
 
   test("a viewer's token cannot approve, and a wrong password or an unknown token is a 401", async () => {
+    const check = await changedCheck();
     await t.userAs('viewer', 'view@example.com');
     const { token } = (await (await tokenFor('view@example.com')).json()) as { token: string };
-    const check = await changedCheck();
     const approve = await t.request('POST', `/api/v1/checks/${check.id}/approve`, {
       headers: { authorization: `Bearer ${token}` },
     });

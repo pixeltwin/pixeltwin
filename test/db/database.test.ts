@@ -57,6 +57,7 @@ describe('database', () => {
       autoApproveNew: 0,
       agentReview: 'off',
       agentMaxDiffPercent: 1,
+      visibleToAll: 0,
     });
     expect(typeof row.createdAt).toBe('number');
   });
@@ -125,6 +126,7 @@ describe('openDatabase', () => {
         '0011_integrations',
         '0012_agent_review',
         '0013_change_groups',
+        '0014_project_members',
       ]);
       await handle.close();
     } finally {

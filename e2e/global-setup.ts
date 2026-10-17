@@ -31,6 +31,8 @@ function waitForSetupToken(server: ChildProcess): Promise<string> {
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   const dataDir = mkdtempSync(join(tmpdir(), 'pixeltwin-e2e-'));
+  // Workers inherit it: a test that must age a row (an expired invite) opens the database.
+  process.env.E2E_DATA_DIR = dataDir;
   const url = `http://localhost:${E2E_PORT}`;
   const server = spawn(process.env.BUN ?? 'bun', ['src/main.ts', 'serve'], {
     env: { ...process.env, DATA_DIR: dataDir, PORT: String(E2E_PORT), PUBLIC_URL: url, LOG_LEVEL: 'info' },

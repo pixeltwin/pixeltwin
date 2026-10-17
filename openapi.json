@@ -3,7 +3,7 @@
   "info": {
     "title": "pixeltwin",
     "version": "0.1.0",
-    "description": "Self-hosted visual regression testing. Each operation lists its required permission in `x-permission`. Agents: start with /llms.txt."
+    "description": "Self-hosted visual regression testing. Each operation lists its required permission in `x-permission`. Admins hold every permission; other users hold the project permissions their role in a project gives (viewer: project.read; reviewer: also check.review; maintainer: also check.write and project.admin), and get 404 for projects they cannot open. A project token is bound to its project. Agents: start with /llms.txt."
   },
   "components": {
     "securitySchemes": {
@@ -35,6 +35,22 @@
               "admin",
               "reviewer",
               "viewer"
+            ],
+            "description": "Global role. admin: every project and the server. reviewer, viewer: the role in projects visible to everyone and the default when added to a project; other projects need a membership"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "pending",
+              "rejected"
+            ],
+            "description": "pending: signed up, waiting for an admin; rejected: turned down. Neither may use the API"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
             ]
           },
           "createdAt": {
@@ -45,6 +61,8 @@
           "id",
           "email",
           "role",
+          "status",
+          "name",
           "createdAt"
         ]
       },
@@ -119,6 +137,30 @@
           "nextCursor"
         ]
       },
+      "Membership": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "reviewer",
+              "maintainer"
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "role"
+        ]
+      },
       "ProjectPage": {
         "type": "object",
         "properties": {
@@ -181,6 +223,10 @@
             "type": "number",
             "description": "With agentReview \"auto-below\": the largest diff percent a token may approve itself"
           },
+          "visibleToAll": {
+            "type": "boolean",
+            "description": "Every user on the server may open the project with their global role (viewer or reviewer); otherwise only admins and members"
+          },
           "createdAt": {
             "type": "integer"
           },
@@ -199,6 +245,7 @@
           "autoApproveNew",
           "agentReview",
           "agentMaxDiffPercent",
+          "visibleToAll",
           "createdAt",
           "updatedAt"
         ]
@@ -287,6 +334,80 @@
               "token"
             ]
           }
+        ]
+      },
+      "MemberPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "reviewer",
+              "maintainer"
+            ]
+          },
+          "createdAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "userId",
+          "email",
+          "role",
+          "createdAt"
+        ]
+      },
+      "MemberCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "reviewer",
+              "viewer"
+            ],
+            "description": "Global role: the default when added without one"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role"
         ]
       },
       "Build": {
@@ -2241,6 +2362,209 @@
           "detail",
           "results"
         ]
+      },
+      "InviteResult": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invite",
+              "member"
+            ],
+            "description": "`member`: the email already had an account and became a member at once; no link"
+          },
+          "invite": {
+            "$ref": "#/components/schemas/Invite"
+          },
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "link": {
+            "type": "string",
+            "description": "The invite link. Shown only in this response."
+          },
+          "mailed": {
+            "type": "boolean",
+            "description": "The link was also sent by mail (SMTP_URL is set)"
+          }
+        },
+        "required": [
+          "kind",
+          "mailed"
+        ]
+      },
+      "Invite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "slug",
+              "name"
+            ]
+          },
+          "projectRole": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "viewer",
+              "reviewer",
+              "maintainer",
+              null
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "admin",
+              "reviewer",
+              "viewer",
+              null
+            ],
+            "description": "The new user's global role; null: viewer"
+          },
+          "invitedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Email of who invited"
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "project",
+          "projectRole",
+          "role",
+          "invitedBy",
+          "createdAt",
+          "expiresAt"
+        ]
+      },
+      "AccessRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "The email was confirmed by a link (only with SMTP)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "decidedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Email of the admin who decided"
+          },
+          "decidedAt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "email",
+          "name",
+          "note",
+          "verified",
+          "status",
+          "createdAt",
+          "decidedBy",
+          "decidedAt",
+          "reason"
+        ]
+      },
+      "SignupSettings": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "approval"
+            ]
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "mode",
+          "domains"
+        ]
       }
     },
     "parameters": {}
@@ -2825,7 +3149,8 @@
         "tags": [
           "users"
         ],
-        "summary": "Change a user's email or role",
+        "summary": "Change a user's email or global role",
+        "description": "Making a user an admin ends their memberships (admins have access to every project). The last admin cannot be demoted (409 last_admin).",
         "x-permission": "user.admin",
         "security": [
           {
@@ -3005,12 +3330,93 @@
         }
       }
     },
+    "/api/v1/users/{id}/projects": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "A user's project memberships (admins have none: they have access to every project)",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memberships, by project slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Membership"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
           "projects"
         ],
-        "summary": "List projects (a token sees only its own)",
+        "summary": "List the projects you can see (a token sees only its own)",
+        "description": "Admins see every project; other users the projects they are members of and those visible to everyone.",
         "x-permission": "project.read",
         "security": [
           {
@@ -3058,7 +3464,7 @@
           "projects"
         ],
         "summary": "Create a project",
-        "x-permission": "project.admin",
+        "x-permission": "server.admin",
         "security": [
           {
             "projectToken": []
@@ -3125,6 +3531,10 @@
                     "minimum": 0,
                     "maximum": 100,
                     "default": 1
+                  },
+                  "visibleToAll": {
+                    "type": "boolean",
+                    "default": false
                   }
                 },
                 "required": [
@@ -3328,6 +3738,9 @@
                     "type": "number",
                     "minimum": 0,
                     "maximum": 100
+                  },
+                  "visibleToAll": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -3393,7 +3806,7 @@
           "projects"
         ],
         "summary": "Delete a project with its builds, baselines and tokens",
-        "x-permission": "project.admin",
+        "x-permission": "server.admin",
         "security": [
           {
             "projectToken": []
@@ -3687,6 +4100,492 @@
             }
           },
           "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List a project's members (admins have access to every project and are not listed)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Give an existing user access to the project",
+        "description": "Roles: `viewer` looks, `reviewer` also approves and rejects, `maintainer` also manages settings, tokens and members. Without `role` the user's global role (viewer or reviewer) is used.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "reviewer",
+                      "maintainer"
+                    ]
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/members/candidates": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Find users to add: email contains q (at least 2 characters), not members yet, not admins",
+        "description": "Case-insensitive; `%` and `_` are plain characters. At most 10 users, by email.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 254
+            },
+            "required": true,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemberCandidate"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/members/{userId}": {
+      "patch": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Change a member's role (not your own: 409 own_membership)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "reviewer",
+                      "maintainer"
+                    ]
+                  }
+                },
+                "required": [
+                  "role"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove a member (not yourself: 409 own_membership)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Problem",
             "content": {
               "application/problem+json": {
@@ -8198,6 +9097,1427 @@
             }
           },
           "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/invites": {
+      "post": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "Invite someone by email into the project (an account becomes a member at once)",
+        "description": "The link works once, for 7 days; inviting the same email again replaces it. With SMTP_URL set it is also mailed. Roles: viewer (default), reviewer, maintainer.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "reviewer",
+                      "maintainer"
+                    ],
+                    "default": "viewer"
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The email had an account: now a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The invite, with its link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "The project's pending invites (never their links)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending invites",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Invite"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invites": {
+      "post": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "Invite someone to the server with a global role, optionally into a project",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "reviewer",
+                      "viewer"
+                    ],
+                    "default": "viewer"
+                  },
+                  "project": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "projectRole": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "reviewer",
+                      "maintainer"
+                    ]
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The email had an account: now a member of the project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The invite, with its link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "Every pending invite on the server",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending invites",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Invite"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invites/{id}": {
+      "delete": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "Revoke a pending invite: its link stops working",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invites/{id}/resend": {
+      "post": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "A new link for a pending invite (the old one stops working), mailed again with SMTP",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The invite, with its new link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{id}/reset-link": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "A one-time link (1 hour) for the user to set a new password; mailed with SMTP",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The link, shown once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "link": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "integer"
+                    },
+                    "mailed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "link",
+                    "expiresAt",
+                    "mailed"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}": {
+      "get": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "What a one-time link (invite, password reset, email check) is for, while it works",
+        "description": "404 link_invalid, 410 link_used or link_expired otherwise. Limited per IP like logins.",
+        "x-permission": "public",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "purpose": {
+                      "type": "string",
+                      "enum": [
+                        "invite",
+                        "password_reset",
+                        "verify_email"
+                      ]
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "integer"
+                    },
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "purpose",
+                    "email",
+                    "expiresAt",
+                    "projects"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "invites"
+        ],
+        "summary": "Use an invite or reset link: set the password and get logged in (sets the pt_session cookie)",
+        "x-permission": "public",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The user, logged in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/signup": {
+      "post": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Ask for access (when an admin turned sign-up on); an admin approves it",
+        "description": "Always 202 with the same body, also for an email that has an account (which gets a mail saying so, with SMTP), so the answer does not tell whether an email exists. With SMTP the person first confirms the email by a link. Limited like logins. 404 signup_closed when sign-up is off; 422 signup_refused for an email domain the server does not take.",
+        "x-permission": "public",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 1024
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Request received",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received"
+                      ]
+                    },
+                    "verifyEmail": {
+                      "type": "boolean",
+                      "description": "A link to confirm the email was mailed"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "verifyEmail"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/signup/verify/{token}": {
+      "post": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Confirm the email of a sign-up with the link from the mail; admins then see the request",
+        "x-permission": "public",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "verified"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/access-requests": {
+      "get": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Access requests waiting for an admin, oldest first (with SMTP: confirmed emails only)",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AccessRequest"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/access-requests/{id}/approve": {
+      "post": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Let the person in, with a global role and project memberships",
+        "description": "Body optional: `{\"role\":\"viewer\",\"projects\":[{\"slug\":\"web\",\"role\":\"reviewer\"}]}`; by default viewer, no project.",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "reviewer",
+                      "viewer"
+                    ],
+                    "default": "viewer"
+                  },
+                  "projects": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slug": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "viewer",
+                            "reviewer",
+                            "maintainer"
+                          ],
+                          "default": "viewer"
+                        }
+                      },
+                      "required": [
+                        "slug"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100,
+                    "default": []
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The approved request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/access-requests/{id}/reject": {
+      "post": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Turn the request down, with an optional reason the person sees",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rejected request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/signup": {
+      "get": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Whether people may ask for access, and from which email domains",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sign-up settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "signup"
+        ],
+        "summary": "Turn sign-up on (approval) or off; domains limit it, e.g. [\"company.com\"] (empty: any)",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "approval"
+                    ]
+                  },
+                  "domains": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9.-]+\\.[a-z0-9-]+$|^[a-z0-9-]+$"
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "required": [
+                  "mode",
+                  "domains"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sign-up settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

@@ -47,6 +47,8 @@ const projectSettings = {
   agentReview: z.enum(AGENT_REVIEW_POLICIES),
   /** With `auto-below`: the largest diff percent a token may approve itself. */
   agentMaxDiffPercent: z.number().min(0).max(100),
+  /** Every user may open the project with their global role; otherwise members only. */
+  visibleToAll: z.boolean(),
 };
 
 export const createProjectSchema = z.strictObject({
@@ -61,6 +63,7 @@ export const createProjectSchema = z.strictObject({
   autoApproveNew: projectSettings.autoApproveNew.default(false),
   agentReview: projectSettings.agentReview.default('off'),
   agentMaxDiffPercent: projectSettings.agentMaxDiffPercent.default(1),
+  visibleToAll: projectSettings.visibleToAll.default(false),
 });
 
 export const updateProjectSchema = z.strictObject(projectSettings).partial();

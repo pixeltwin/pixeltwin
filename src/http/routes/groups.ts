@@ -1,9 +1,8 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
-import { getBuildRow } from '../../domain/builds';
 import { listGroups, resetGroup, reviewGroup } from '../../domain/groups';
 import { actorFromPrincipal } from '../../domain/reviews';
 import { groupResetSchema, groupReviewSchema } from '../../domain/schemas';
-import { allowProject, principalOf } from '../auth';
+import { principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { ChangeGroupSchema, GroupReviewSchema, json, problems } from '../schemas';
@@ -29,7 +28,6 @@ export function registerGroupRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(list, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
     return c.json({ items: await listGroups(s.deps, id) }, 200);
   });
 
@@ -58,7 +56,6 @@ export function registerGroupRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     });
     app.openapi(route, async (c) => {
       const { id, groupId } = c.req.valid('param');
-      allowProject(c, (await getBuildRow(s.deps, id)).projectId);
       const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
       return c.json(await reviewGroup(s.deps, id, groupId, action, actorFromPrincipal(principalOf(c)), input), 200);
     });
@@ -80,7 +77,6 @@ export function registerGroupRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(reset, async (c) => {
     const { id, groupId } = c.req.valid('param');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
     const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
     return c.json(await resetGroup(s.deps, id, groupId, actorFromPrincipal(principalOf(c)), input), 200);
   });

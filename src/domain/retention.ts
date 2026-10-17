@@ -4,6 +4,7 @@ import { imageKey } from '../storage/storage';
 import { removeBuilds } from './builds';
 import type { Deps } from './deps';
 import { listProjects } from './projects';
+import { cleanUpSignups } from './signup';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 /** Images younger than this are never collected: an upload may still be about to reference them. */
@@ -14,6 +15,8 @@ export interface RetentionResult {
   buildsDeleted: number;
   imagesDeleted: number;
   elementSetsDeleted: number;
+  /** Turned-down or never confirmed sign-ups removed (see signup.ts). */
+  signupsDeleted: number;
 }
 
 /**
@@ -159,5 +162,6 @@ export async function runRetention(deps: Pick<Deps, 'db' | 'storage'>, now = Dat
   const buildsDeleted = await deleteExpiredBuilds(deps, now);
   const imagesDeleted = await deleteUnusedImages(deps, now);
   const elementSetsDeleted = await deleteUnusedElementSets(deps, now);
-  return { buildsDeleted, imagesDeleted, elementSetsDeleted };
+  const signupsDeleted = await cleanUpSignups(deps, now);
+  return { buildsDeleted, imagesDeleted, elementSetsDeleted, signupsDeleted };
 }

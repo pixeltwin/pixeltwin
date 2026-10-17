@@ -18,7 +18,9 @@ import { registerFlakyRoutes } from './routes/flaky';
 import { registerGroupRoutes } from './routes/groups';
 import { registerImageRoutes } from './routes/images';
 import { INBOUND_WEBHOOK_PATH, registerIntegrationRoutes } from './routes/integrations';
+import { registerInviteRoutes } from './routes/invites';
 import { registerProjectRoutes } from './routes/projects';
+import { registerSignupRoutes } from './routes/signup';
 import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
 
@@ -33,6 +35,11 @@ const HTTP_CODES: Record<number, string> = {
 };
 const CHECK_UPLOAD_PATH = new RegExp(`^${API}/builds/[^/]+/checks$`);
 
+/** One-time links carry their token in the path; it never reaches the log. */
+export function redactPath(path: string): string {
+  return path.replace(/\/(invite|reset|verify|links)\/[^/]+/g, '/$1/…');
+}
+
 function requestContext(services: Services): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const requestId = newId('req');
@@ -46,7 +53,7 @@ function requestContext(services: Services): MiddlewareHandler<AppEnv> {
     log('request', {
       requestId,
       method: c.req.method,
-      path: c.req.path,
+      path: redactPath(c.req.path),
       status: c.res.status,
       ms: Math.round(performance.now() - started),
       principal: c.get('principal')?.id ?? null,
@@ -100,6 +107,17 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   app.use('*', requestContext(services));
   app.use(`${API}/*`, cors());
   app.use(`${API}/*`, bodyLimits(services.config.maxImageBytes));
+  // The public one-time link pages take a password, nothing more.
+  const linkBody = bodyLimit({
+    maxSize: 16 * 1024,
+    onError: () => {
+      throw new AppError('payload_too_large', 413, 'The form is too large.');
+    },
+  });
+  for (const kind of ['invite', 'reset', 'verify']) app.use(`/ui/${kind}/*`, linkBody);
+  app.use(`${API}/links/*`, linkBody);
+  app.use(`${API}/signup`, linkBody);
+  app.use(`${API}/signup/*`, linkBody);
   // UI forms are small; refuse big bodies before parsing (spec §7.4), including the public login form.
   app.use(
     '/ui/*',
@@ -168,6 +186,8 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerBaselineRoutes(app, services);
   registerIntegrationRoutes(app, services);
   registerImageRoutes(app, services);
+  registerInviteRoutes(app, services);
+  registerSignupRoutes(app, services);
   registerDocRoutes(app, services);
   registerUi(app, services);
   return app;

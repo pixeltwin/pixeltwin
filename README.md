@@ -110,7 +110,7 @@ curl -X POST http://localhost:8080/api/v1/setup -H 'content-type: application/js
   -d '{"token":"<setup token>","email":"you@example.com","password":"at least 10 characters"}'
 ```
 
-Admins create projects, users and CI tokens in the UI. Over the API it looks like this (reference at `/docs`):
+Admins create projects, users and CI tokens in the UI (project maintainers manage tokens too). Over the API it looks like this (reference at `/docs`):
 
 ```sh
 curl -c cookies -X POST http://localhost:8080/api/v1/auth/login -H 'content-type: application/json' \
@@ -122,6 +122,41 @@ curl -b cookies -H 'origin: http://localhost:8080' -H 'content-type: application
 ```
 
 The workflow for CI and agents is in `/llms.txt`; the full contract is `/openapi.json`.
+
+### Users, roles and projects
+
+Each user has a server role, and every non-admin user sees only the projects they can open:
+
+- **Admins** manage the server: every project, users, creating and deleting projects.
+- **Members** of a project (Settings → Members, or `POST /api/v1/projects/{slug}/members`) have a
+  role there: `viewer` looks (also flaky and noisy screens, review history), `reviewer` also
+  approves, rejects, draws areas, reviews change groups and accepts or dismisses agents'
+  suggestions, `maintainer` also changes the project's settings (agent review policy included),
+  tokens, members, pull request integration and webhooks (but cannot delete the project).
+- A project can be **visible to everyone on this server** (a setting, off for new projects): then
+  every user opens it with their server role, `viewer` or `reviewer`. A membership can give more.
+
+**Inviting.** Instead of creating users with a password, invite them by email: Settings → Members
+→ Invite by email (admins and the project's maintainers), or Users → Invite user (admins, with a
+server role and an optional project). An email that already has an account just becomes a member.
+Anyone else gets a one-time link (7 days; inviting again or Resend replaces it; Revoke ends it)
+where they choose a password and land in the project. With `SMTP_URL` and `SMTP_FROM` set the link
+is also mailed; without them it is shown once to copy. Admins get a one-time **reset link** (1 hour)
+for any user under Users (the `admin reset-password` command still works too). Links are never
+logged and their pages send no Referer.
+
+**Sign-up with approval.** Users → Sign-up turns on "Request access" on the login page (optionally
+only for some email domains). Anyone may then ask, with a note; the answer never says whether the
+email already has an account. With SMTP they first confirm their email by a link, and admins get a
+mail (at most every 15 minutes); without SMTP the request comes marked "email not verified". Until
+an admin approves it (with a server role and projects) or turns it down (with a reason), the person
+can log in but sees only a waiting page, and the API answers `403 account_pending`. Turned-down
+requests are removed after 30 days, never confirmed ones after 7.
+
+The server role of a non-admin is also their default role when they are added to a project. A user
+outside a project gets 404 for it and everything in it, as if it did not exist. Project tokens are
+unchanged: each one belongs to one project. Upgrading keeps everyone's access: every existing
+non-admin user becomes a member of every existing project with their role.
 
 Other commands: `migrate`, `admin reset-password <email>`, and `healthcheck` (exit 0 when the server
 on `PORT` answers; the Docker image uses it).
@@ -156,7 +191,8 @@ check: the answer lists what applied (`changed`) and what became a suggestion (`
 ### Pull requests: GitHub and GitLab
 
 A project can report every build on its pull (merge) request. In **Settings → Pull requests**
-(or `PATCH /api/v1/projects/{slug}/integration`) pick GitHub or GitLab and give it a token:
+(or `PATCH /api/v1/projects/{slug}/integration`; admins and the project's maintainers) pick GitHub
+or GitLab and give it a token:
 
 - **GitHub**: a fine-grained personal access token with *Commit statuses* and *Pull requests*
   (read and write) on the repository, or a GitHub App installation token. For GitHub Enterprise
@@ -263,6 +299,8 @@ it out.
 | `MAX_IMAGE_BYTES` | `10485760` |
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |
+| `SMTP_URL` | unset → no mail (links are shown to copy); `smtp://user:pass@host:587` (STARTTLS when offered; credentials only over TLS, except to localhost) or `smtps://…:465` |
+| `SMTP_FROM` | needed with `SMTP_URL`, e.g. `pixeltwin <pixeltwin@example.com>` |
 
 ## Post screenshots from your tests: the JavaScript SDK
 

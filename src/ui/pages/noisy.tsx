@@ -2,13 +2,12 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
 import type { Rect, Size } from '../../diff/types';
 import { aroundChange } from '../../domain/areas';
-import { hasPermission } from '../../domain/auth/policy';
 import { type HistoryEntry, noisyScreens, type ScreenHistory } from '../../domain/flaky';
 import { imageSizes } from '../../domain/images';
-import { getProjectBySlug } from '../../domain/projects';
+import { visibleProject } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
 import { FlakyBadge, flakyText, HistoryStrip, ProjectTabs, Variant } from '../components';
-import { noticeOf, type Ui, uiOf, userOf } from '../context';
+import { noticeOf, type Ui, uiOf } from '../context';
 import { Layout } from '../layout';
 
 /**
@@ -110,7 +109,7 @@ function NoisyPage(props: {
 export function registerNoisyPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   app.get('/ui/p/:slug/noisy', async (c) => {
     const ui = uiOf(c, s);
-    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const { project, access } = await visibleProject(c, s.deps, c.req.param('slug'), 'project.read');
     const screens = await noisyScreens(s.deps, project.id);
     const sizes = await imageSizes(
       s.deps,
@@ -122,7 +121,7 @@ export function registerNoisyPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         project={project}
         screens={screens}
         sizes={sizes}
-        canManage={hasPermission(userOf(c), 'project.admin')}
+        canManage={access.can('project.admin')}
         notice={noticeOf(c)}
       />,
     );

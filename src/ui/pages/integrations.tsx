@@ -1,7 +1,6 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { PROVIDERS, type Project, type Provider, WEBHOOK_EVENTS, WEBHOOK_FORMATS } from '../../db/schema';
-import { hasPermission } from '../../domain/auth/policy';
 import {
   DEFAULT_BASE_URLS,
   deleteIntegration,
@@ -20,18 +19,19 @@ import {
   type WebhookView,
 } from '../../domain/webhooks';
 import { AppError } from '../../errors';
+import { visibleProject } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
 import { inboundWebhookUrl } from '../../http/routes/integrations';
 import { Ago, describedBy, Field, formErrors, Pill, type Tone } from '../components';
-import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { field, noticeOf, type Ui, uiOf } from '../context';
 import { Layout } from '../layout';
 
 // Settings for reaching the pull request: the code host integration (GitHub or GitLab) and the
 // outgoing webhooks, on the project's settings page; each webhook has a page with its deliveries.
 
-function requireProjectAdmin(c: Context<AppEnv>): void {
-  if (!hasPermission(userOf(c), 'project.admin'))
-    throw new AppError('forbidden', 403, 'Only admins can open this page.');
+/** Integration and webhooks hold secrets: admins and the project's maintainers (project.admin). */
+async function requireProjectAdmin(c: Context<AppEnv>, s: Services): Promise<Project> {
+  return (await visibleProject(c, s.deps, c.req.param('slug') ?? '', 'project.admin')).project;
 }
 
 const PROVIDER_HINTS: Record<Provider, string> = {
@@ -566,7 +566,7 @@ export function registerIntegrationPages(
   renderSettings: SettingsRenderer,
 ): void {
   app.post('/ui/p/:slug/settings/integration', async (c) => {
-    requireProjectAdmin(c);
+    await requireProjectAdmin(c, s);
     const slug = c.req.param('slug');
     const form = await c.req.parseBody();
     const values: Record<string, string> = {};
@@ -600,22 +600,20 @@ export function registerIntegrationPages(
   });
 
   app.post('/ui/p/:slug/settings/integration/delete', async (c) => {
-    requireProjectAdmin(c);
+    await requireProjectAdmin(c, s);
     const slug = c.req.param('slug');
     await deleteIntegration(s.deps, slug);
     return c.redirect(uiOf(c, s).url(`/ui/p/${slug}/settings?done=integration-removed`), 303);
   });
 
   app.get('/ui/p/:slug/settings/webhooks/new', async (c) => {
-    requireProjectAdmin(c);
-    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const project = await requireProjectAdmin(c, s);
     return c.html(<NewWebhookPage ui={uiOf(c, s)} project={project} />);
   });
 
   app.post('/ui/p/:slug/settings/webhooks', async (c) => {
-    requireProjectAdmin(c);
-    const slug = c.req.param('slug');
-    const project = await getProjectBySlug(s.deps, slug);
+    const project = await requireProjectAdmin(c, s);
+    const slug = project.slug;
     const { values, input } = webhookInput(await c.req.parseBody({ all: true }), false);
     try {
       const { webhook, secret } = await createWebhook(s.deps, slug, input);
@@ -656,12 +654,12 @@ export function registerIntegrationPages(
   };
 
   app.get('/ui/p/:slug/settings/webhooks/:id', async (c) => {
-    requireProjectAdmin(c);
+    await requireProjectAdmin(c, s);
     return c.html(await webhookPage(c));
   });
 
   app.post('/ui/p/:slug/settings/webhooks/:id', async (c) => {
-    requireProjectAdmin(c);
+    await requireProjectAdmin(c, s);
     const slug = c.req.param('slug');
     const id = c.req.param('id');
     const { values, input } = webhookInput(await c.req.parseBody({ all: true }), true);
@@ -675,10 +673,9 @@ export function registerIntegrationPages(
   });
 
   app.post('/ui/p/:slug/settings/webhooks/:id/test', async (c) => {
-    requireProjectAdmin(c);
-    const slug = c.req.param('slug');
+    const project = await requireProjectAdmin(c, s);
+    const slug = project.slug;
     const id = c.req.param('id');
-    const project = await getProjectBySlug(s.deps, slug);
     await getWebhook(s.deps, slug, id);
     const delivery = await s.notifier.sendTest(project.id, id);
     const done = delivery.state === 'delivered' ? 'webhook-test-ok' : 'webhook-test-failed';
@@ -686,7 +683,7 @@ export function registerIntegrationPages(
   });
 
   app.post('/ui/p/:slug/settings/webhooks/:id/delete', async (c) => {
-    requireProjectAdmin(c);
+    await requireProjectAdmin(c, s);
     const slug = c.req.param('slug');
     await deleteWebhook(s.deps, slug, c.req.param('id'));
     return c.redirect(uiOf(c, s).url(`/ui/p/${slug}/settings?done=webhook-deleted#webhooks-title`), 303);

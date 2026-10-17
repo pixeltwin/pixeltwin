@@ -9,7 +9,7 @@ export async function createTestDb(): Promise<DatabaseHandle> {
   const handle = openDatabase(process.env.TEST_DATABASE_URL ?? 'sqlite::memory:');
   await migrateToLatest(handle.db);
   if (handle.kind === 'postgres') {
-    await sql`truncate table sessions, project_tokens, users, checks, baselines, builds, images, stored_objects, element_sets, projects cascade`.execute(
+    await sql`truncate table sessions, project_tokens, users, checks, baselines, builds, images, stored_objects, element_sets, server_settings, projects cascade`.execute(
       handle.db,
     );
   }

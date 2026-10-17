@@ -45,7 +45,11 @@ describe('retention job', () => {
     const logged = () => lines.some((l) => l.msg === 'retention');
     for (let i = 0; i < 100 && ((await deps.storage.exists(imageKey(sha))) || !logged()); i++) await Bun.sleep(10);
     expect(await deps.storage.exists(imageKey(sha))).toBe(false);
-    expect(lines.find((l) => l.msg === 'retention')).toMatchObject({ buildsDeleted: 0, imagesDeleted: 1 });
+    expect(lines.find((l) => l.msg === 'retention')).toMatchObject({
+      buildsDeleted: 0,
+      imagesDeleted: 1,
+      signupsDeleted: 0,
+    });
   });
 
   test('a failing pass is logged, not thrown, and the next pass still runs', async () => {
@@ -62,7 +66,12 @@ describe('retention job', () => {
     expect(lines.find((l) => l.msg === 'retention failed')).toMatchObject({ error: 'storage unavailable' });
 
     fail = false;
-    expect(await job.runNow()).toEqual({ buildsDeleted: 0, imagesDeleted: 1, elementSetsDeleted: 0 });
+    expect(await job.runNow()).toEqual({
+      buildsDeleted: 0,
+      imagesDeleted: 1,
+      elementSetsDeleted: 0,
+      signupsDeleted: 0,
+    });
     expect(await deps.storage.exists(imageKey(sha))).toBe(false);
   });
 
@@ -109,7 +118,7 @@ describe('retention job', () => {
       const first = a.runNow();
       await Bun.sleep(100);
       expect(await b.runNow()).toBeNull();
-      expect(await first).toEqual({ buildsDeleted: 0, imagesDeleted: 1, elementSetsDeleted: 0 });
+      expect(await first).toEqual({ buildsDeleted: 0, imagesDeleted: 1, elementSetsDeleted: 0, signupsDeleted: 0 });
     } finally {
       await a.stop();
       await b.stop();

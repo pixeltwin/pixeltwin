@@ -107,6 +107,7 @@ describe('review history', () => {
       '0011_integrations',
       '0012_agent_review',
       '0013_change_groups',
+      '0014_project_members',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([
@@ -137,7 +138,12 @@ describe('review history', () => {
 
     const migrator = new Migrator({ db: deps.db, provider: migrationProvider });
     expect((await migrator.migrateTo('0010_timings')).error).toBeUndefined();
-    expect(await migrateToLatest(deps.db)).toEqual(['0011_integrations', '0012_agent_review', '0013_change_groups']);
+    expect(await migrateToLatest(deps.db)).toEqual([
+      '0011_integrations',
+      '0012_agent_review',
+      '0013_change_groups',
+      '0014_project_members',
+    ]);
 
     const kind = async (id: string) => (await listReviews(deps, id)).map((e) => [e.actorKind, e.actorName]);
     expect(await kind(one.id)).toEqual([['token', 'claude']]);

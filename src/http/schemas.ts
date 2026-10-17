@@ -7,10 +7,12 @@ import {
   CHECK_RESULTS,
   CHECK_REVIEWS,
   DELIVERY_STATES,
+  PROJECT_ROLES,
   PROVIDERS,
   REVIEW_ACTIONS,
   SUGGESTIONS,
   USER_ROLES,
+  USER_STATUSES,
   WEBHOOK_EVENTS,
   WEBHOOK_FORMATS,
 } from '../db/schema';
@@ -32,8 +34,52 @@ export const ProblemSchema = z
   .openapi('Problem');
 
 export const UserSchema = z
-  .object({ id: z.string(), email: z.string(), role: z.enum(USER_ROLES), createdAt: z.number().int() })
+  .object({
+    id: z.string(),
+    email: z.string(),
+    role: z.enum(USER_ROLES).openapi({
+      description:
+        'Global role. admin: every project and the server. reviewer, viewer: the role in projects visible to ' +
+        'everyone and the default when added to a project; other projects need a membership',
+    }),
+    status: z.enum(USER_STATUSES).openapi({
+      description: 'pending: signed up, waiting for an admin; rejected: turned down. Neither may use the API',
+    }),
+    name: z.string().nullable(),
+    createdAt: z.number().int(),
+  })
   .openapi('User');
+
+export const MemberSchema = z
+  .object({ userId: z.string(), email: z.string(), role: z.enum(PROJECT_ROLES), createdAt: z.number().int() })
+  .openapi('Member');
+
+/** A user who could be added to a project. */
+export const CandidateSchema = z
+  .object({
+    id: z.string(),
+    email: z.string(),
+    role: z.enum(USER_ROLES).openapi({ description: 'Global role: the default when added without one' }),
+  })
+  .openapi('MemberCandidate');
+
+export const InviteSchema = z
+  .object({
+    id: z.string(),
+    email: z.string(),
+    project: z.object({ slug: z.string(), name: z.string() }).nullable(),
+    projectRole: z.enum(PROJECT_ROLES).nullable(),
+    role: z.enum(USER_ROLES).nullable().openapi({ description: "The new user's global role; null: viewer" }),
+    invitedBy: z.string().nullable().openapi({ description: 'Email of who invited' }),
+    createdAt: z.number().int(),
+    expiresAt: z.number().int(),
+  })
+  .openapi('Invite');
+
+/** One of a user's memberships. */
+export const MembershipSchema = z
+  .object({ slug: z.string(), name: z.string(), role: z.enum(PROJECT_ROLES) })
+  .openapi('Membership');
 
 export const ProjectSchema = z
   .object({
@@ -57,6 +103,10 @@ export const ProjectSchema = z
     agentMaxDiffPercent: z
       .number()
       .openapi({ description: 'With agentReview "auto-below": the largest diff percent a token may approve itself' }),
+    visibleToAll: z.boolean().openapi({
+      description:
+        'Every user on the server may open the project with their global role (viewer or reviewer); otherwise only admins and members',
+    }),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
   })

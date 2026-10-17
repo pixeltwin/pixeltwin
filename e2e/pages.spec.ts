@@ -14,7 +14,7 @@ test('a new token is shown once in the dialog and copies to the clipboard', asyn
   await expect(page.locator('.toast').last()).toContainText('Copied');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token);
   await dialog.getByRole('button', { name: 'Done' }).click();
-  await expect(page.locator('table')).toContainText('GitHub Actions');
+  await expect(page.locator('section[aria-labelledby="tokens-title"] table')).toContainText('GitHub Actions');
 });
 
 test('the eye button shows and hides a password', async ({ browser, baseURL }) => {

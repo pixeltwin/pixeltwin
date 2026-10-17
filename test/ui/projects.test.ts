@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
 import { createProjectToken } from '../../src/domain/auth/tokens';
 import { finalizeBuild } from '../../src/domain/builds';
+import { addMember } from '../../src/domain/members';
 import { createProject, listProjects } from '../../src/domain/projects';
 import { approveCheck } from '../../src/domain/reviews';
 import { createTestApp, type TestApp } from '../helpers/app';
@@ -20,8 +21,15 @@ describe('UI projects', () => {
   beforeEach(async () => {
     t = await createTestApp();
     admin = await t.userAs('admin');
-    viewer = await t.userAs('viewer');
+    viewer = await t.userAs('viewer', 'viewer@example.com');
   });
+
+  /** A project the viewer is a member of. */
+  async function newProject(slug: string, name: string): Promise<Project> {
+    const project = await createProject(t.deps, { slug, name });
+    await addMember(t.deps, slug, { email: 'viewer@example.com' });
+    return project;
+  }
 
   afterEach(async () => {
     await t.close();
@@ -29,7 +37,7 @@ describe('UI projects', () => {
 
   /** web: main #1 finalized and passed, feature/cart #2 still open with one changed check pending. */
   async function seedWeb(): Promise<{ project: Project; mainBuild: string; cartBuild: string; pendingCheck: string }> {
-    const project = await createProject(t.deps, { slug: 'web', name: 'Web shop' });
+    const project = await newProject('web', 'Web shop');
     await seedBaseline(t.deps, project, white, { name: 'home' });
     const mainBuild = await openBuild(t.deps, 'web', { branch: 'main', commitSha: 'abcdef1234567890' });
     await submit(t.deps, mainBuild, white, { name: 'home' });
@@ -42,7 +50,7 @@ describe('UI projects', () => {
   describe('projects page', () => {
     test('shows a card per project with its main branch verdict and what waits for review', async () => {
       await seedWeb();
-      await createProject(t.deps, { slug: 'docs', name: 'Docs site' });
+      await newProject('docs', 'Docs site');
       const page = await html(await t.request('GET', '/ui', { as: viewer }));
       expect(page).toContain('href="/ui/p/web"');
       expect(page).toContain('Web shop');
@@ -70,7 +78,7 @@ describe('UI projects', () => {
     });
 
     test('the project list watches for new builds and projects', async () => {
-      await createProject(t.deps, { slug: 'web', name: 'Web shop' });
+      await newProject('web', 'Web shop');
       const page = await html(await t.request('GET', '/ui', { as: viewer }));
       expect(page).toContain('data-islands="live"');
       expect(page).toContain('<div class="project-grid" data-live="projects" data-live-watch="">');
@@ -159,7 +167,7 @@ describe('UI projects', () => {
     });
 
     test('admins promote a branch to main from its lane, choosing the screens', async () => {
-      await createProject(t.deps, { slug: 'shop', name: 'Shop' });
+      await newProject('shop', 'Shop');
       const build = await openBuild(t.deps, 'shop', { branch: 'feature/new' });
       const home = (await submit(t.deps, build, withSquare, { name: 'home' })).check;
       const cart = (await submit(t.deps, build, withSquare, { name: 'cart' })).check;
@@ -187,7 +195,7 @@ describe('UI projects', () => {
     });
 
     test('the promote page shows how each screen differs from main, with a diff image', async () => {
-      const project = await createProject(t.deps, { slug: 'shop', name: 'Shop' });
+      const project = await newProject('shop', 'Shop');
       await seedBaseline(t.deps, project, white, { name: 'home' });
       const build = await openBuild(t.deps, 'shop', { branch: 'feature/new' });
       const home = (await submit(t.deps, build, withSquare, { name: 'home' })).check;
@@ -257,7 +265,7 @@ describe('UI projects', () => {
 
   describe('onboarding', () => {
     test('a project without builds shows the three steps with snippets for this server', async () => {
-      await createProject(t.deps, { slug: 'web', name: 'Web shop' });
+      await newProject('web', 'Web shop');
       const page = await html(await t.request('GET', '/ui/p/web', { as: admin }));
       expect(page).toContain('Send your first screenshots');
       expect(page).toContain('http://pixeltwin.test/api/v1/projects/web/builds');
@@ -281,8 +289,10 @@ describe('UI projects', () => {
     });
 
     test('the token step is done once the project has a token; viewers are told to ask an admin', async () => {
-      await createProject(t.deps, { slug: 'web', name: 'Web shop' });
-      expect(await html(await t.request('GET', '/ui/p/web', { as: viewer }))).toContain('Ask an admin for a token');
+      await newProject('web', 'Web shop');
+      expect(await html(await t.request('GET', '/ui/p/web', { as: viewer }))).toContain(
+        'Ask an admin or a maintainer of this project for a token',
+      );
       await createProjectToken(t.deps, 'web', { name: 'ci', scopes: ['read', 'write'] });
       expect(await html(await t.request('GET', '/ui/p/web', { as: viewer }))).toContain('class="step done"');
     });

@@ -1,11 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { USER_ROLES } from '../../src/db/schema';
-import { PERMISSIONS, POLICY, type RoutePermission } from '../../src/domain/auth/policy';
+import { PROJECT_ROLES, USER_ROLES } from '../../src/db/schema';
+import {
+  isProjectPermission,
+  PERMISSIONS,
+  type Permission,
+  POLICY,
+  type RoutePermission,
+} from '../../src/domain/auth/policy';
 import { TOKEN_SCOPES } from '../../src/domain/auth/tokens';
+import { addMember } from '../../src/domain/members';
 import { createProject } from '../../src/domain/projects';
 import { openApiDocument } from '../../src/http/docs';
 import { createTestApp, problemOf, type TestApp } from '../helpers/app';
 import { makePng } from '../helpers/png';
+import { openBuild, submit } from '../helpers/scenario';
 
 interface Operation {
   method: string;
@@ -68,19 +76,50 @@ describe('authorization policy', () => {
     }
   });
 
-  test('roles get exactly the permissions of spec §7.3', async () => {
+  test('global roles: admins hold everything; others only what a project role gives them in the handler', async () => {
     for (const role of USER_ROLES) {
-      const user = await t.userAs(role);
+      const user = await t.userAs(role, undefined, { projects: [] });
       for (const op of ops.filter((o) => (PERMISSIONS as readonly string[]).includes(o.permission))) {
+        const permission = op.permission as Permission;
         const res = await t.request(op.method, fill(op.path), { as: user, json: op.method === 'GET' ? undefined : {} });
         const forbidden = res.status === 403 && (await problemOf(res)).code === 'forbidden';
-        const allowed = POLICY[op.permission as (typeof PERMISSIONS)[number]].roles.includes(role);
+        // A project permission is decided with the project (404 here: there is none); others at once.
+        const allowed = POLICY[permission].roles.includes(role) || isProjectPermission(permission);
         expect({ role, op: `${op.method} ${op.path}`, forbidden }).toEqual({
           role,
           op: `${op.method} ${op.path}`,
           forbidden: !allowed,
         });
       }
+    }
+  });
+
+  test('project roles get exactly the permissions of spec §7.3 in their project', async () => {
+    for (const role of PROJECT_ROLES) {
+      // A project of its own per role: what a maintainer may do (delete a build) must not change the next run.
+      const slug = `role-${role}`;
+      const project = await createProject(t.deps, { slug, name: slug });
+      const buildId = await openBuild(t.deps, slug);
+      const { check } = await submit(t.deps, buildId, makePng(10, 10));
+      const user = await t.userAs('viewer', `${role}@roles.test`, { projects: [] });
+      await addMember(t.deps, slug, { email: `${role}@roles.test`, role });
+      const values = { slug, snapshotKey: check.snapshotKey, branch: 'feature/x', sha: check.imageSha };
+      for (const op of ops.filter((o) => (PERMISSIONS as readonly string[]).includes(o.permission))) {
+        if (!op.path.includes('{slug}') && !/^\/api\/v1\/(builds|checks)\//.test(op.path)) continue;
+        const id = op.path.startsWith('/api/v1/checks/') ? check.id : buildId;
+        const res = await t.request(op.method, fill(op.path, { ...values, id }), {
+          as: user,
+          json: op.method === 'GET' ? undefined : {},
+        });
+        const forbidden = res.status === 403 && (await problemOf(res)).code === 'forbidden';
+        const allowed = POLICY[op.permission as Permission].projectRoles.includes(role);
+        expect({ role, op: `${op.method} ${op.path}`, forbidden }).toEqual({
+          role,
+          op: `${op.method} ${op.path}`,
+          forbidden: !allowed,
+        });
+      }
+      expect(project.slug).toBe(slug);
     }
   });
 

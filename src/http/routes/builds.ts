@@ -9,11 +9,11 @@ import {
   getBuildRow,
   listBuilds,
 } from '../../domain/builds';
-import { getProjectBySlug } from '../../domain/projects';
 import { actorFromPrincipal, approveBuild } from '../../domain/reviews';
 import { createBuildSchema, finalizeBuildSchema, reviewInputSchema, timingsSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
-import { allowProject, principalOf, requirePermission } from '../auth';
+import { requireProject } from '../access';
+import { principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { BranchSummarySchema, BuildSchema, json, PageQuerySchema, pageOf, problems } from '../schemas';
@@ -39,7 +39,6 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(create, async (c) => {
     const { slug } = c.req.valid('param');
-    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     const { build, created } = await createBuild(s.deps, slug, c.req.valid('json'));
     return created ? c.json(build, 201) : c.json(build, 200);
   });
@@ -57,7 +56,6 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(list, async (c) => {
     const { slug } = c.req.valid('param');
-    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     return c.json(await listBuilds(s.deps, slug, c.req.valid('query')), 200);
   });
 
@@ -71,7 +69,6 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(branches, async (c) => {
     const { slug } = c.req.valid('param');
-    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     return c.json(await listBranchSummaries(s.deps, slug), 200);
   });
 
@@ -84,9 +81,7 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     responses: { 200: json(BuildSchema, 'The build'), ...problems(401, 403, 404) },
   });
   app.openapi(get, async (c) => {
-    const build = await getBuild(s.deps, c.req.valid('param').id);
-    allowProject(c, build.projectId);
-    return c.json(build, 200);
+    return c.json(await getBuild(s.deps, c.req.valid('param').id), 200);
   });
 
   const remove = defineRoute('project.admin', {
@@ -98,8 +93,7 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     responses: { 204: { description: 'Deleted' }, ...problems(401, 403, 404) },
   });
   app.openapi(remove, async (c) => {
-    const build = await getBuild(s.deps, c.req.valid('param').id);
-    allowProject(c, build.projectId);
+    const build = await getBuildRow(s.deps, c.req.valid('param').id);
     await deleteBuilds(s.deps, build.projectId, [build.id]);
     return c.body(null, 204);
   });
@@ -125,9 +119,8 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   // parallel builds, and a client sending a JSON content type with an empty body must still work.
   const { middleware: _middleware, ...finalizeDoc } = finalize;
   app.openAPIRegistry.registerPath(finalizeDoc);
-  app.post(`${API}/builds/:id/finalize`, requirePermission('check.write'), async (c) => {
+  app.post(`${API}/builds/:id/finalize`, requirePermission('check.write'), requireProject('build'), async (c) => {
     const id = c.req.param('id');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
     const text = await c.req.text();
     let input: unknown = {};
     if (text.trim()) {
@@ -154,7 +147,6 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(timings, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
     return c.json(await addTimings(s.deps, id, c.req.valid('json')), 200);
   });
 
@@ -181,7 +173,6 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(approveAll, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
     const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
     return c.json(await approveBuild(s.deps, id, actorFromPrincipal(principalOf(c)), input), 200);
   });

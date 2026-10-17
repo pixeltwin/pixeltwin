@@ -4,6 +4,8 @@ export const BUILD_STATES = ['open', 'finalized'] as const;
 export const CHECK_RESULTS = ['unchanged', 'changed', 'new', 'error'] as const;
 export const CHECK_REVIEWS = ['none', 'pending', 'approved', 'rejected', 'outdated'] as const;
 export const USER_ROLES = ['admin', 'reviewer', 'viewer'] as const;
+/** A user's role in one project (a membership); `admin` is global only. Lowest first. */
+export const PROJECT_ROLES = ['viewer', 'reviewer', 'maintainer'] as const;
 
 export type BuildState = (typeof BUILD_STATES)[number];
 export type CheckResult = (typeof CHECK_RESULTS)[number];
@@ -28,6 +30,14 @@ export type Suggestion = (typeof SUGGESTIONS)[number];
 export const AREA_KINDS = ['ignore', 'compare'] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 export type UserRole = (typeof USER_ROLES)[number];
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+/** `pending`: signed up, waiting for an admin; `rejected`: an admin said no. Neither may use anything. */
+export const USER_STATUSES = ['active', 'pending', 'rejected'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+export const LINK_PURPOSES = ['invite', 'password_reset', 'verify_email'] as const;
+export type LinkPurpose = (typeof LINK_PURPOSES)[number];
+export const REQUEST_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
 // Timestamps are epoch milliseconds. JSON values are stored as text.
 
@@ -45,6 +55,8 @@ export interface ProjectsTable {
   agentReview: Generated<AgentReviewPolicy>;
   /** With `auto-below`: token approvals of a diff up to this percent apply; larger ones are suggestions. */
   agentMaxDiffPercent: Generated<number>;
+  /** 1: every user may open the project with their global role, members or not. */
+  visibleToAll: Generated<number>;
   /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
   buildSeq: Generated<number>;
   createdAt: number;
@@ -154,6 +166,55 @@ export interface UsersTable {
   email: string;
   passwordHash: string;
   role: UserRole;
+  status: Generated<UserStatus>;
+  /** Optional, given when signing up. */
+  name: Generated<string | null>;
+  createdAt: number;
+}
+
+/**
+ * A one-time link (spec: invites): an invite, a password reset or an email check. Only the token's
+ * sha256 is stored. An invite may carry a project and role, and the global role of the new user.
+ */
+export interface AuthLinksTable {
+  id: string;
+  purpose: LinkPurpose;
+  tokenHash: string;
+  email: string;
+  userId: string | null;
+  projectId: string | null;
+  projectRole: ProjectRole | null;
+  globalRole: UserRole | null;
+  createdBy: string | null;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+}
+
+/** Someone who signed up and waits for an admin (their user has status `pending`). */
+export interface AccessRequestsTable {
+  id: string;
+  userId: string;
+  note: string | null;
+  /** When they confirmed their email; null without SMTP (admins see "not verified"). */
+  verifiedAt: number | null;
+  status: RequestStatus;
+  decidedBy: string | null;
+  decidedAt: number | null;
+  reason: string | null;
+  createdAt: number;
+}
+
+export interface ServerSettingsTable {
+  key: string;
+  value: string;
+}
+
+/** A non-admin user's access to one project. */
+export interface ProjectMembersTable {
+  projectId: string;
+  userId: string;
+  role: ProjectRole;
   createdAt: number;
 }
 
@@ -322,6 +383,10 @@ export interface DB {
   baselines: BaselinesTable;
   users: UsersTable;
   projectTokens: ProjectTokensTable;
+  projectMembers: ProjectMembersTable;
+  authLinks: AuthLinksTable;
+  accessRequests: AccessRequestsTable;
+  serverSettings: ServerSettingsTable;
   sessions: SessionsTable;
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
@@ -334,7 +399,11 @@ export interface DB {
   elementSets: ElementSetsTable;
 }
 
-export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew'> & { autoApproveNew: boolean };
+export type UserRow = Selectable<UsersTable>;
+export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew' | 'visibleToAll'> & {
+  autoApproveNew: boolean;
+  visibleToAll: boolean;
+};
 export type Build = Omit<Selectable<BuildsTable>, 'notifiedVerdict'>;
 export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;

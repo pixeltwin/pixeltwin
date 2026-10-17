@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Db } from '../../db/database';
 import { isUniqueViolation } from '../../db/database';
-import { USER_ROLES, type UserRole, type UsersTable } from '../../db/schema';
+import { USER_ROLES, type UserRole, type UserRow, type UserStatus } from '../../db/schema';
 import { AppError } from '../../errors';
 import { newId } from '../../ids';
 import type { Deps } from '../deps';
@@ -39,11 +39,21 @@ export interface UserView {
   id: string;
   email: string;
   role: UserRole;
+  /** `pending`: signed up, waiting for an admin; `rejected`: turned down. */
+  status: UserStatus;
+  name: string | null;
   createdAt: number;
 }
 
-export function toUserView(user: UsersTable): UserView {
-  return { id: user.id, email: user.email, role: user.role, createdAt: user.createdAt };
+export function toUserView(user: UserRow): UserView {
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    name: user.name,
+    createdAt: user.createdAt,
+  };
 }
 
 function emailTaken(email: string): AppError {
@@ -58,13 +68,19 @@ export async function countUsers(deps: DbDeps): Promise<number> {
   return Number(row.n);
 }
 
-/** Inserts a user. Accepts a transaction. */
-export async function insertUser(db: Db, input: z.output<typeof createUserSchema>): Promise<UserView> {
-  const user: UsersTable = {
+/** Inserts a user. Accepts a transaction, and a hash made beforehand (hashing is slow; not in a transaction). */
+export async function insertUser(
+  db: Db,
+  input: z.output<typeof createUserSchema>,
+  passwordHash?: string,
+): Promise<UserView> {
+  const user: UserRow = {
     id: newId('usr'),
     email: input.email,
-    passwordHash: await hashPassword(input.password),
+    passwordHash: passwordHash ?? (await hashPassword(input.password)),
     role: input.role,
+    status: 'active',
+    name: null,
     createdAt: Date.now(),
   };
   try {
@@ -80,7 +96,7 @@ export async function createUser(deps: DbDeps, input: unknown): Promise<UserView
   return insertUser(deps.db, parseInput(createUserSchema, input));
 }
 
-export async function getUserRow(deps: DbDeps, id: string): Promise<UsersTable> {
+export async function getUserRow(deps: DbDeps, id: string): Promise<UserRow> {
   const user = await deps.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
   if (!user) throw new AppError('user_not_found', 404, `User ${id} not found.`);
   return user;
@@ -95,7 +111,7 @@ export async function listUsers(deps: DbDeps): Promise<UserView[]> {
  * Runs `change` unless it would leave no admin. Admin rows are locked first (a no-op update) so
  * two concurrent demotions or deletions cannot both pass the check on Postgres.
  */
-async function guardLastAdmin(deps: DbDeps, user: UsersTable, change: (tx: Db) => Promise<void>): Promise<void> {
+async function guardLastAdmin(deps: DbDeps, user: UserRow, change: (tx: Db) => Promise<void>): Promise<void> {
   await deps.db.transaction().execute(async (tx) => {
     await tx
       .updateTable('users')
@@ -129,7 +145,13 @@ export async function updateUser(deps: DbDeps, id: string, input: unknown): Prom
     }
   };
   if (changes.role && changes.role !== 'admin' && user.role === 'admin') await guardLastAdmin(deps, user, apply);
-  else await apply(deps.db);
+  else if (changes.role === 'admin' && user.role !== 'admin') {
+    // Admins have access to every project; memberships would only come back if they were demoted.
+    await deps.db.transaction().execute(async (tx) => {
+      await apply(tx);
+      await tx.deleteFrom('projectMembers').where('userId', '=', id).execute();
+    });
+  } else await apply(deps.db);
   return toUserView({ ...user, ...changes });
 }
 
@@ -142,7 +164,7 @@ export async function deleteUser(deps: DbDeps, id: string): Promise<void> {
 }
 
 /** Returns the user when the password matches, else null. Takes the same time for unknown emails. */
-export async function authenticate(deps: DbDeps, email: string, password: string): Promise<UsersTable | null> {
+export async function authenticate(deps: DbDeps, email: string, password: string): Promise<UserRow | null> {
   const normalized = email.trim().toLowerCase();
   const user = await deps.db.selectFrom('users').selectAll().where('email', '=', normalized).executeTakeFirst();
   const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);

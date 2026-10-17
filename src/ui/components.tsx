@@ -113,6 +113,23 @@ export function ago(at: number, now: number): string {
   return new Date(at).toISOString().slice(0, 10);
 }
 
+/** `in 6d`, `in 3h`, `in 20m`: how long until a deadline (an invite's expiry). */
+export function until(at: number, now: number): string {
+  const seconds = Math.max(0, Math.round((at - now) / 1000));
+  if (seconds < 3600) return `in ${Math.max(1, Math.floor(seconds / 60))}m`;
+  if (seconds < 86_400) return `in ${Math.floor(seconds / 3600)}h`;
+  return `in ${Math.floor(seconds / 86_400)}d`;
+}
+
+export function Until({ at }: { at: number }) {
+  const iso = new Date(at).toISOString();
+  return (
+    <time datetime={iso} title={`${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`}>
+      {until(at, Date.now())}
+    </time>
+  );
+}
+
 /** Relative time with the exact UTC time as its tooltip. */
 export function Ago({ at, now }: { at: number; now?: number }) {
   const iso = new Date(at).toISOString();

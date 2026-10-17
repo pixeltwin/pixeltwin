@@ -28,7 +28,9 @@ describe('UI administration', () => {
       expect(await get('/ui/admin/users/new')).toContain('action="/ui/admin/users"');
       // The hint under Role explains the chosen role; each option carries its own text for the switch.
       const form = await get('/ui/admin/users/new');
-      expect(form).toContain('<p class="hint" id="user-role-hint">Sees every project, build and screenshot');
+      expect(form).toContain(
+        '<p class="hint" id="user-role-hint">Sees the projects they are added to and those visible to everyone',
+      );
       expect(form).toContain('data-hint-from-option="true"');
       expect(form).toMatch(/<option value="reviewer" data-hint="Approves or rejects changes/);
       expect(form).toMatch(/<option value="admin" data-hint="Manages everything/);
@@ -82,10 +84,10 @@ describe('UI administration', () => {
     });
 
     test('non-admins cannot open admin pages', async () => {
+      await postForm(t, '/ui/projects', { name: 'Web', slug: 'web' }, admin);
       const reviewer = await t.userAs('reviewer');
       expect((await t.request('GET', '/ui/admin/users', { as: reviewer })).status).toBe(403);
       expect((await t.request('GET', '/ui/admin/users/new', { as: reviewer })).status).toBe(403);
-      await postForm(t, '/ui/projects', { name: 'Web', slug: 'web' }, admin);
       expect((await t.request('GET', '/ui/p/web/settings', { as: reviewer })).status).toBe(403);
       expect((await t.request('GET', '/ui/p/web/settings/tokens/new', { as: reviewer })).status).toBe(403);
       expect((await postForm(t, '/ui/p/web/settings/delete', {}, reviewer)).status).toBe(403);
@@ -101,7 +103,7 @@ describe('UI administration', () => {
       const page = await get('/ui/p/web/settings');
       expect(page).toContain('aria-current="page">Settings</a>');
       expect(page).toContain('Pixels whose colour differs by less than this count as equal');
-      expect(page).toContain('data-islands="tokens"');
+      expect(page).toContain('data-islands="tokens members"');
     });
 
     test('settings save, and invalid values are shown next to their field', async () => {

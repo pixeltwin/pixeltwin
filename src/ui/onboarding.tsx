@@ -154,7 +154,9 @@ export function Onboarding({
               </a>
             </p>
           ) : (
-            <p class="muted">Tests send screenshots with a project token. Ask an admin for a token.</p>
+            <p class="muted">
+              Tests send screenshots with a project token. Ask an admin or a maintainer of this project for a token.
+            </p>
           )}
           {canManage && !hasToken && <NewTokenDialog ui={ui} slug={project.slug} />}
         </Step>

@@ -11,8 +11,14 @@ Human-readable reference: ${publicUrl}/docs
 
 ## Authentication
 
-Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens with scopes
-\`read\`, \`write\` (builds and checks) and \`review\` (approve/reject). A token only sees its own project.
+Send a project token: \`Authorization: Bearer pt_…\`. An admin or a project maintainer creates
+tokens with scopes \`read\`, \`write\` (builds and checks) and \`review\` (approve/reject). A token
+only sees its own project. A user's personal token (POST /auth/token) sees the projects that user
+can open: others answer 404, as if they did not exist. To give a person access, an admin or
+maintainer POSTs /projects/<slug>/invites {"email":…,"role":"viewer|reviewer|maintainer"}: an account
+becomes a member at once (kind "member"), anyone else gets a one-time link (kind "invite", \`link\`).
+A user whose sign-up waits for an admin gets 403 account_pending (account_rejected once turned down)
+on everything but GET /me and POST /auth/logout.
 
 ## Workflow (five calls)
 
@@ -94,8 +100,8 @@ Send "commitSha", "repository" (owner/name; GitLab: group/sub/project) and "pull
 number; GitLab: the merge request IID) when opening a build, and a project with a GitHub or GitLab
 integration posts the commit status pixeltwin/<slug> (pending while screenshots wait for review,
 success when passed, failure when rejected or an error) and one comment per build on the pull
-request. Approving updates them, so CI need not run again. Admins set it up with
-PATCH ${api}/projects/<slug>/integration and add webhooks (build.finalized,
+request. Approving updates them, so CI need not run again. Admins and the project's
+maintainers set it up with PATCH ${api}/projects/<slug>/integration and add webhooks (build.finalized,
 build.verdict_changed, check.reviewed; signed X-Pixeltwin-Signature: sha256=<HMAC>) with
 POST ${api}/projects/<slug>/webhooks.
 

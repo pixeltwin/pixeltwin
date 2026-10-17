@@ -1,8 +1,9 @@
 import type { Config } from '../config';
-import type { Principal } from '../domain/auth/policy';
+import type { Principal, RoutePermission } from '../domain/auth/policy';
 import type { SetupState } from '../domain/auth/setup';
 import type { Deps } from '../domain/deps';
 import type { Logger } from '../log';
+import type { Mailer } from '../mail/smtp';
 import type { Notifier } from '../notify/notifier';
 import type { LoginLimiter } from './rate-limit';
 
@@ -18,6 +19,8 @@ export interface Services {
   loginLimiter: LoginLimiter;
   /** Queues and sends GitHub/GitLab updates and webhooks; the same object is `deps.events`. */
   notifier: Notifier;
+  /** Sends invites, reset links and sign-up mails when SMTP_URL is set. */
+  mailer?: Mailer | null;
 }
 
 export interface AppEnv {
@@ -27,5 +30,13 @@ export interface AppEnv {
     authVia: 'cookie' | 'token' | null;
     /** Raw session cookie value when the request was authenticated by cookie. */
     sessionToken: string | null;
+    /** The permission the route declared (API routes); project checks default to it. */
+    permission: RoutePermission | null;
+    /** Set once the caller's access to the project was checked (see access.ts). */
+    projectChecked: boolean;
+    /** For route middleware that needs the database (access.ts). */
+    deps: Deps;
+    /** For admins on UI pages: access requests waiting (the badge by Users). */
+    accessRequests: number;
   };
 }

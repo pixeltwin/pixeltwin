@@ -1,23 +1,37 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import { AGENT_REVIEW_POLICIES, type AgentReviewPolicy, type Project } from '../../db/schema';
-import { hasPermission } from '../../domain/auth/policy';
+import { AGENT_REVIEW_POLICIES, type AgentReviewPolicy, PROJECT_ROLES, type Project } from '../../db/schema';
 import { createProjectToken, deleteProjectToken, listProjectTokens, type TokenView } from '../../domain/auth/tokens';
 import { getIntegration, type IntegrationView } from '../../domain/integrations';
-import { deleteProject, getProjectBySlug, updateProject } from '../../domain/projects';
+import {
+  type InviteView,
+  inviteProjectId,
+  inviteToProject,
+  listInvites,
+  resendInvite,
+  revokeInvite,
+} from '../../domain/invites';
+import { addMember, listMembers, type MemberView, removeMember, updateMember } from '../../domain/members';
+import { deleteProject, updateProject } from '../../domain/projects';
 import { listWebhooks, type WebhookView } from '../../domain/webhooks';
 import { AppError } from '../../errors';
+import { type ProjectAccess, visibleProject } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
+import { sendInvite } from '../../http/routes/invites';
 import { Ago, describedBy, Field, formErrors, Pill, ProjectTabs } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { LinkCreated, PendingInvites } from '../invite-forms';
 import { Layout } from '../layout';
 import { NewTokenButton, NewTokenDialog, NewTokenForm, TokenCreated } from '../token-forms';
 import { IntegrationSection, registerIntegrationPages, WebhooksSection } from './integrations';
 
-function requireProjectAdmin(c: Context<AppEnv>): void {
-  if (!hasPermission(userOf(c), 'project.admin'))
-    throw new AppError('forbidden', 403, 'Only admins can open this page.');
+/** Settings, tokens and members: admins and the project's maintainers (project.admin). */
+function managed(c: Context<AppEnv>, s: Services) {
+  return visibleProject(c, s.deps, c.req.param('slug') ?? '', 'project.admin');
 }
+
+const MEMBER_HELP =
+  'Who can open this project besides admins. Viewers look; reviewers also approve and reject; maintainers also manage settings, tokens and members.';
 
 const NUMBER_FIELDS = ['colorThreshold', 'tolerancePercent', 'retentionDays'] as const;
 
@@ -75,19 +89,181 @@ const FIELDS: SettingField[] = [
   },
 ];
 
+function MembersSection(props: {
+  ui: Ui;
+  project: Project;
+  members: MemberView[];
+  invites: InviteView[];
+  values?: { email?: string | undefined; role?: string | undefined } | undefined;
+  newInvite?: { email: string; link: string; mailed: boolean } | undefined;
+}) {
+  const { ui, project, members } = props;
+  const base = `/ui/p/${project.slug}/settings/members`;
+  const chosen = PROJECT_ROLES.find((r) => r === props.values?.role);
+  return (
+    <section class="settings-section" aria-labelledby="members-title">
+      <div class="section-head">
+        <h2 id="members-title">Members</h2>
+        <p class="muted">{MEMBER_HELP}</p>
+      </div>
+      <div>
+        <form class="member-add" method="post" action={ui.url(base)}>
+          <label class="visually-hidden" for="member-email">
+            Email
+          </label>
+          {/* With JavaScript (the members island) this searches the users who could be added. */}
+          <div class="combobox">
+            <input
+              id="member-email"
+              name="email"
+              type="email"
+              required
+              autocomplete="off"
+              placeholder="Email of an existing user"
+              value={props.values?.email ?? ''}
+              data-member-search={project.slug}
+              aria-controls="member-candidates"
+            />
+            <ul id="member-candidates" class="combobox-list" aria-label="Users to add" hidden />
+          </div>
+          <label class="visually-hidden" for="member-role">
+            Role
+          </label>
+          <select id="member-role" name="role">
+            <option value="" selected={!chosen}>
+              their default role
+            </option>
+            {PROJECT_ROLES.map((r) => (
+              <option value={r} selected={r === chosen}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <button class="primary" type="submit">
+            Add member
+          </button>
+          {/* Someone without an account yet: the same email and role, as an invite link. */}
+          <button type="submit" formaction={ui.url(`/ui/p/${project.slug}/settings/invites`)} data-invite-submit>
+            Invite by email
+          </button>
+        </form>
+        {props.newInvite && (
+          <section class="panel">
+            <LinkCreated
+              title={`Invite for ${props.newInvite.email}`}
+              email={props.newInvite.email}
+              link={props.newInvite.link}
+              mailed={props.newInvite.mailed}
+              note="It works once, for 7 days, and creates their account in this project."
+            />
+          </section>
+        )}
+        <PendingInvites
+          ui={ui}
+          invites={props.invites}
+          base={`/ui/p/${project.slug}/settings/invites`}
+          showProject={false}
+        />
+        {members.length === 0 ? (
+          <div class="empty">
+            <p>
+              {project.visibleToAll
+                ? 'No members yet. Everyone on this server can open the project with their server role.'
+                : 'No members yet. Only admins can open this project.'}
+            </p>
+          </div>
+        ) : (
+          <table class="stack-on-phone">
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Role</th>
+                <th>Added</th>
+                <th>
+                  <span class="visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => {
+                const self = m.userId === ui.user?.id;
+                return (
+                  <tr>
+                    <td>
+                      <span class="user-cell">
+                        <span class="avatar" aria-hidden="true">
+                          {m.email.charAt(0).toUpperCase()}
+                        </span>
+                        {m.email}
+                        {self && <span class="you">you</span>}
+                      </span>
+                    </td>
+                    <td>
+                      {self ? (
+                        <span title="Ask an admin or another maintainer to change your own role.">{m.role}</span>
+                      ) : (
+                        // With JavaScript a change saves at once; the Save button is for browsers without it.
+                        <form class="inline" method="post" action={ui.url(`${base}/${m.userId}`)} data-autosubmit>
+                          <select name="role" aria-label={`Role of ${m.email}`}>
+                            {PROJECT_ROLES.map((r) => (
+                              <option value={r} selected={r === m.role}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                          <button type="submit" class="no-js">
+                            Save
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                    <td>
+                      <Ago at={m.createdAt} />
+                    </td>
+                    <td>
+                      {!self && (
+                        <form method="post" action={ui.url(`${base}/${m.userId}/delete`)}>
+                          <button
+                            class="danger small"
+                            type="submit"
+                            data-confirm={`Remove ${m.email} from ${project.name}?`}
+                            data-confirm-label="Remove"
+                          >
+                            Remove
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function SettingsPage(props: {
   ui: Ui;
   project: Project;
+  access: ProjectAccess;
   tokens: TokenView[];
   integration: IntegrationView;
   webhooks: WebhookView[];
   publicUrl: string;
   integrationValues?: Record<string, string>;
   integrationErrors?: Record<string, string>;
+  members: MemberView[];
   values?: Record<string, string>;
   errors?: Record<string, string>;
+  memberValues?: { email?: string | undefined; role?: string | undefined };
+  invites: InviteView[];
+  newInvite?: { email: string; link: string; mailed: boolean };
   newToken?: { name: string; scopes: string[]; token: string };
   notice?: string | undefined;
+  error?: string | undefined;
 }) {
   const { ui, project, tokens } = props;
   const errors = props.errors ?? {};
@@ -99,7 +275,9 @@ function SettingsPage(props: {
       ui={ui}
       title={`${project.name} settings`}
       notice={props.notice}
-      islands={['tokens']}
+      error={props.error}
+      canManage
+      islands={['tokens', 'members']}
       project={project.slug}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'Settings' }]}
     >
@@ -146,6 +324,20 @@ function SettingsPage(props: {
               <span class="muted">
                 A screenshot with no baseline yet becomes the baseline as soon as it arrives; only changes wait for
                 review.
+              </span>
+            </span>
+          </label>
+          <label class="option">
+            <input
+              type="checkbox"
+              name="visibleToAll"
+              checked={props.values ? props.values.visibleToAll === 'on' : project.visibleToAll}
+            />
+            <span>
+              <strong>Visible to everyone on this server</strong>{' '}
+              <span class="muted">
+                Every user can open the project with their server role (viewer or reviewer), member or not. Off: only
+                admins and members.
               </span>
             </span>
           </label>
@@ -265,22 +457,33 @@ function SettingsPage(props: {
 
       <WebhooksSection ui={ui} project={project} webhooks={props.webhooks} />
 
-      <section class="settings-section danger-zone" aria-labelledby="danger-title">
-        <div class="section-head">
-          <h2 id="danger-title">Danger zone</h2>
-        </div>
-        <form class="panel" method="post" action={ui.url(`${base}/delete`)}>
-          <p>Deleting the project removes its builds, checks, baselines and tokens. It cannot be undone.</p>
-          <button
-            class="danger"
-            type="submit"
-            data-confirm={`Delete project ${project.name} and all its data?`}
-            data-confirm-label="Delete project"
-          >
-            Delete project
-          </button>
-        </form>
-      </section>
+      <MembersSection
+        ui={ui}
+        project={project}
+        members={props.members}
+        invites={props.invites}
+        values={props.memberValues}
+        newInvite={props.newInvite}
+      />
+
+      {props.access.can('server.admin') && (
+        <section class="settings-section danger-zone" aria-labelledby="danger-title">
+          <div class="section-head">
+            <h2 id="danger-title">Danger zone</h2>
+          </div>
+          <form class="panel" method="post" action={ui.url(`${base}/delete`)}>
+            <p>Deleting the project removes its builds, checks, baselines and tokens. It cannot be undone.</p>
+            <button
+              class="danger"
+              type="submit"
+              data-confirm={`Delete project ${project.name} and all its data?`}
+              data-confirm-label="Delete project"
+            >
+              Delete project
+            </button>
+          </form>
+        </section>
+      )}
     </Layout>
   );
 }
@@ -312,18 +515,22 @@ function NewTokenPage(props: {
 
 export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   const page = async (c: Context<AppEnv>, extra: Partial<Parameters<typeof SettingsPage>[0]> = {}) => {
-    const slug = c.req.param('slug') ?? '';
-    const [project, tokens, integration, webhooks] = await Promise.all([
-      getProjectBySlug(s.deps, slug),
-      listProjectTokens(s.deps, slug),
-      getIntegration(s.deps, slug),
-      listWebhooks(s.deps, slug),
+    const { project, access } = await managed(c, s);
+    const [tokens, members, invites, integration, webhooks] = await Promise.all([
+      listProjectTokens(s.deps, project.slug),
+      listMembers(s.deps, project.slug),
+      listInvites(s.deps, project.id),
+      getIntegration(s.deps, project.slug),
+      listWebhooks(s.deps, project.slug),
     ]);
     return (
       <SettingsPage
         ui={uiOf(c, s)}
         project={project}
+        access={access}
         tokens={tokens}
+        members={members}
+        invites={invites}
         integration={integration}
         webhooks={webhooks}
         publicUrl={s.config.publicUrl}
@@ -334,13 +541,10 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
   };
   registerIntegrationPages(app, s, page);
 
-  app.get('/ui/p/:slug/settings', async (c) => {
-    requireProjectAdmin(c);
-    return c.html(await page(c));
-  });
+  app.get('/ui/p/:slug/settings', async (c) => c.html(await page(c)));
 
   app.post('/ui/p/:slug/settings', async (c) => {
-    requireProjectAdmin(c);
+    await managed(c, s);
     const slug = c.req.param('slug');
     const form = await c.req.parseBody();
     const values: Record<string, string> = {};
@@ -349,10 +553,12 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
     values.autoApproveNew = field(form, 'autoApproveNew') === 'on' ? 'on' : '';
     values.agentReview = field(form, 'agentReview') ?? '';
     values.agentMaxDiffPercent = field(form, 'agentMaxDiffPercent') ?? '';
+    values.visibleToAll = field(form, 'visibleToAll') === 'on' ? 'on' : '';
     const input: Record<string, unknown> = {
       name: values.name,
       mainBranch: values.mainBranch,
       autoApproveNew: values.autoApproveNew === 'on',
+      visibleToAll: values.visibleToAll === 'on',
     };
     for (const name of NUMBER_FIELDS) if (values[name]) input[name] = Number(values[name]);
     // An older form without the agent fields leaves the policy as it is.
@@ -369,13 +575,12 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
   });
 
   app.get('/ui/p/:slug/settings/tokens/new', async (c) => {
-    requireProjectAdmin(c);
-    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const { project } = await managed(c, s);
     return c.html(<NewTokenPage ui={uiOf(c, s)} project={project} />);
   });
 
   app.post('/ui/p/:slug/settings/tokens', async (c) => {
-    requireProjectAdmin(c);
+    const { project } = await managed(c, s);
     const slug = c.req.param('slug');
     const form = await c.req.parseBody({ all: true });
     const scopes = ([] as unknown[]).concat(form.scopes ?? []).map(String);
@@ -385,7 +590,6 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
       return c.html(await page(c, { newToken: { name: view.name, scopes: view.scopes, token } }), 201);
     } catch (err) {
       if (!(err instanceof AppError) || err.status >= 500) throw err;
-      const project = await getProjectBySlug(s.deps, slug);
       return c.html(
         <NewTokenPage ui={uiOf(c, s)} project={project} values={{ name, scopes }} errors={formErrors(err)} />,
         err.status as 422,
@@ -394,15 +598,97 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
   });
 
   app.post('/ui/p/:slug/settings/tokens/:id/delete', async (c) => {
-    requireProjectAdmin(c);
+    await managed(c, s);
     const slug = c.req.param('slug');
     await deleteProjectToken(s.deps, slug, c.req.param('id'));
     return c.redirect(uiOf(c, s).url(`/ui/p/${slug}/settings?done=token-revoked`), 303);
   });
 
   app.post('/ui/p/:slug/settings/delete', async (c) => {
-    requireProjectAdmin(c);
-    await deleteProject(s.deps, c.req.param('slug'));
+    const { project } = await visibleProject(c, s.deps, c.req.param('slug'), 'server.admin');
+    await deleteProject(s.deps, project.slug);
     return c.redirect(uiOf(c, s).url('/ui?done=project-deleted'), 303);
+  });
+
+  const membersPage = (c: Context<AppEnv>, err: unknown, memberValues?: { email?: string; role?: string }) => {
+    if (!(err instanceof AppError) || err.status >= 500) throw err;
+    const error = err.errors?.length ? err.errors.map((e) => `${e.path}: ${e.message}`).join('; ') : err.detail;
+    return page(c, { error, ...(memberValues ? { memberValues } : {}) }).then((html) =>
+      c.html(html, err.status as 404 | 409 | 422),
+    );
+  };
+
+  app.post('/ui/p/:slug/settings/members', async (c) => {
+    const { project } = await managed(c, s);
+    const form = await c.req.parseBody();
+    const email = field(form, 'email') ?? '';
+    const role = field(form, 'role') || undefined;
+    try {
+      await addMember(s.deps, project.slug, { email, ...(role ? { role } : {}) });
+      return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=member-added#members-title`), 303);
+    } catch (err) {
+      return membersPage(c, err, { email, ...(role ? { role } : {}) });
+    }
+  });
+
+  app.post('/ui/p/:slug/settings/members/:userId', async (c) => {
+    const { project } = await managed(c, s);
+    const form = await c.req.parseBody();
+    try {
+      await updateMember(s.deps, project.slug, c.req.param('userId'), { role: field(form, 'role') }, userOf(c).id);
+      return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=member-saved#members-title`), 303);
+    } catch (err) {
+      return membersPage(c, err);
+    }
+  });
+
+  app.post('/ui/p/:slug/settings/members/:userId/delete', async (c) => {
+    const { project } = await managed(c, s);
+    try {
+      await removeMember(s.deps, project.slug, c.req.param('userId'), userOf(c).id);
+      return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=member-removed#members-title`), 303);
+    } catch (err) {
+      return membersPage(c, err);
+    }
+  });
+
+  // Invites: the email has no account yet (one that has becomes a member at once).
+  const invited = async (c: Context<AppEnv>, invite: InviteView, token: string) =>
+    c.html(await page(c, { newInvite: { email: invite.email, ...sendInvite(s, invite, token) } }), 201);
+
+  /** The invite must be of this project; any other is as if it did not exist. */
+  const ownInvite = async (c: Context<AppEnv>, projectId: string) => {
+    const id = c.req.param('id') ?? '';
+    const of = await inviteProjectId(s.deps, id).catch(() => null);
+    if (of !== projectId) throw new AppError('invite_not_found', 404, `Invite ${id} not found.`);
+    return id;
+  };
+
+  app.post('/ui/p/:slug/settings/invites', async (c) => {
+    const { project } = await managed(c, s);
+    const form = await c.req.parseBody();
+    const email = field(form, 'email') ?? '';
+    const role = field(form, 'role') || undefined;
+    try {
+      const result = await inviteToProject(s.deps, project.slug, { email, ...(role ? { role } : {}) }, userOf(c).id);
+      if (result.kind === 'member') {
+        return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=member-had-account#members-title`), 303);
+      }
+      return invited(c, result.invite, result.token);
+    } catch (err) {
+      return membersPage(c, err, { email, ...(role ? { role } : {}) });
+    }
+  });
+
+  app.post('/ui/p/:slug/settings/invites/:id/resend', async (c) => {
+    const { project } = await managed(c, s);
+    const { invite, token } = await resendInvite(s.deps, await ownInvite(c, project.id));
+    return invited(c, invite, token);
+  });
+
+  app.post('/ui/p/:slug/settings/invites/:id/delete', async (c) => {
+    const { project } = await managed(c, s);
+    await revokeInvite(s.deps, await ownInvite(c, project.id));
+    return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=invite-revoked#members-title`), 303);
   });
 }

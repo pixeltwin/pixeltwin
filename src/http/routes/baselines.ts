@@ -1,8 +1,7 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import { baselineHistory, promoteBranch, promotionCandidates } from '../../domain/baselines';
-import { getProjectBySlug } from '../../domain/projects';
 import { branchSchema, parseInput } from '../../domain/schemas';
-import { allowProject, principalOf } from '../auth';
+import { principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { BaselineSchema, json, PageQuerySchema, pageOf, problems } from '../schemas';
@@ -23,7 +22,6 @@ export function registerBaselineRoutes(app: OpenAPIHono<AppEnv>, s: Services): v
   });
   app.openapi(history, async (c) => {
     const { slug, snapshotKey } = c.req.valid('param');
-    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     return c.json(await baselineHistory(s.deps, slug, snapshotKey, c.req.valid('query')), 200);
   });
 
@@ -53,7 +51,6 @@ export function registerBaselineRoutes(app: OpenAPIHono<AppEnv>, s: Services): v
   });
   app.openapi(candidates, async (c) => {
     const { slug, branch } = c.req.valid('param');
-    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     const parsed = parseInput(z.object({ branch: branchSchema }), { branch });
     return c.json({ items: await promotionCandidates(s.deps, slug, parsed.branch) }, 200);
   });
@@ -83,7 +80,6 @@ export function registerBaselineRoutes(app: OpenAPIHono<AppEnv>, s: Services): v
   });
   app.openapi(promote, async (c) => {
     const { slug, branch } = c.req.valid('param');
-    allowProject(c, (await getProjectBySlug(s.deps, slug)).id);
     const parsed = parseInput(z.object({ branch: branchSchema }), { branch });
     const body = (c.req.valid('json') ?? {}) as { snapshotKeys?: string[] };
     const options = body.snapshotKeys ? { snapshotKeys: body.snapshotKeys } : {};

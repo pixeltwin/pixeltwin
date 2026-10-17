@@ -23,6 +23,8 @@ export interface LayoutProps {
   variant?: 'focus';
   /** The project this page belongs to: the palette offers its branches and builds. */
   project?: string;
+  /** The user manages that project (project.admin): the palette offers New token. */
+  canManage?: boolean;
   children?: Child;
 }
 
@@ -69,6 +71,12 @@ function UserMenu({ ui }: { ui: Ui }) {
           {user.email.charAt(0).toUpperCase()}
         </span>
         <span class="menu-email">{user.email}</span>
+        {ui.accessRequests > 0 && (
+          <span class="count-badge">
+            {String(ui.accessRequests)}
+            <span class="visually-hidden"> access requests waiting</span>
+          </span>
+        )}
       </summary>
       <div class="menu-panel">
         <form class="theme-switch" method="post" action={ui.url('/ui/theme')}>
@@ -88,6 +96,11 @@ function UserMenu({ ui }: { ui: Ui }) {
         {user.role === 'admin' && (
           <a class="menu-item" href={ui.url('/ui/admin/users')}>
             Users
+            {ui.accessRequests > 0 && (
+              <span class="count-badge" title="Access requests waiting">
+                {String(ui.accessRequests)}
+              </span>
+            )}
           </a>
         )}
         <form method="post" action={ui.url('/ui/logout')}>
@@ -100,7 +113,18 @@ function UserMenu({ ui }: { ui: Ui }) {
   );
 }
 
-export function Layout({ ui, title, crumbs, notice, error, islands, variant, project, children }: LayoutProps) {
+export function Layout({
+  ui,
+  title,
+  crumbs,
+  notice,
+  error,
+  islands,
+  variant,
+  project,
+  canManage,
+  children,
+}: LayoutProps) {
   // The doctype keeps browsers out of quirks mode; JSX cannot express it.
   return (
     <>
@@ -119,6 +143,7 @@ export function Layout({ ui, title, crumbs, notice, error, islands, variant, pro
           data-base={ui.url('')}
           data-islands={islands?.join(' ') || undefined}
           data-project={project}
+          data-can-manage={project && canManage ? '' : undefined}
           data-role={ui.user?.role}
           class={variant}
         >

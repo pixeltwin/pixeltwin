@@ -15,7 +15,8 @@ import {
 } from '../../domain/reviews';
 import { areaInputSchema, areaUpdateSchema, checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
-import { allowProject, principalOf, requirePermission } from '../auth';
+import { requireProject } from '../access';
+import { principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import {
@@ -173,12 +174,11 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   // every declared content type against every request. readUpload validates the one that arrived.
   const { middleware: _middleware, ...submitDoc } = submit;
   app.openAPIRegistry.registerPath(submitDoc);
-  app.post(`${API}/builds/:id/checks`, requirePermission('check.write'), async (c) => {
+  app.post(`${API}/builds/:id/checks`, requirePermission('check.write'), requireProject('build'), async (c) => {
     // Refuse before reading the body: under overload, every parsed upload costs the main thread.
     refuseWhenBusy(s);
     const id = c.req.param('id');
     const build = await getBuildRow(s.deps, id);
-    allowProject(c, build.projectId);
     const { check, created } = await submitCheck(s.deps, id, await readUpload(c), build);
     return created ? c.json(withLinks(check), 201) : c.json(withLinks(check), 200);
   });
@@ -199,7 +199,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(list, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
     const page = await listChecks(s.deps, id, c.req.valid('query'));
     return c.json({ items: page.items.map(withLinks), nextCursor: page.nextCursor }, 200);
   });
@@ -213,9 +212,7 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     responses: { 200: json(CheckSchema, 'The check'), ...problems(401, 403, 404) },
   });
   app.openapi(get, async (c) => {
-    const check = await getCheck(s.deps, c.req.valid('param').id);
-    allowProject(c, check.projectId);
-    return c.json(withLinks(check), 200);
+    return c.json(withLinks(await getCheck(s.deps, c.req.valid('param').id)), 200);
   });
 
   for (const action of ['approve', 'reject'] as const) {
@@ -238,7 +235,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     });
     app.openapi(route, async (c) => {
       const { id } = c.req.valid('param');
-      allowProject(c, (await getCheck(s.deps, id)).projectId);
       const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
       const { check, outcome } = await reviewCheck(s.deps, id, action, actorFromPrincipal(principalOf(c)), input);
       return c.json({ ...withLinks(check), outcome }, 200);
@@ -255,7 +251,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(accept, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json(withLinks(await acceptSuggestion(s.deps, id, actorFromPrincipal(principalOf(c)))), 200);
   });
 
@@ -272,7 +267,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(dismiss, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
     return c.json(withLinks(await dismissSuggestion(s.deps, id, actorFromPrincipal(principalOf(c)), input)), 200);
   });
@@ -296,7 +290,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(elements, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json(await checkElements(s.deps, id), 200);
   });
 
@@ -311,7 +304,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(reset, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json(withLinks(await resetReview(s.deps, id, actorFromPrincipal(principalOf(c)))), 200);
   });
 
@@ -325,7 +317,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(areasList, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json({ items: await listAreas(s.deps, id) }, 200);
   });
 
@@ -346,7 +337,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   app.openapi(areaCreate, async (c) => {
     const { id } = c.req.valid('param');
     const { projectId } = await getCheck(s.deps, id);
-    allowProject(c, projectId);
     await allowAreaChange(c, s, projectId);
     const { area, check } = await createArea(s.deps, id, principalOf(c).id, c.req.valid('json'));
     return c.json({ area, check: withLinks(check) }, 201);
@@ -366,7 +356,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   app.openapi(areaIgnoreChanges, async (c) => {
     const { id } = c.req.valid('param');
     const { projectId } = await getCheck(s.deps, id);
-    allowProject(c, projectId);
     await allowAreaChange(c, s, projectId);
     const { areas, check } = await ignoreChanges(s.deps, id, principalOf(c).id);
     return c.json({ areas, check: withLinks(check) }, 201);
@@ -389,7 +378,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   app.openapi(areaUpdate, async (c) => {
     const { id, areaId } = c.req.valid('param');
     const { projectId } = await getCheck(s.deps, id);
-    allowProject(c, projectId);
     await allowAreaChange(c, s, projectId);
     const { area, check } = await updateArea(s.deps, id, areaId, c.req.valid('json'));
     return c.json({ area, check: withLinks(check) }, 200);
@@ -405,7 +393,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(areaDelete, async (c) => {
     const { id, areaId } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json(withLinks(await deleteArea(s.deps, id, areaId)), 200);
   });
 
@@ -422,7 +409,6 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(history, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
     return c.json({ items: await listReviews(s.deps, id) }, 200);
   });
 }

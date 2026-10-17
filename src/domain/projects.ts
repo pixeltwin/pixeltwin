@@ -20,14 +20,20 @@ const PROJECT_COLUMNS = [
   'autoApproveNew',
   'agentReview',
   'agentMaxDiffPercent',
+  'visibleToAll',
   'createdAt',
   'updatedAt',
 ] as const;
 
-type ProjectRow = Omit<Project, 'autoApproveNew'> & { autoApproveNew: number };
+type ProjectRow = Omit<Project, 'autoApproveNew' | 'visibleToAll'> & { autoApproveNew: number; visibleToAll: number };
 
 function toProject(row: ProjectRow): Project {
-  return { ...row, autoApproveNew: Number(row.autoApproveNew) === 1 };
+  return { ...row, autoApproveNew: Number(row.autoApproveNew) === 1, visibleToAll: Number(row.visibleToAll) === 1 };
+}
+
+/** Also what a user who may not see the project gets, so slugs do not leak. */
+export function projectNotFound(slug: string): AppError {
+  return new AppError('project_not_found', 404, `Project "${slug}" not found.`);
 }
 
 /**
@@ -49,7 +55,11 @@ export async function createProject(deps: DbDeps, input: unknown): Promise<Proje
     try {
       await deps.db
         .insertInto('projects')
-        .values({ ...project, autoApproveNew: project.autoApproveNew ? 1 : 0 })
+        .values({
+          ...project,
+          autoApproveNew: project.autoApproveNew ? 1 : 0,
+          visibleToAll: project.visibleToAll ? 1 : 0,
+        })
         .execute();
       return project;
     } catch (err) {
@@ -67,7 +77,7 @@ export async function getProjectBySlug(deps: DbDeps, slug: string): Promise<Proj
     .select(PROJECT_COLUMNS)
     .where('slug', '=', slug)
     .executeTakeFirst();
-  if (!project) throw new AppError('project_not_found', 404, `Project "${slug}" not found.`);
+  if (!project) throw projectNotFound(slug);
   return toProject(project);
 }
 
@@ -85,12 +95,13 @@ export async function updateProject(deps: DbDeps, slug: string, input: unknown):
   const changes = parseInput(updateProjectSchema, input);
   const project = await getProjectBySlug(deps, slug);
   const updated: Project = { ...project, ...changes, updatedAt: Date.now() };
-  const { autoApproveNew, ...columns } = changes;
+  const { autoApproveNew, visibleToAll, ...columns } = changes;
   await deps.db
     .updateTable('projects')
     .set({
       ...columns,
       ...(autoApproveNew === undefined ? {} : { autoApproveNew: autoApproveNew ? 1 : 0 }),
+      ...(visibleToAll === undefined ? {} : { visibleToAll: visibleToAll ? 1 : 0 }),
       updatedAt: updated.updatedAt,
     })
     .where('id', '=', project.id)
