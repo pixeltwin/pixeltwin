@@ -1,5 +1,5 @@
 import { PNG } from 'pngjs';
-import type { Size } from './types';
+import type { Rect, Size } from './types';
 
 /**
  * Thumbnails for the build page's cards: a screenshot scaled down so its longer side is at most
@@ -22,6 +22,8 @@ export interface ThumbJob {
   png: Uint8Array;
   edge: number;
   mode: ThumbMode;
+  /** Only this part of the image (a change group's crop), clamped to the image. */
+  crop?: Rect | undefined;
 }
 
 export type ThumbJobResult =
@@ -113,12 +115,38 @@ export function downscale(data: Uint8Array, size: Size, out: Size, mode: ThumbMo
   return result;
 }
 
-/** Decodes the PNG, scales it down to fit `edge` and encodes the thumbnail. */
+/** `crop` inside an image of `size`, at least one pixel; null when it lies outside. */
+export function clampCrop(crop: Rect, size: Size): Rect | null {
+  const x = Math.max(0, crop.x);
+  const y = Math.max(0, crop.y);
+  const width = Math.min(crop.width, size.width - x);
+  const height = Math.min(crop.height, size.height - y);
+  return width >= 1 && height >= 1 ? { x, y, width, height } : null;
+}
+
+/** The pixels of `crop` (RGBA rows copied out of the image). */
+function cropPixels(data: Uint8Array, size: Size, crop: Rect): Uint8Array {
+  const out = new Uint8Array(crop.width * crop.height * 4);
+  for (let y = 0; y < crop.height; y++) {
+    const from = ((crop.y + y) * size.width + crop.x) * 4;
+    out.set(data.subarray(from, from + crop.width * 4), y * crop.width * 4);
+  }
+  return out;
+}
+
+/** Decodes the PNG, scales it (or its crop) down to fit `edge` and encodes the thumbnail. */
 export function makeThumb(job: ThumbJob): ThumbJobResult {
   const png = PNG.sync.read(Buffer.from(job.png.buffer, job.png.byteOffset, job.png.byteLength));
-  const size = { width: png.width, height: png.height };
+  let pixels: Uint8Array = png.data;
+  let size: Size = { width: png.width, height: png.height };
+  if (job.crop) {
+    const crop = clampCrop(job.crop, size);
+    if (!crop) return { kind: 'error', code: 'diff_failed', message: 'The crop lies outside the image.' };
+    pixels = cropPixels(pixels, size, crop);
+    size = { width: crop.width, height: crop.height };
+  }
   const out = thumbSize(size, job.edge);
-  const data = downscale(png.data, size, out, job.mode);
+  const data = downscale(pixels, size, out, job.mode);
   let opaque = true;
   for (let i = 3; i < data.length; i += 4) {
     if (data[i] !== 255) {

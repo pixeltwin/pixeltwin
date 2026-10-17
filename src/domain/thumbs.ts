@@ -1,4 +1,5 @@
 import { makeThumb, THUMB_EDGES, type ThumbMode, thumbSize } from '../diff/thumb';
+import type { Rect } from '../diff/types';
 import { thumbKey } from '../storage/storage';
 import type { Deps } from './deps';
 import { loadImage } from './images';
@@ -10,6 +11,13 @@ import { loadImage } from './images';
 
 /** Thumbnails being made right now, so cards asking at once wait for one job. */
 const making = new Map<string, Promise<Uint8Array | null>>();
+
+/**
+ * Crops (a change group's before and after) are not stored: there is one per group and image, and
+ * nothing would delete them with the image. The last few are kept here; browsers cache them.
+ */
+const CROPS_KEPT = 64;
+const crops = new Map<string, Uint8Array>();
 
 /** Width and height from the PNG's IHDR (stored images were checked on upload). */
 function pngSize(bytes: Uint8Array): { width: number; height: number } {
@@ -27,7 +35,9 @@ export async function loadThumb(
   sha: string,
   edge: number,
   mode: ThumbMode,
+  crop?: Rect,
 ): Promise<Uint8Array | null> {
+  if (crop) return loadCrop(deps, sha, edge, crop);
   const key = thumbKey(sha, edge, mode);
   const stored = await deps.storage.get(key);
   if (stored) return stored;
@@ -43,6 +53,41 @@ export async function loadThumb(
       const result = deps.runThumb ? await deps.runThumb(job) : makeThumb(job);
       if (result.kind !== 'thumb') return image;
       await deps.storage.put(key, result.png);
+      return result.png;
+    })().finally(() => making.delete(key));
+    making.set(key, pending);
+  }
+  return pending;
+}
+
+/** A part of image `sha`, scaled down to fit `edge`; made on request, kept in memory (CROPS_KEPT). */
+async function loadCrop(
+  deps: Pick<Deps, 'storage' | 'runThumb'>,
+  sha: string,
+  edge: number,
+  crop: Rect,
+): Promise<Uint8Array | null> {
+  const key = `${sha}-${edge}-${crop.x},${crop.y},${crop.width},${crop.height}`;
+  const kept = crops.get(key);
+  if (kept) {
+    // Most recently used last: the first entry is the one to forget.
+    crops.delete(key);
+    crops.set(key, kept);
+    return kept;
+  }
+  let pending = making.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const image = await loadImage(deps, sha);
+      if (!image) return null;
+      const job = { thumb: true as const, png: image, edge, mode: 'plain' as const, crop };
+      const result = deps.runThumb ? await deps.runThumb(job) : makeThumb(job);
+      if (result.kind !== 'thumb') return null;
+      crops.set(key, result.png);
+      for (const old of crops.keys()) {
+        if (crops.size <= CROPS_KEPT) break;
+        crops.delete(old);
+      }
       return result.png;
     })().finally(() => making.delete(key));
     making.set(key, pending);

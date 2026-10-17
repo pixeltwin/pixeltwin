@@ -231,6 +231,23 @@ describe('review, baseline, promotion and image routes', () => {
     expect((await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?mode=sepia`, { as: ci })).status).toBe(422);
   });
 
+  test('a crop is that part of the image, scaled down, not stored', async () => {
+    const shot = makePng(2000, 1000, WHITE, [{ x: 1000, y: 0, width: 1000, height: 1000, color: BLACK }]);
+    const { check: c } = await check('main', shot);
+    const res = await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?w=640&crop=900,100,1200,300`, { as: ci });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('etag')).toBe(`"${c.imageSha}-640-plain-900,100,1200,300"`);
+    // Clamped to the image: 1100 × 300 from x 900, scaled to 640 wide.
+    const crop = decodePng(new Uint8Array(await res.arrayBuffer()));
+    expect([crop.width, crop.height]).toEqual([640, 175]);
+    expect(crop.data[0]).toBe(255);
+    expect(crop.data[(crop.width - 1) * 4]).toBe(0);
+    expect(await t.deps.storage.exists(thumbKey(c.imageSha, 640, 'plain'))).toBe(false);
+    const outside = await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?crop=5000,5000,10,10`, { as: ci });
+    expect(outside.status).toBe(404);
+    expect((await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?crop=1,2,3`, { as: ci })).status).toBe(422);
+  });
+
   test('a diff image thumbnail keeps the changed pixels red', async () => {
     const page = makePng(1280, 640);
     const dot = makePng(1280, 640, WHITE, [{ x: 600, y: 300, width: 2, height: 2, color: BLACK }]);
