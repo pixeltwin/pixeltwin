@@ -180,6 +180,7 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     const id = c.req.param('id');
     const build = await getBuildRow(s.deps, id);
     const { check, created } = await submitCheck(s.deps, id, await readUpload(c), build);
+    s.metrics?.checkPosted(check.result);
     return created ? c.json(withLinks(check), 201) : c.json(withLinks(check), 200);
   });
 

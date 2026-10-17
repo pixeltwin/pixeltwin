@@ -60,6 +60,15 @@ describe('loadConfig', () => {
     expect(loadConfig({ OUTBOUND_BLOCK_PRIVATE: 'false' }).outboundBlockPrivate).toBe(false);
   });
 
+  test('METRICS=1 serves Prometheus metrics on a port of its own (9464 by default)', () => {
+    expect(loadConfig({}).metricsPort).toBeNull();
+    expect(loadConfig({ METRICS_PORT: '9100' }).metricsPort).toBeNull();
+    expect(loadConfig({ METRICS: '1' }).metricsPort).toBe(9464);
+    expect(loadConfig({ METRICS: 'true', METRICS_PORT: '9100' }).metricsPort).toBe(9100);
+    expect(() => loadConfig({ METRICS: '1', PORT: '9464' })).toThrow('METRICS_PORT must differ from PORT');
+    expect(() => loadConfig({ METRICS: 'maybe' })).toThrow(ConfigError);
+  });
+
   test('diff workers follow the container CPU limit, not the machine', () => {
     expect(cpuLimitFrom({ 'cpu.max': 'max 100000' })).toBeNull();
     expect(cpuLimitFrom({ 'cpu.max': '200000 100000' })).toBe(2);

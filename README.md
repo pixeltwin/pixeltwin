@@ -313,6 +313,8 @@ it out.
 | `LOG_LEVEL` | `info` |
 | `SMTP_URL` | unset → no mail (links are shown to copy); `smtp://user:pass@host:587` (STARTTLS when offered; credentials only over TLS, except to localhost) or `smtps://…:465` |
 | `SMTP_FROM` | needed with `SMTP_URL`, e.g. `pixeltwin <pixeltwin@example.com>` |
+| `METRICS` | off; `1` serves Prometheus metrics at `GET /metrics` on `METRICS_PORT`, a port of its own so a proxy or Ingress in front of `PORT` never exposes them (no auth): requests by route and status with latency, checks by result, finalized builds by verdict, diff queue depth, and the webhook / code host / mail outbox backlog (read from the database, so the same on every replica) |
+| `METRICS_PORT` | `9464` |
 
 ## Post screenshots from your tests: the JavaScript SDK
 

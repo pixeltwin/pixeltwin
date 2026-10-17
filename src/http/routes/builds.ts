@@ -130,7 +130,9 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
         throw new AppError('bad_request', 400, 'Malformed JSON in request body');
       }
     }
-    return c.json(await finalizeBuild(s.deps, id, input), 200);
+    const build = await finalizeBuild(s.deps, id, input);
+    s.metrics?.buildFinalized(build.verdict);
+    return c.json(build, 200);
   });
 
   const timings = defineRoute('check.write', {
