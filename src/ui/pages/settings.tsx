@@ -155,26 +155,28 @@ function SettingsPage(props: {
                 </span>
               </label>
             ))}
-            <Field
-              id="settings-agentMaxDiffPercent"
-              label="Largest diff a token approves itself (%)"
-              hint="With “Apply small changes”."
-              error={errors.agentMaxDiffPercent}
-            >
-              <input
-                name="agentMaxDiffPercent"
-                type="number"
-                min={0}
-                max={100}
-                step="any"
-                value={props.values?.agentMaxDiffPercent ?? String(project.agentMaxDiffPercent)}
-                {...describedBy(
-                  'settings-agentMaxDiffPercent',
-                  'With “Apply small changes”.',
-                  errors.agentMaxDiffPercent,
-                )}
-              />
-            </Field>
+            <div class="form-grid">
+              <Field
+                id="settings-agentMaxDiffPercent"
+                label="Largest diff a token approves itself (%)"
+                hint="With “Apply small changes”."
+                error={errors.agentMaxDiffPercent}
+              >
+                <input
+                  name="agentMaxDiffPercent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="any"
+                  value={props.values?.agentMaxDiffPercent ?? String(project.agentMaxDiffPercent)}
+                  {...describedBy(
+                    'settings-agentMaxDiffPercent',
+                    'With “Apply small changes”.',
+                    errors.agentMaxDiffPercent,
+                  )}
+                />
+              </Field>
+            </div>
           </fieldset>
           <div class="form-actions">
             <button class="primary" type="submit">

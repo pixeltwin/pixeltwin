@@ -79,14 +79,19 @@ function Ticks({ text }: { text: string }) {
   return <>{text.split('`').map((part, i) => (i % 2 === 1 ? <code>{part}</code> : part))}</>;
 }
 
-const KIND_WORD: Record<ElementChange['kind'], string> = {
-  moved: 'Moved',
-  resized: 'Resized',
-  text: 'Text',
-  style: 'Style',
-  added: 'Appeared',
-  removed: 'Disappeared',
-};
+const capitalize = (text: string) => text.replace(/^[a-z]/, (c) => c.toUpperCase());
+
+/** What changed, without the element's name: "moved 12 px down". */
+function whatChanged(change: ElementChange): string {
+  return change.description.startsWith(`${change.label} `)
+    ? change.description.slice(change.label.length + 1)
+    : change.description;
+}
+
+/** “top left” for a change on an image of known size. */
+function placeOf(change: ElementChange, size: Size | undefined): string {
+  return areaPlace(around(change), size).replace(/ · $/, '') || `${around(change).width}×${around(change).height} px`;
+}
 
 /** The smallest rectangle around both boxes of a change. */
 function around(change: ElementChange): Rect {
@@ -879,11 +884,9 @@ function Info(props: {
                   title="Highlight this element on the screenshots"
                 >
                   <span class="region-name">
-                    <Ticks text={change.description.replace(/^[a-z]/, (c) => c.toUpperCase())} />
+                    <Ticks text={capitalize(change.label)} />
                   </span>
-                  <span class="region-place muted">
-                    {`${KIND_WORD[change.kind]} · ${areaPlace(around(change), size)}${(change.to ?? change.from)?.width ?? 0}×${(change.to ?? change.from)?.height ?? 0} px`}
-                  </span>
+                  <span class="region-place muted">{`${capitalize(whatChanged(change))} · ${placeOf(change, size)}`}</span>
                 </button>
                 {props.canReview && (
                   <IgnoreChange

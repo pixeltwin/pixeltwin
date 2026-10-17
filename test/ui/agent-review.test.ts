@@ -52,7 +52,8 @@ describe('UI: element changes and agent reviews', () => {
   test('the list of changes names elements first, then the regions they do not explain', async () => {
     const check = await changedCheck();
     const body = await get(`/ui/checks/${check.id}`);
-    expect(body).toContain('<span class="region-name"><code>button[data-testid=submit]</code> moved 8 px down</span>');
+    expect(body).toContain('<span class="region-name"><code>button[data-testid=submit]</code></span>');
+    expect(body).toContain('<span class="region-place muted">Moved 8 px down · middle left</span>');
     expect(body).toContain('data-change="e0"');
     // Where it is now, and dashed where it was, light up with the entry.
     expect(body).toContain('<rect x="20" y="28" width="60" height="20" data-change="e0"></rect>');

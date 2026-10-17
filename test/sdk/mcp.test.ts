@@ -28,10 +28,13 @@ const elements = (y: number, title: string): PageElement[] => [
   },
 ];
 
+// biome-ignore lint/suspicious/noExplicitAny: JSON-RPC answers from the child process; the assertions check them.
+type Answer = any;
+
 interface Rpc {
-  call(method: string, params?: unknown): Promise<{ result?: any; error?: { code: number; message: string } }>;
+  call(method: string, params?: unknown): Promise<{ result?: Answer; error?: { code: number; message: string } }>;
   send(raw: string): void;
-  next(): Promise<any>;
+  next(): Promise<Answer>;
   stop(): Promise<void>;
 }
 
@@ -41,9 +44,9 @@ function startMcp(env: Record<string, string>): Rpc {
     env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const waiting = new Map<number | string, (message: any) => void>();
-  const unnamed: any[] = [];
-  const unnamedWaiters: Array<(m: any) => void> = [];
+  const waiting = new Map<number | string, (message: Answer) => void>();
+  const unnamed: Answer[] = [];
+  const unnamedWaiters: Array<(m: Answer) => void> = [];
   if (!child.stdout) throw new Error('no stdout');
   createInterface({ input: child.stdout }).on('line', (line) => {
     const message = JSON.parse(line);

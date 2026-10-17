@@ -182,8 +182,10 @@ export function collectElements(options: CollectOptions): RawElement[] {
     if (!key && role && name) key = `role=${role}[name=${JSON.stringify(name)}]`;
     if (!key) key = path;
     const isField = el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA';
-    // Never what someone typed into a field: only the text the page itself shows.
-    const text = isField ? '' : cut(clean(el.textContent), 80);
+    // Never what someone typed into a field: only the text the page itself shows. A container's text
+    // is its own (its children are listed with theirs), unless it is named by its text (a button).
+    const whole = !el.children.length || (role !== undefined && NAMED_BY_TEXT.has(role));
+    const text = isField ? '' : cut(whole ? clean(el.textContent) : ownText(el), 80);
     const style = getComputedStyle(el);
     const element: RawElement = {
       key,

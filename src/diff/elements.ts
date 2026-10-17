@@ -113,6 +113,8 @@ export function matchElements(baseline: SnapshotElement[], current: SnapshotElem
 }
 
 const quality = (key: string) => (key.startsWith('[') || key.startsWith('#') ? 3 : key.startsWith('role=') ? 2 : 1);
+/** What changed and how well the element is named: a test id's colour before a CSS path's size. */
+const importance = (d: { kind: ChangeKind; key: string }) => KIND_WEIGHT[d.kind] + 2 * quality(d.key);
 
 /** How a sentence names an element: its selector, or its role (or tag) and text. */
 function labelOf(e: SnapshotElement, forText: boolean): string {
@@ -254,6 +256,19 @@ function foldInner(drafts: Draft[]): Draft[] {
   return drafts.filter((d) => outer.includes(d));
 }
 
+/**
+ * Drops a container that only grew or shrank (or moved and resized) around other changes: its
+ * children explain it ("main resized" because a button inside moved is noise).
+ */
+function dropConsequences(drafts: Draft[]): Draft[] {
+  const sizeOnly = (d: Draft) => d.kinds.every((k) => k === 'resized' || k === 'moved') && d.kinds.includes('resized');
+  return drafts.filter((d) => {
+    if (!sizeOnly(d) || !d.to) return true;
+    const own = d.to;
+    return !drafts.some((other) => other !== d && other.to !== null && contains(own, other.to) && !sizeOnly(other));
+  });
+}
+
 export interface ElementChanges {
   changes: ElementChange[];
   truncated: boolean;
@@ -264,8 +279,9 @@ export interface ElementChanges {
 /**
  * The element changes between two screenshots: matched elements that moved, resized or changed
  * text or style, and elements that appeared or disappeared, each only when changed pixels touch
- * it. Most important first (kind, then how stable the key is, then changed pixels, then
- * position), at most MAX_CHANGES. Deterministic for the same input.
+ * it. Most important first (the kind of change and how well the element is named: test ids and
+ * ids, then roles, then CSS paths; then changed pixels and position), at most MAX_CHANGES.
+ * Deterministic for the same input.
  */
 export function elementChanges(
   baseline: SnapshotElement[],
@@ -289,10 +305,9 @@ export function elementChanges(
     if (draft) drafts.push(draft);
   }
   const position = (d: Draft) => d.to ?? d.from ?? { x: 0, y: 0 };
-  const sorted = foldInner(drafts).sort(
+  const sorted = dropConsequences(foldInner(drafts)).sort(
     (a, b) =>
-      KIND_WEIGHT[b.kind] - KIND_WEIGHT[a.kind] ||
-      quality(b.key) - quality(a.key) ||
+      importance(b) - importance(a) ||
       b.pixels - a.pixels ||
       position(a).y - position(b).y ||
       position(a).x - position(b).x ||

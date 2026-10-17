@@ -78,7 +78,10 @@ describe('collectElements', () => {
       width: 800,
       height: 50,
     });
-    expect(inHeader.map((e) => e.text)).toEqual(['Logo', 'Logo']);
+    expect(inHeader.map((e) => [e.tag, e.text])).toEqual([
+      ['header', undefined], // a container's text is its own; its children have theirs
+      ['b', 'Logo'],
+    ]);
   });
 
   test('at most `max`, test ids first', async () => {

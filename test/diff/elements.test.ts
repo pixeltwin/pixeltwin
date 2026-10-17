@@ -106,8 +106,8 @@ describe('elementChanges', () => {
     expect(changes.map((c) => c.description)).toEqual([
       '`div#new` appeared',
       '`div#gone` disappeared',
-      'heading text changed from "Sign in" to "Log in"',
       '`a#cta` background changed from #0070f3 to #d1242f',
+      'heading text changed from "Sign in" to "Log in"',
       '`button[data-testid=submit]` moved 4 px down',
     ]);
     const moved = changes.find((c) => c.kind === 'moved');
@@ -136,6 +136,20 @@ describe('elementChanges', () => {
     const regions = changedAt({ x: 0, y: 10, width: 200, height: 90 });
     const { changes } = elementChanges(before, before.map(shift), regions.cells, regions.regions);
     expect(changes.map((c) => c.description)).toEqual(['`main#main` moved 30 px down (with 2 elements inside)']);
+  });
+
+  test('a container that only grew around a change inside it is not listed', () => {
+    const before = [
+      el('main > form', { x: 0, y: 0, width: 200, height: 80 }, { tag: 'form' }),
+      el('[data-testid=submit]', { x: 10, y: 50, width: 80, height: 20 }, { tag: 'button' }),
+    ];
+    const after = [
+      el('main > form', { x: 0, y: 0, width: 200, height: 92 }, { tag: 'form' }),
+      el('[data-testid=submit]', { x: 10, y: 62, width: 80, height: 20 }, { tag: 'button' }),
+    ];
+    const regions = changedAt({ x: 10, y: 50, width: 80, height: 32 });
+    const { changes } = elementChanges(before, after, regions.cells, regions.regions);
+    expect(changes.map((c) => c.description)).toEqual(['`button[data-testid=submit]` moved 12 px down']);
   });
 
   test('several changed aspects are named in one sentence', () => {
