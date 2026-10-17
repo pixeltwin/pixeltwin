@@ -37,7 +37,8 @@ on everything but GET /me and POST /auth/logout.
 
    Or JSON: {"name":"login","variant":{…},"imageBase64":"<base64 PNG>"}.
    Optional: "ignoreRegions":[{"x":0,"y":0,"width":1280,"height":64}], "colorThreshold" (0-1), "tolerancePercent",
-   and "elements": the page's visible elements in the screenshot, at most 300, each
+   "reviewWithinTolerance" (true: a diff within the tolerance waits for review instead of passing;
+   default: the project's setting), and "elements": the page's visible elements in the screenshot, at most 300, each
    {"key":"[data-testid=submit]","tag":"button","role":"button","name":"Send","text":"Send",
    "x":…,"y":…,"width":…,"height":…,"style":{"color":"#ffffff","background":"#0070f3","fontSize":"14px"}}
    (screenshot pixels; key: a test id, #id, role=…[name="…"] or a CSS path; "path": the CSS path).
@@ -55,6 +56,14 @@ on everything but GET /me and POST /auth/logout.
    elements.
 
    curl ${api}/checks/<checkId> -H "Authorization: Bearer $PIXELTWIN_TOKEN"
+
+   \`withinTolerance: true\` marks a check that is unchanged only because its diff is within the
+   tolerance: \`diff.percent\` of the pixels differ, at most \`diff.tolerancePercent\`, and
+   \`links.diff\` shows them. It passes (review "none") unless the project's
+   \`reviewWithinTolerance\` setting (or the SDK's) makes it wait (pending). Either way it can be
+   approved, so its screenshot becomes the baseline and small drift does not add up, or rejected
+   as a real change. GET ${api}/builds/<buildId>/checks?withinTolerance=true lists them; the
+   build's \`counts.withinTolerance\` counts them (\`withinTolerancePassed\`: those not reviewed).
 
    A busy server answers 503 server_busy with Retry-After: wait that many seconds and post
    the same screenshot again. Keep 4-8 uploads in flight per run rather than all at once.
@@ -112,7 +121,7 @@ sha256=<HMAC>) with POST ${api}/projects/<slug>/webhooks.
 
 GET ${api}/projects/<slug>/insights?from=YYYY-MM-DD&to=YYYY-MM-DD&branch=… (default: the last 30
 UTC days of the main branch; project.read) says how healthy the visual tests are: \`totals\`
-(autoPassRate, neededReview, approved, rejected, \`rejections\` with noise vs realBug and
+(autoPassRate, withinTolerance: of those, the ones that passed within the tolerance, neededReview, approved, rejected, \`rejections\` with noise vs realBug and
 \`byReason\`, \`timeToDecision\` median and p90 from finalize to the last decision, agent
 \`suggestions\` accepted or dismissed, \`runTime\`), \`daily\` numbers, \`previous\` (the as long range
 before) and \`noisyScreens\`: the screens to fix in the tests, noisiest first, each with

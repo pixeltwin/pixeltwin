@@ -227,6 +227,10 @@
             "type": "boolean",
             "description": "Every user on the server may open the project with their global role (viewer or reviewer); otherwise only admins and members"
           },
+          "reviewWithinTolerance": {
+            "type": "boolean",
+            "description": "A check whose diff is within tolerancePercent but not pixel-identical waits for review (pending) instead of passing. Off by default; the SDK can set it per check."
+          },
           "createdAt": {
             "type": "integer"
           },
@@ -246,6 +250,7 @@
           "agentReview",
           "agentMaxDiffPercent",
           "visibleToAll",
+          "reviewWithinTolerance",
           "createdAt",
           "updatedAt"
         ]
@@ -588,6 +593,14 @@
               "suggested": {
                 "type": "integer",
                 "description": "Checks with an agent's open suggestion, waiting for a person to accept or dismiss it"
+              },
+              "withinTolerance": {
+                "type": "integer",
+                "description": "Checks unchanged only because their diff is within the tolerance (some pixels differ), whatever their review"
+              },
+              "withinTolerancePassed": {
+                "type": "integer",
+                "description": "Of withinTolerance, those that passed with no review (part of result.unchanged)"
               }
             },
             "required": [
@@ -596,7 +609,9 @@
               "review",
               "autoApproved",
               "withAreas",
-              "suggested"
+              "suggested",
+              "withinTolerance",
+              "withinTolerancePassed"
             ]
           }
         },
@@ -802,6 +817,10 @@
               "outdated"
             ]
           },
+          "withinTolerance": {
+            "type": "boolean",
+            "description": "Unchanged only because the diff is within the tolerance: diff.percent of the pixels differ, at most tolerancePercent (the diff image shows them). False for identical screenshots and other results. Such a check passes unless the project (or the SDK) asks for a review; a person may still approve it as the new baseline or reject it as a real change."
+          },
           "diff": {
             "anyOf": [
               {
@@ -982,6 +1001,7 @@
           "tolerancePercent",
           "result",
           "review",
+          "withinTolerance",
           "diff",
           "reviewedBy",
           "reviewedAt",
@@ -2215,7 +2235,7 @@
               },
               "autoPassed": {
                 "type": "integer",
-                "description": "Unchanged, or new and approved by the auto-approve setting"
+                "description": "Unchanged and not reviewed, or new and approved by the auto-approve setting"
               },
               "autoPassRate": {
                 "type": [
@@ -2224,9 +2244,13 @@
                 ],
                 "description": "autoPassed / checks, 0 to 1; null without checks"
               },
+              "withinTolerance": {
+                "type": "integer",
+                "description": "Of autoPassed, the checks that passed within the tolerance: some pixels differ"
+              },
               "neededReview": {
                 "type": "integer",
-                "description": "Changed or new checks a person or agent had to decide"
+                "description": "Changed or new checks a person or agent had to decide, and unchanged ones reviewed (within the tolerance)"
               },
               "approved": {
                 "type": "integer"
@@ -2415,6 +2439,7 @@
               "checks",
               "autoPassed",
               "autoPassRate",
+              "withinTolerance",
               "neededReview",
               "approved",
               "rejected",
@@ -2482,6 +2507,9 @@
                     "number",
                     "null"
                   ]
+                },
+                "withinTolerance": {
+                  "type": "integer"
                 },
                 "approved": {
                   "type": "integer"
@@ -2569,6 +2597,7 @@
                 "checks",
                 "autoPassed",
                 "autoPassRate",
+                "withinTolerance",
                 "approved",
                 "rejected",
                 "rejectedBy",
@@ -4445,6 +4474,10 @@
                   "visibleToAll": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "reviewWithinTolerance": {
+                    "type": "boolean",
+                    "default": false
                   }
                 },
                 "required": [
@@ -4650,6 +4683,9 @@
                     "maximum": 100
                   },
                   "visibleToAll": {
+                    "type": "boolean"
+                  },
+                  "reviewWithinTolerance": {
                     "type": "boolean"
                   }
                 },
@@ -6401,6 +6437,9 @@
                     "minimum": 0,
                     "maximum": 100
                   },
+                  "reviewWithinTolerance": {
+                    "type": "boolean"
+                  },
                   "elements": {
                     "type": "array",
                     "items": {
@@ -6678,6 +6717,20 @@
             },
             "required": false,
             "name": "review",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "true: only checks that passed within the tolerance (unchanged, some pixels differ), whatever their review"
+            },
+            "required": false,
+            "description": "true: only checks that passed within the tolerance (unchanged, some pixels differ), whatever their review",
+            "name": "withinTolerance",
             "in": "query"
           }
         ],
@@ -7347,7 +7400,7 @@
         "tags": [
           "reviews"
         ],
-        "summary": "Undo a review: back to pending. Undoing an approval removes the baseline it created, unless a newer one replaced it (409 review_not_resettable)",
+        "summary": "Undo a review: back to pending (a check that had passed within the tolerance passes again). Undoing an approval removes the baseline it created, unless a newer one replaced it (409 review_not_resettable)",
         "x-permission": "check.review",
         "security": [
           {
@@ -7369,7 +7422,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The check, pending again",
+            "description": "The check, as before the review",
             "content": {
               "application/json": {
                 "schema": {
