@@ -403,6 +403,8 @@ function UsersPage({
                   </span>
                   {u.email}
                   {u.id === ui.user?.id && <span class="you">you</span>}
+                  {u.status === 'pending' && <Pill tone="amber">waiting for approval</Pill>}
+                  {u.status === 'rejected' && <Pill tone="grey">turned down</Pill>}
                 </span>
               </td>
               <td>
