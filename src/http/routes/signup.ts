@@ -45,11 +45,15 @@ const SignupSettingsSchema = z
   .object({ mode: z.enum(SIGNUP_MODES), domains: z.array(z.string()) })
   .openapi('SignupSettings');
 
-/** Admins hear of new requests at most this often (the Users page has the count anyway). */
+/** Admins hear of new requests at most once per such window (the Users page has the count anyway). */
 const NOTIFY_EVERY_MS = 15 * 60 * 1000;
 const lastNotified = new WeakMap<Services, number>();
 
-/** Mails every admin that requests wait, throttled; without SMTP nothing. */
+/**
+ * Mails every admin that requests wait; without SMTP nothing. At most one mail per admin per
+ * 15-minute window, on every replica together: the outbox keeps one mail per key. The process also
+ * skips the queries when it mailed less than 15 minutes ago.
+ */
 export async function notifyAdmins(s: Services): Promise<void> {
   if (!s.mailer) return;
   const now = Date.now();
@@ -59,13 +63,16 @@ export async function notifyAdmins(s: Services): Promise<void> {
   if (count === 0) return;
   const admins = await s.deps.db
     .selectFrom('users')
-    .select('email')
+    .select(['id', 'email'])
     .where('role', '=', 'admin')
     .where('status', '=', 'active')
     .execute();
   const url = `${s.config.publicUrl}/ui/admin/users#requests-title`;
-  for (const { email } of admins) {
-    void deliver(s.mailer, newRequestsMail(email, count, url), s.logger.warn, 'access request');
+  const window = Math.floor(now / NOTIFY_EVERY_MS);
+  for (const { id, email } of admins) {
+    void deliver(s.mailer, newRequestsMail(email, count, url), s.logger.warn, 'access request', {
+      key: `access-requests:${id}:${window}`,
+    });
   }
 }
 

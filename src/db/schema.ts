@@ -374,6 +374,25 @@ export interface WebhookDeliveriesTable {
   finishedAt: number | null;
 }
 
+export const MAIL_STATES = ['pending', 'sent', 'failed'] as const;
+export type MailState = (typeof MAIL_STATES)[number];
+
+/** One mail to send (or sent): see migration 0015. */
+export interface MailOutboxTable {
+  id: string;
+  kind: string;
+  /** Sealed JSON of the mail (to, subject, text, html); empty once sent or given up. */
+  message: string;
+  dedupeKey: string | null;
+  state: MailState;
+  attempts: number;
+  dueAt: number;
+  lockedUntil: number | null;
+  lastError: string | null;
+  createdAt: number;
+  finishedAt: number | null;
+}
+
 export interface DB {
   projects: ProjectsTable;
   images: ImagesTable;
@@ -397,6 +416,7 @@ export interface DB {
   webhooks: WebhooksTable;
   webhookDeliveries: WebhookDeliveriesTable;
   elementSets: ElementSetsTable;
+  mailOutbox: MailOutboxTable;
 }
 
 export type UserRow = Selectable<UsersTable>;

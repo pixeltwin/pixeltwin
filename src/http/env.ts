@@ -19,7 +19,7 @@ export interface Services {
   loginLimiter: LoginLimiter;
   /** Queues and sends GitHub/GitLab updates and webhooks; the same object is `deps.events`. */
   notifier: Notifier;
-  /** Sends invites, reset links and sign-up mails when SMTP_URL is set. */
+  /** Queues invites, reset links and sign-up mails (the mail outbox) when SMTP_URL is set. */
   mailer?: Mailer | null;
 }
 

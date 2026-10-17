@@ -8,6 +8,7 @@ import { createApp } from '../../src/http/app';
 import type { AppEnv } from '../../src/http/env';
 import { LoginLimiter } from '../../src/http/rate-limit';
 import { type Logger, silentLogger } from '../../src/log';
+import { MailOutbox } from '../../src/mail/outbox';
 import type { Mailer } from '../../src/mail/smtp';
 import { Notifier } from '../../src/notify/notifier';
 import { createTestDeps, type TestDeps } from './deps';
@@ -24,6 +25,8 @@ export interface TestApp {
   /** Never sends on its own: call `notifier.drain()` to deliver what is queued. */
   notifier: Notifier;
   setup: SetupState;
+  /** The mail outbox around `options.mailer` (sends in the background, polls every 20 ms); null without. */
+  mail: MailOutbox | null;
   close(): Promise<void>;
   /** Sends a request; JSON bodies are serialized, cookie requests get the right Origin header. */
   request(
@@ -65,6 +68,10 @@ export async function createTestApp(
     codeHost: { sleep: async () => {} },
   });
   deps.events = notifier;
+  const mail = options.mailer
+    ? new MailOutbox({ deps, smtp: options.mailer, logger: options.logger ?? silentLogger, pollMs: 20 })
+    : null;
+  mail?.start();
   const app = createApp({
     deps,
     notifier,
@@ -77,7 +84,7 @@ export async function createTestApp(
     logger: options.logger ?? silentLogger,
     setup,
     loginLimiter: options.loginLimiter ?? new LoginLimiter(),
-    mailer: options.mailer ?? null,
+    mailer: mail,
   });
 
   const request: TestApp['request'] = async (method, path, opts = {}) => {
@@ -101,7 +108,11 @@ export async function createTestApp(
     deps,
     notifier,
     setup,
-    close: () => deps.handle.close(),
+    mail,
+    async close() {
+      await mail?.stop();
+      await deps.handle.close();
+    },
     request,
     async userAs(role, email = `${role}${++users}@example.com`, options = {}) {
       const user = await createUser(deps, { email, password: PASSWORD, role });

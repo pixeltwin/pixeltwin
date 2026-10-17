@@ -143,12 +143,15 @@ Anyone else gets a one-time link (7 days; inviting again or Resend replaces it; 
 where they choose a password and land in the project. With `SMTP_URL` and `SMTP_FROM` set the link
 is also mailed; without them it is shown once to copy. Admins get a one-time **reset link** (1 hour)
 for any user under Users (the `admin reset-password` command still works too). Links are never
-logged and their pages send no Referer.
+logged and their pages send no Referer. Mail waits in the database (sealed with `SECRET_KEY` when
+set, cleared once sent) and is sent in the background like webhook deliveries: a failing SMTP
+server never fails the invite, a temporary failure is retried for about an hour and a half, and
+with several replicas each mail goes out once.
 
 **Sign-up with approval.** Users → Sign-up turns on "Request access" on the login page (optionally
 only for some email domains). Anyone may then ask, with a note; the answer never says whether the
 email already has an account. With SMTP they first confirm their email by a link, and admins get a
-mail (at most every 15 minutes); without SMTP the request comes marked "email not verified". Until
+mail (at most one per 15 minutes, across replicas); without SMTP the request comes marked "email not verified". Until
 an admin approves it (with a server role and projects) or turns it down (with a reason), the person
 can log in but sees only a waiting page, and the API answers `403 account_pending`. Turned-down
 requests are removed after 30 days, never confirmed ones after 7.

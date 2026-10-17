@@ -9,9 +9,19 @@ export interface Mail {
   html: string;
 }
 
-/** Sends one mail; rejects on any failure. The seam tests replace. */
+export interface SendOptions {
+  /** At most one mail per key, ever (the outbox keeps keys a week): e.g. one per admin per period. */
+  key?: string;
+  /** What it is (invite, password reset, …), for logs. */
+  kind?: string;
+}
+
+/**
+ * Sends one mail; rejects on any failure. The SMTP client sends at once; the outbox (outbox.ts)
+ * queues it in the database and sends it in the background, with retries.
+ */
 export interface Mailer {
-  send(mail: Mail): Promise<void>;
+  send(mail: Mail, options?: SendOptions): Promise<void>;
 }
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -167,17 +177,18 @@ export function smtpMailer(options: { url: string; from: string; timeoutMs?: num
 }
 
 /**
- * Sends without making the caller wait or fail: a mail error is logged (never the mail, which
- * may hold a link) and the caller's answer stays the same. Resolves when done, for tests.
+ * Hands the mail over without making the caller fail: an error is logged (never the mail, which
+ * may hold a link) and the caller's answer stays the same. With the outbox this only queues it.
  */
 export function deliver(
   mailer: Mailer | null | undefined,
   mail: Mail,
   log: (msg: string, fields: Record<string, unknown>) => void,
   what: string,
+  options: Pick<SendOptions, 'key'> = {},
 ): Promise<void> {
   if (!mailer) return Promise.resolve();
-  return mailer.send(mail).catch((err: unknown) => {
+  return mailer.send(mail, { ...options, kind: what }).catch((err: unknown) => {
     log('mail not sent', { what, error: err instanceof Error ? err.message : String(err) });
   });
 }

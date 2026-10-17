@@ -50,7 +50,7 @@ describe('migration 0014_project_members', () => {
       .values([user('usr_a', 'admin'), user('usr_r', 'reviewer'), user('usr_v', 'viewer')])
       .execute();
 
-    expect(await migrateToLatest(handle.db)).toEqual(['0014_project_members']);
+    expect(await migrateToLatest(handle.db)).toEqual(['0014_project_members', '0015_mail_outbox']);
     const members = await handle.db
       .selectFrom('projectMembers')
       .select(['projectId', 'userId', 'role'])
@@ -71,7 +71,7 @@ describe('migration 0014_project_members', () => {
 
     expect((await migrator.migrateTo('0013_change_groups')).error).toBeUndefined();
     expect(await handle.db.selectFrom('projects').select('slug').execute()).toHaveLength(2);
-    expect(await migrateToLatest(handle.db)).toEqual(['0014_project_members']);
+    expect(await migrateToLatest(handle.db)).toEqual(['0014_project_members', '0015_mail_outbox']);
   });
 
   test('memberships go with their project and their user', async () => {

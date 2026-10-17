@@ -83,6 +83,7 @@ describe('build numbers', () => {
         '0012_agent_review',
         '0013_change_groups',
         '0014_project_members',
+        '0015_mail_outbox',
       ]);
     }
     const numbers = await deps.db.selectFrom('builds').select(['id', 'number']).orderBy('id').execute();

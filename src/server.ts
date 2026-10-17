@@ -8,6 +8,7 @@ import { SecretBox } from './domain/secrets';
 import { createApp } from './http/app';
 import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
+import { MailOutbox } from './mail/outbox';
 import { smtpMailer } from './mail/smtp';
 import { Notifier } from './notify/notifier';
 import { DatabaseStorage } from './storage/database';
@@ -44,7 +45,11 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
   });
   deps.events = notifier;
   const { state, token } = await SetupState.init(deps, config.setupToken);
-  const mailer = config.smtpUrl && config.smtpFrom ? smtpMailer({ url: config.smtpUrl, from: config.smtpFrom }) : null;
+  // Invites, reset links and sign-up mail wait in the database and are sent in the background.
+  const mailer =
+    config.smtpUrl && config.smtpFrom
+      ? new MailOutbox({ deps, smtp: smtpMailer({ url: config.smtpUrl, from: config.smtpFrom }), logger })
+      : null;
   const app = createApp({
     deps,
     config,
@@ -63,6 +68,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
   });
   const retention = startRetentionJob({ deps, handle, logger });
   notifier.start();
+  mailer?.start();
   const url = server.url.href.replace(/\/$/, '');
   logger.info('listening', {
     url,
@@ -97,6 +103,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
       await server.stop(true);
       await retention.stop();
       await notifier.stop();
+      await mailer?.stop();
       await pool.close();
       await handle.close();
     },

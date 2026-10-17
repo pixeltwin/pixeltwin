@@ -108,6 +108,7 @@ describe('review history', () => {
       '0012_agent_review',
       '0013_change_groups',
       '0014_project_members',
+      '0015_mail_outbox',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([
@@ -143,6 +144,7 @@ describe('review history', () => {
       '0012_agent_review',
       '0013_change_groups',
       '0014_project_members',
+      '0015_mail_outbox',
     ]);
 
     const kind = async (id: string) => (await listReviews(deps, id)).map((e) => [e.actorKind, e.actorName]);
