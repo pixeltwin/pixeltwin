@@ -283,13 +283,26 @@ helm install pixeltwin deploy/helm/pixeltwin -n pixeltwin --create-namespace \
   --set publicUrl=https://pixeltwin.example.com \
   --set storage=postgres --set replicaCount=3 \
   --set database.url='postgres://pixeltwin:…@db:5432/pixeltwin'
+helm test pixeltwin -n pixeltwin
 kubectl -n pixeltwin get secret pixeltwin -o jsonpath='{.data.SETUP_TOKEN}' | base64 -d   # first-run token
 ```
 
 `publicUrl` is required. It is used for links, the `Secure` cookie flag and the CSRF origin
-check. Behind ingress-nginx, the chart raises the body size limit to 20m for uploads.
-[`deploy/examples/postgres.yaml`](deploy/examples/postgres.yaml) is a minimal Postgres for trying
-it out.
+check. The chart generates `SETUP_TOKEN` and `SECRET_KEY` and keeps them across upgrades, takes
+`smtp.url` / `smtp.from` for mail, and exposes every setting above as a value; a values schema
+refuses combinations that cannot work. Several replicas are safe: migrations run once under a
+lock before a pod listens, the webhook, code host and mail outboxes send each row from one
+replica, rolling updates drain pods without failing uploads, and the chart wires
+`SHUTDOWN_GRACE_MS` and `terminationGracePeriodSeconds` from one value.
+
+Two defaults differ from the binary's, on purpose: `outbound.blockPrivate` is `true` (in a cluster
+"private" is the pod network, the Kubernetes API and the database), and `DIFF_WORKERS` comes from
+the pod's CPU limit. The pod runs non-root with a read-only root filesystem, no capabilities and
+`RuntimeDefault` seccomp. Optional: a NetworkPolicy, Prometheus metrics with a `ServiceMonitor`,
+and a nightly `pg_dump` CronJob. Behind ingress-nginx the chart sets the body size limit from
+`MAX_IMAGE_BYTES` (15m by default). [`deploy/examples/postgres.yaml`](deploy/examples/postgres.yaml)
+is a minimal Postgres for trying it out, and `scripts/k8s/kind-smoke.sh` runs the whole thing on a
+throwaway kind cluster (CI does on every push).
 
 ### Configuration
 
@@ -313,6 +326,8 @@ it out.
 | `LOG_LEVEL` | `info` |
 | `SMTP_URL` | unset → no mail (links are shown to copy); `smtp://user:pass@host:587` (STARTTLS when offered; credentials only over TLS, except to localhost) or `smtps://…:465` |
 | `SMTP_FROM` | needed with `SMTP_URL`, e.g. `pixeltwin <pixeltwin@example.com>` |
+| `METRICS` | off; `1` serves Prometheus metrics at `GET /metrics` on `METRICS_PORT`, a port of its own so a proxy or Ingress in front of `PORT` never exposes them (no auth): requests by route and status with latency, checks by result, finalized builds by verdict, diff queue depth, and the webhook / code host / mail outbox backlog (read from the database, so the same on every replica) |
+| `METRICS_PORT` | `9464` |
 
 ## Post screenshots from your tests: the JavaScript SDK
 

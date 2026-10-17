@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "pixeltwin chart values",
+  "type": "object",
+  "definitions": {
+    "optionalInt": {
+      "description": "Empty for the server's default, else a whole number.",
+      "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "string", "pattern": "^[0-9]*$" }]
+    },
+    "intOrString": { "type": ["integer", "string"] },
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "list": { "type": "array" }
+  },
+  "required": ["publicUrl", "storage", "database", "image"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": { "$ref": "#/definitions/list" },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "publicUrl": {
+      "description": "The URL people and CI use, e.g. https://pixeltwin.example.com (required).",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^https?://[^/]+"
+    },
+    "storage": { "enum": ["local", "postgres"] },
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "database": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "pattern": "^(|postgres(ql)?://.+)$" },
+        "poolMax": { "type": "integer", "minimum": 1, "maximum": 500 }
+      }
+    },
+    "setupToken": {
+      "description": "Empty (generated) or at least 16 characters.",
+      "type": "string",
+      "pattern": "^(|.{16,})$"
+    },
+    "secretKey": {
+      "description": "Empty (generated) or at least 32 characters.",
+      "type": "string",
+      "pattern": "^(|.{32,})$"
+    },
+    "smtp": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "pattern": "^(|smtps?://.+)$" },
+        "from": { "type": "string", "pattern": "^(|.{3,})$" }
+      },
+      "if": { "properties": { "url": { "minLength": 1 } }, "required": ["url"] },
+      "then": {
+        "properties": { "from": { "minLength": 3 } },
+        "required": ["from"]
+      }
+    },
+    "existingSecret": { "type": "string" },
+    "existingSecretKeys": {
+      "type": "object",
+      "properties": {
+        "databaseUrl": { "type": "string", "minLength": 1 },
+        "setupToken": { "type": "string", "minLength": 1 },
+        "secretKey": { "type": "string", "minLength": 1 },
+        "smtpUrl": { "type": "string", "minLength": 1 }
+      }
+    },
+    "outbound": {
+      "type": "object",
+      "properties": { "blockPrivate": { "type": "boolean" } }
+    },
+    "diffWorkers": {
+      "description": "Empty (from the CPU limit) or 1–64.",
+      "anyOf": [
+        { "type": "integer", "minimum": 1, "maximum": 64 },
+        { "type": "string", "pattern": "^([1-9]|[1-5][0-9]|6[0-4])?$" }
+      ]
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "logLevel": { "enum": ["debug", "info", "warn", "error"] },
+        "diffTimeoutMs": { "$ref": "#/definitions/optionalInt" },
+        "diffQueueMax": { "$ref": "#/definitions/optionalInt" },
+        "maxImageBytes": { "$ref": "#/definitions/optionalInt" },
+        "maxImagePixels": { "$ref": "#/definitions/optionalInt" }
+      }
+    },
+    "shutdown": {
+      "type": "object",
+      "properties": {
+        "graceSeconds": { "type": "integer", "minimum": 0 },
+        "preStopSleepSeconds": { "type": "integer", "minimum": 0 },
+        "terminationGracePeriodSeconds": { "$ref": "#/definitions/optionalInt" }
+      }
+    },
+    "extraEnv": { "$ref": "#/definitions/list" },
+    "extraEnvFrom": { "$ref": "#/definitions/list" },
+    "resources": { "type": "object" },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingClaim": { "type": "string" },
+        "storageClass": { "type": "string" },
+        "size": { "type": "string" },
+        "annotations": { "$ref": "#/definitions/stringMap" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "nodePort": { "$ref": "#/definitions/optionalInt" },
+        "annotations": { "$ref": "#/definitions/stringMap" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["host"],
+            "properties": {
+              "host": { "type": "string" },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["path"],
+                  "properties": {
+                    "path": { "type": "string" },
+                    "pathType": { "enum": ["Prefix", "Exact", "ImplementationSpecific"] }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tls": { "$ref": "#/definitions/list" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "port": {
+          "description": "Not 8080: that is the http port.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "not": { "const": 8080 }
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": "string" },
+            "scrapeTimeout": { "type": "string" },
+            "labels": { "$ref": "#/definitions/stringMap" }
+          }
+        }
+      }
+    },
+    "probes": { "type": "object" },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "maxUnavailable": { "$ref": "#/definitions/intOrString" }
+      }
+    },
+    "topologySpread": {
+      "type": "object",
+      "properties": { "enabled": { "type": "boolean" }, "zones": { "type": "boolean" } }
+    },
+    "topologySpreadConstraints": { "$ref": "#/definitions/list" },
+    "serviceAccount": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "ingress": {
+          "type": "object",
+          "properties": { "from": { "$ref": "#/definitions/list" }, "allowClientLabel": { "type": "boolean" } }
+        },
+        "metrics": { "type": "object", "properties": { "from": { "$ref": "#/definitions/list" } } },
+        "egress": { "type": "object" }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "schedule": { "type": "string", "minLength": 1 },
+        "keep": { "type": "integer", "minimum": 1 },
+        "image": { "type": "object" },
+        "persistence": { "type": "object" },
+        "resources": { "type": "object" }
+      }
+    },
+    "tests": { "type": "object", "properties": { "enabled": { "type": "boolean" } } },
+    "preStopSleepSeconds": { "description": "Deprecated: use shutdown.preStopSleepSeconds.", "type": "integer" },
+    "terminationGracePeriodSeconds": {
+      "description": "Deprecated: use shutdown.terminationGracePeriodSeconds.",
+      "type": "integer"
+    },
+    "podAnnotations": { "$ref": "#/definitions/stringMap" },
+    "podLabels": { "$ref": "#/definitions/stringMap" },
+    "nodeSelector": { "$ref": "#/definitions/stringMap" },
+    "tolerations": { "$ref": "#/definitions/list" },
+    "affinity": { "type": "object" },
+    "priorityClassName": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "description": "storage=postgres keeps images in Postgres: it needs database.url or existingSecret.",
+      "if": { "properties": { "storage": { "const": "postgres" } }, "required": ["storage"] },
+      "then": {
+        "anyOf": [
+          { "properties": { "database": { "properties": { "url": { "minLength": 1 } }, "required": ["url"] } } },
+          { "properties": { "existingSecret": { "minLength": 1 } }, "required": ["existingSecret"] }
+        ]
+      }
+    },
+    {
+      "description": "More than one replica needs storage=postgres (local is a ReadWriteOnce volume and SQLite).",
+      "if": { "properties": { "replicaCount": { "minimum": 2 } }, "required": ["replicaCount"] },
+      "then": { "properties": { "storage": { "const": "postgres" } } }
+    },
+    {
+      "description": "The backup CronJob dumps Postgres: it needs database.url or existingSecret.",
+      "if": {
+        "properties": { "backup": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] } },
+        "required": ["backup"]
+      },
+      "then": {
+        "anyOf": [
+          { "properties": { "database": { "properties": { "url": { "minLength": 1 } }, "required": ["url"] } } },
+          { "properties": { "existingSecret": { "minLength": 1 } }, "required": ["existingSecret"] }
+        ]
+      }
+    }
+  ]
+}

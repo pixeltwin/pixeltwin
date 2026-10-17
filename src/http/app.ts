@@ -2,6 +2,7 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
+import { routePath } from 'hono/route';
 import { AppError, validationError } from '../errors';
 import { newId } from '../ids';
 import { renderUiError } from '../ui/errors';
@@ -51,12 +52,15 @@ function requestContext(services: Services): MiddlewareHandler<AppEnv> {
     c.res.headers.set('x-content-type-options', 'nosniff');
     // Health probes hit every few seconds; at info they would bury real traffic.
     const log = c.req.path === '/healthz' ? services.logger.debug : services.logger.info;
+    const ms = performance.now() - started;
+    // The pattern of the route that answered (`/api/v1/builds/:id/checks`): a bounded label set.
+    services.metrics?.request(c.req.method, routePath(c), c.res.status, ms / 1000);
     log('request', {
       requestId,
       method: c.req.method,
       path: redactPath(c.req.path),
       status: c.res.status,
-      ms: Math.round(performance.now() - started),
+      ms: Math.round(ms),
       principal: c.get('principal')?.id ?? null,
     });
   };

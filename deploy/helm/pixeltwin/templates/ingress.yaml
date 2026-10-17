@@ -5,10 +5,13 @@ metadata:
   name: {{ include "pixeltwin.fullname" . }}
   labels:
     {{- include "pixeltwin.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
+  {{- $annotations := deepCopy (.Values.ingress.annotations | default dict) }}
+  {{- if not (hasKey $annotations "nginx.ingress.kubernetes.io/proxy-body-size") }}
+  {{- /* The largest body the server takes: a base64 image of config.maxImageBytes plus 1 MiB. */}}
+  {{- $_ := set $annotations "nginx.ingress.kubernetes.io/proxy-body-size" (printf "%sm" (include "pixeltwin.bodySizeMiB" .)) }}
   {{- end }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
 spec:
   {{- with .Values.ingress.className }}
   ingressClassName: {{ . }}

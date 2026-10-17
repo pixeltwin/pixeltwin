@@ -103,6 +103,92 @@ describe('server end to end', () => {
     expect(readdirSync(join(dir, 'images')).length).toBeGreaterThan(0);
   });
 
+  test('METRICS=1 serves request, check, build and queue metrics on their own port, not the public one', async () => {
+    const config = loadConfig({
+      DATA_DIR: dir,
+      PORT: '0',
+      PUBLIC_URL: 'http://pixeltwin.local',
+      DIFF_WORKERS: '1',
+      METRICS: '1',
+      METRICS_PORT: '0',
+    });
+    server = await startServer(config, silentLogger);
+    expect(server.metricsUrl).toMatch(/^http:\/\/[^/]+:\d+\/metrics$/);
+    const api = `${server.url}/api/v1`;
+    await fetch(`${api}/setup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: server.setupToken, email: 'root@example.com', password: PASSWORD }),
+    });
+    const login = await fetch(`${api}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'root@example.com', password: PASSWORD }),
+    });
+    const asAdmin = {
+      cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
+      origin: 'http://pixeltwin.local',
+      'content-type': 'application/json',
+    };
+    await fetch(`${api}/projects`, {
+      method: 'POST',
+      headers: asAdmin,
+      body: JSON.stringify({ slug: 'metrics', name: 'Metrics' }),
+    });
+    const { token } = (await (
+      await fetch(`${api}/projects/metrics/tokens`, {
+        method: 'POST',
+        headers: asAdmin,
+        body: JSON.stringify({ name: 'CI', scopes: ['read', 'write'] }),
+      })
+    ).json()) as { token: string };
+    const auth = { authorization: `Bearer ${token}` };
+    const build = (await (
+      await fetch(`${api}/projects/metrics/builds`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body: '{}',
+      })
+    ).json()) as { id: string };
+    const form = new FormData();
+    form.set('image', new File([makePng(16, 16)], 'a.png', { type: 'image/png' }));
+    form.set('meta', JSON.stringify({ name: 'a' }));
+    expect(
+      (await fetch(`${api}/builds/${build.id}/checks`, { method: 'POST', headers: auth, body: form })).status,
+    ).toBe(201);
+    await fetch(`${api}/builds/${build.id}/finalize`, { method: 'POST', headers: auth });
+    await fetch(`${api}/builds/no-such-build`, { headers: auth });
+
+    const res = await fetch(server.metricsUrl as string);
+    expect(res.headers.get('content-type')).toContain('text/plain; version=0.0.4');
+    const text = await res.text();
+    // Route patterns, not raw paths: ids never become label values.
+    expect(text).toContain(
+      'pixeltwin_http_requests_total{method="POST",route="/api/v1/builds/:id/checks",status="201"} 1',
+    );
+    expect(text).toContain('pixeltwin_http_requests_total{method="GET",route="/api/v1/builds/:id",status="404"} 1');
+    expect(text).not.toContain(build.id);
+    expect(text).toMatch(
+      /pixeltwin_http_request_duration_seconds_count\{method="POST",route="\/api\/v1\/builds\/:id\/checks"\} 1/,
+    );
+    expect(text).toContain('pixeltwin_checks_total{result="new"} 1');
+    expect(text).toContain('pixeltwin_builds_finalized_total{verdict="pending"} 1');
+    expect(text).toContain('pixeltwin_diff_queue_depth 0');
+    expect(text).toContain('pixeltwin_diff_workers 1');
+    expect(text).toContain('pixeltwin_outbox_pending{outbox="webhooks"} 0');
+    expect(text).toContain('pixeltwin_outbox_pending{outbox="mail"} 0');
+    expect(text).toContain('pixeltwin_database_up 1');
+
+    // The public port has no /metrics, and the metrics port nothing else.
+    expect((await fetch(`${server.url}/metrics`)).status).toBe(404);
+    expect((await fetch((server.metricsUrl as string).replace('/metrics', '/healthz'))).status).toBe(404);
+  });
+
+  test('without METRICS there is no metrics port', async () => {
+    server = await startServer(loadConfig({ DATA_DIR: dir, PORT: '0', DIFF_WORKERS: '1' }), silentLogger);
+    expect(server.metricsUrl).toBeNull();
+  });
+
   test('stopping lets requests in flight finish instead of cutting them off', async () => {
     const config = loadConfig({ DATA_DIR: dir, PORT: '0', DIFF_WORKERS: '1' });
     const running = await startServer(config, silentLogger);
@@ -202,6 +288,8 @@ describe('command line', () => {
       const port = new URL(server.url).port;
       expect(await main(['healthcheck'], { DATA_DIR: dir, PORT: port }, out)).toBe(0);
       expect(lines.at(-1)).toBe('ok');
+      // `helm test` checks the Service from another pod: the URL is given, PORT does not matter.
+      expect(await main(['healthcheck', `${server.url}/`], { DATA_DIR: dir, PORT: '1' }, out)).toBe(0);
     } finally {
       await server.stop();
     }
@@ -209,6 +297,25 @@ describe('command line', () => {
     const port = String(unused.port);
     await unused.stop(true);
     expect(await main(['healthcheck'], { DATA_DIR: dir, PORT: port }, out)).toBe(1);
+  });
+
+  test('healthcheck --wait keeps trying until the server answers', async () => {
+    const unused = Bun.serve({ port: 0, fetch: () => new Response() });
+    const port = String(unused.port);
+    await unused.stop(true);
+    let late: ReturnType<typeof Bun.serve> | undefined;
+    const starting = setTimeout(() => {
+      late = Bun.serve({ port: Number(port), fetch: () => Response.json({ status: 'ok' }) });
+    }, 1200);
+    try {
+      const started = Date.now();
+      expect(await main(['healthcheck', `http://127.0.0.1:${port}`, '--wait', '10'], { DATA_DIR: dir }, out)).toBe(0);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(1000);
+      expect(await main(['healthcheck', '--wait', 'soon'], { DATA_DIR: dir }, out)).toBe(2);
+    } finally {
+      clearTimeout(starting);
+      await late?.stop(true);
+    }
   });
 
   test('a port that is already taken is a one-line error, not a crash', async () => {

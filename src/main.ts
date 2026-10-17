@@ -11,7 +11,9 @@ const USAGE = `Usage: pixeltwin <command>
 Commands:
   serve                          Start the server (default)
   migrate                        Apply database migrations and exit
-  healthcheck                    Exit 0 when the server on PORT answers /healthz (for Docker)
+  healthcheck [url] [--wait s]   Exit 0 when the server on PORT (or at url, e.g. a Kubernetes
+                                 Service) answers /healthz, trying for up to s seconds; for
+                                 Docker and \`helm test\`
   admin reset-password <email>   Give a user a new random password and print it
 
 Configuration comes from environment variables; see the README.`;
@@ -70,13 +72,30 @@ export async function main(
         return null;
       }
       case 'healthcheck': {
-        try {
-          const res = await fetch(`http://127.0.0.1:${config.port}/healthz`, { signal: AbortSignal.timeout(3000) });
-          out.log(res.ok ? 'ok' : `unhealthy: HTTP ${res.status}`);
-          return res.ok ? 0 : 1;
-        } catch (err) {
-          out.error(`unhealthy: ${err instanceof Error ? err.message : String(err)}`);
-          return 1;
+        // `--wait <s>` keeps trying that long: a Service just installed may not route for a moment.
+        const waitAt = args.indexOf('--wait');
+        const waitMs = waitAt >= 0 ? Number(args[waitAt + 1]) * 1000 : 0;
+        if (!Number.isFinite(waitMs) || waitMs < 0) break;
+        const [url] = args.filter((arg, i) => arg !== '--wait' && (waitAt < 0 || i !== waitAt + 1));
+        const base = (url ?? `http://127.0.0.1:${config.port}`).replace(/\/+$/, '');
+        const deadline = Date.now() + waitMs;
+        for (;;) {
+          let problem: string;
+          try {
+            const res = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(3000) });
+            if (res.ok) {
+              out.log('ok');
+              return 0;
+            }
+            problem = `unhealthy: HTTP ${res.status}`;
+          } catch (err) {
+            problem = `unhealthy: ${err instanceof Error ? err.message : String(err)}`;
+          }
+          if (Date.now() >= deadline) {
+            out.error(problem);
+            return 1;
+          }
+          await Bun.sleep(1000);
         }
       }
       case 'migrate': {

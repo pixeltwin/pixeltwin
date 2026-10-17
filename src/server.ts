@@ -6,6 +6,7 @@ import type { Deps } from './domain/deps';
 import { startRetentionJob } from './domain/retention-job';
 import { SecretBox } from './domain/secrets';
 import { createApp } from './http/app';
+import { Metrics, metricsHandler } from './http/metrics';
 import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
 import { MailOutbox } from './mail/outbox';
@@ -17,6 +18,8 @@ import { LocalStorage } from './storage/local';
 export interface RunningServer {
   /** Where the server listens, e.g. `http://localhost:8080`. */
   url: string;
+  /** Where Prometheus metrics are served (METRICS=1), e.g. `http://localhost:9464/metrics`; else null. */
+  metricsUrl: string | null;
   /** Set while no user exists; POST it to /api/v1/setup to create the first admin. */
   setupToken: string | null;
   stop(): Promise<void>;
@@ -51,6 +54,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     config.smtpUrl && config.smtpFrom
       ? new MailOutbox({ deps, smtp: smtpMailer({ url: config.smtpUrl, from: config.smtpFrom }), logger })
       : null;
+  const metrics = config.metricsPort === null ? null : new Metrics();
   const app = createApp({
     deps,
     config,
@@ -59,6 +63,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     loginLimiter: new LoginLimiter(),
     notifier,
     mailer,
+    metrics,
   });
 
   const server = Bun.serve({
@@ -67,6 +72,17 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     // Upper bound before the app's own per-route limits apply.
     maxRequestBodySize: Math.ceil(config.maxImageBytes / 3) * 4 + 1024 * 1024,
   });
+  // A port of its own: the Service's http port (and so the Ingress) never routes to it.
+  const metricsServer = metrics
+    ? Bun.serve({
+        port: config.metricsPort as number,
+        fetch: metricsHandler(metrics, {
+          db: handle.db,
+          diffBacklog: () => pool.backlog,
+          diffWorkers: config.diffWorkers,
+        }),
+      })
+    : null;
   const retention = startRetentionJob({ deps, handle, logger });
   notifier.start();
   mailer?.start();
@@ -80,6 +96,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     dataDir: config.dataDir,
     secretsEncrypted: config.secretKey !== null,
     diffWorkers: config.diffWorkers,
+    ...(metricsServer ? { metricsPort: metricsServer.port } : {}),
   });
   if (token && config.setupToken) {
     // The token came from SETUP_TOKEN (a secret): never copy it into the logs.
@@ -96,12 +113,14 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
 
   return {
     url,
+    metricsUrl: metricsServer ? `${metricsServer.url.href.replace(/\/$/, '')}/metrics` : null,
     setupToken: token,
     async stop() {
       // Stop accepting connections and let requests in flight (an upload mid-deploy) finish, up to
       // the grace period; then cut off whatever is left.
       await Promise.race([server.stop(false), Bun.sleep(config.shutdownGraceMs)]);
       await server.stop(true);
+      await metricsServer?.stop(true);
       await retention.stop();
       await notifier.stop();
       await mailer?.stop();

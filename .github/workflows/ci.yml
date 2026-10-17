@@ -108,14 +108,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - name: Lint both storage modes
+      - name: Install kubeconform
         run: |
-          helm lint deploy/helm/pixeltwin --strict --set publicUrl=https://pixeltwin.example.com
-          helm lint deploy/helm/pixeltwin --strict --set publicUrl=https://pixeltwin.example.com,storage=postgres \
-            --set database.url=postgres://u:p@db:5432/pixeltwin,replicaCount=3,ingress.enabled=true
-      - name: The chart refuses settings that cannot work
-        run: |
-          refuse() { if helm template t deploy/helm/pixeltwin "$@" >/dev/null 2>&1; then echo "accepted: $*"; exit 1; fi; }
-          refuse                                              # no publicUrl
-          refuse --set publicUrl=https://a,storage=postgres   # no database URL
-          refuse --set publicUrl=https://a,setupToken=short   # setup token under 16 characters
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C "$HOME/.local/bin" kubeconform
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # helm lint in both modes, the settings the chart must refuse, kubeconform against Kubernetes 1.33.
+      - run: scripts/k8s/chart-check.sh
+
+  kind:
+    needs: helm
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      # Image built here and loaded into kind; Postgres from deploy/examples; 3 replicas; helm test;
+      # setup, checks, a webhook delivered once, a rolling restart mid-upload without failed checks.
+      - run: scripts/k8s/kind-smoke.sh

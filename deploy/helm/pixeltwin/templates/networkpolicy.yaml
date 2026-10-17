@@ -1,0 +1,75 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+# Ingress: the http port from the ingress controller (and labelled client pods), the metrics port
+# from monitoring. Egress: DNS, the database, and the internet on 443/465/587 minus private ranges.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pixeltwin.fullname" . }}
+  labels:
+    {{- include "pixeltwin.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pixeltwin.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- /* An empty `from` would allow everyone: leave the rule out instead (no one). */}}
+    {{- if or $np.ingress.from $np.ingress.allowClientLabel }}
+    - ports:
+        - port: http
+          protocol: TCP
+      from:
+        {{- with $np.ingress.from }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if $np.ingress.allowClientLabel }}
+        - podSelector:
+            matchLabels:
+              {{ include "pixeltwin.clientLabel" . }}: "true"
+        {{- end }}
+    {{- end }}
+    {{- if and .Values.metrics.enabled $np.metrics.from }}
+    - ports:
+        - port: metrics
+          protocol: TCP
+      from:
+        {{- toYaml $np.metrics.from | nindent 8 }}
+    {{- end }}
+  egress:
+    {{- if $np.egress.dns }}
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- end }}
+    {{- with $np.egress.database.to }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        {{- range $np.egress.database.ports }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+    {{- end }}
+    {{- if $np.egress.internet.enabled }}
+    - to:
+        {{- range $np.egress.internet.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+            {{- with $np.egress.internet.except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+        {{- end }}
+      ports:
+        {{- range $np.egress.internet.ports }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+    {{- end }}
+    {{- with $np.egress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -32,7 +32,7 @@ spec:
         {{- end }}
       annotations:
         # Restart the pods when the chart's Secret values change.
-        checksum/secret: {{ printf "%s|%s|%s|%s" .Values.database.url .Values.setupToken .Values.existingSecret .Values.secretKey | sha256sum }}
+        checksum/secret: {{ printf "%s|%s|%s|%s|%s" .Values.database.url .Values.setupToken .Values.existingSecret .Values.secretKey .Values.smtp.url | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -50,7 +50,8 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      # preStop sleep + SHUTDOWN_GRACE_MS + time to close the outboxes and workers (shutdown.*).
+      terminationGracePeriodSeconds: {{ include "pixeltwin.terminationGrace" . }}
       containers:
         - name: pixeltwin
           image: {{ include "pixeltwin.image" . | quote }}
@@ -62,6 +63,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ int .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: PORT
               value: "8080"
@@ -75,8 +81,23 @@ spec:
               value: {{ .Values.config.logLevel | quote }}
             - name: DATABASE_POOL_MAX
               value: {{ .Values.database.poolMax | quote }}
-            {{- with .Values.diffWorkers }}
+            {{- with include "pixeltwin.diffWorkers" . }}
+            # From diffWorkers, else the CPU limit minus one (see values.yaml).
             - name: DIFF_WORKERS
+              value: {{ . | quote }}
+            {{- end }}
+            - name: SHUTDOWN_GRACE_MS
+              value: {{ mul (int .Values.shutdown.graceSeconds) 1000 | quote }}
+            - name: OUTBOUND_BLOCK_PRIVATE
+              value: {{ ternary "1" "0" .Values.outbound.blockPrivate | quote }}
+            {{- if .Values.metrics.enabled }}
+            - name: METRICS
+              value: "1"
+            - name: METRICS_PORT
+              value: {{ int .Values.metrics.port | quote }}
+            {{- end }}
+            {{- with .Values.smtp.from }}
+            - name: SMTP_FROM
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.config.diffTimeoutMs }}
@@ -116,6 +137,14 @@ spec:
                   name: {{ $secret }}
                   key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.secretKey }}{{ else }}SECRET_KEY{{ end }}
                   optional: true
+            {{- if or .Values.existingSecret .Values.smtp.url }}
+            - name: SMTP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.smtpUrl }}{{ else }}SMTP_URL{{ end }}
+                  optional: true
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -150,11 +179,12 @@ spec:
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
             failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
           {{- end }}
-          {{- if gt (int .Values.preStopSleepSeconds) 0 }}
+          {{- $preStop := int (include "pixeltwin.preStopSleep" .) }}
+          {{- if gt $preStop 0 }}
           lifecycle:
             preStop:
               sleep:
-                seconds: {{ int .Values.preStopSleepSeconds }}
+                seconds: {{ $preStop }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
@@ -191,7 +221,27 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.topologySpreadConstraints }}
+      {{- if .Values.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml .Values.topologySpreadConstraints | nindent 8 }}
+      {{- else if and .Values.topologySpread.enabled (gt (int (include "pixeltwin.replicas" .)) 1) }}
+      # One replica per node (and zone, with topologySpread.zones) where the cluster allows it;
+      # never blocks scheduling.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "pixeltwin.selectorLabels" . | nindent 14 }}
+          matchLabelKeys: [pod-template-hash]
+        {{- if .Values.topologySpread.zones }}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "pixeltwin.selectorLabels" . | nindent 14 }}
+          matchLabelKeys: [pod-template-hash]
+        {{- end }}
       {{- end }}

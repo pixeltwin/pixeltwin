@@ -1,0 +1,27 @@
+# Values for the kind smoke test (scripts/k8s/kind-smoke.sh): three replicas on the example
+# Postgres, reachable from the host through a NodePort that kind maps to localhost.
+image:
+  repository: pixeltwin
+  tag: smoke
+  pullPolicy: Never
+storage: postgres
+replicaCount: 3
+database:
+  url: postgres://pixeltwin:change-me@pixeltwin-postgres:5432/pixeltwin
+  poolMax: 10
+service:
+  type: NodePort
+  nodePort: 30080
+# The webhook receiver is a Service in the cluster, a private address.
+outbound:
+  blockPrivate: false
+metrics:
+  enabled: true
+# Small enough for three pods on a laptop; one diff worker each (1 CPU limit − 1, at least 1).
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: "1"
+    memory: 768Mi

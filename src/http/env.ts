@@ -5,6 +5,7 @@ import type { Deps } from '../domain/deps';
 import type { Logger } from '../log';
 import type { Mailer } from '../mail/smtp';
 import type { Notifier } from '../notify/notifier';
+import type { Metrics } from './metrics';
 import type { LoginLimiter } from './rate-limit';
 
 export const API = '/api/v1';
@@ -21,6 +22,8 @@ export interface Services {
   notifier: Notifier;
   /** Queues invites, reset links and sign-up mails (the mail outbox) when SMTP_URL is set. */
   mailer?: Mailer | null;
+  /** Counts requests, checks and builds when METRICS=1. */
+  metrics?: Metrics | null;
 }
 
 export interface AppEnv {

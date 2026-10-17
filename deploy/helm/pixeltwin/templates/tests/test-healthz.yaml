@@ -1,0 +1,46 @@
+{{- if .Values.tests.enabled }}
+# `helm test <release>`: the pixeltwin image calls /healthz through the Service, as any client would.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "pixeltwin.fullname" . }}-test-healthz
+  labels:
+    {{- include "pixeltwin.componentLabels" (list . "test") | nindent 4 }}
+    {{ include "pixeltwin.clientLabel" . }}: "true"
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: healthz
+      image: {{ include "pixeltwin.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      # Retries for 30 s: right after an install the Service may not route on every node yet.
+      args: ["healthcheck", "http://{{ include "pixeltwin.fullname" . }}:{{ .Values.service.port }}", "--wait", "30"]
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      # The single-file binary needs about 150 MiB just to start; 128Mi is OOM-killed.
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          memory: 256Mi
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

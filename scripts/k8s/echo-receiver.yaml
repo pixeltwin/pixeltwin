@@ -1,0 +1,86 @@
+# A webhook receiver for the kind smoke test (scripts/k8s/kind-smoke.sh): it records every POST to
+# /hook and lists them at GET /deliveries, so the test can count deliveries per build.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pixeltwin-echo
+data:
+  echo.ts: |
+    const deliveries: Array<{ delivery: string; event: string; buildId: string | null; at: number }> = [];
+    Bun.serve({
+      port: 8080,
+      async fetch(req) {
+        const { pathname } = new URL(req.url);
+        if (req.method === 'POST' && pathname === '/hook') {
+          const body = (await req.json()) as { build?: { id?: string } };
+          deliveries.push({
+            delivery: req.headers.get('x-pixeltwin-delivery') ?? '',
+            event: req.headers.get('x-pixeltwin-event') ?? '',
+            buildId: body.build?.id ?? null,
+            at: Date.now(),
+          });
+          return new Response('ok');
+        }
+        if (pathname === '/deliveries') return Response.json(deliveries);
+        return new Response('not found', { status: 404 });
+      },
+    });
+    console.log('echo receiver on :8080');
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pixeltwin-echo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pixeltwin-echo
+  template:
+    metadata:
+      labels:
+        app: pixeltwin-echo
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: echo
+          image: oven/bun:1.3.13-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["bun", "/app/echo.ts"]
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /deliveries
+              port: http
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: app
+              mountPath: /app
+      volumes:
+        - name: app
+          configMap:
+            name: pixeltwin-echo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pixeltwin-echo
+spec:
+  type: NodePort
+  selector:
+    app: pixeltwin-echo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30081
