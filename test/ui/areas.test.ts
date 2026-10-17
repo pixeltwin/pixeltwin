@@ -201,7 +201,8 @@ describe('UI areas', () => {
       expect(body).toContain(
         '<span class="badge-source" title="Sent with the check through the API (ignoreRegions)">API</span>',
       );
-      expect(body).toContain('top center · 100×20 px');
+      // Two lines: what it is and where it comes from, then where it is and how big.
+      expect(body).toContain('<span class="area-place muted">top center · 100×20 px</span>');
       // No explanation under the list: the API badge's tooltip says it.
       expect(body).not.toContain('Sent by the test');
       const item = body.slice(body.indexOf('area-item-api'), body.indexOf('</li>', body.indexOf('area-item-api')));

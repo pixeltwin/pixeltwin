@@ -489,15 +489,17 @@ function Areas(props: {
       <ul>
         {areas.map((a) => (
           <li class={`area-item area-item-${a.kind}`} data-area-item={a.id}>
-            <span>
-              <strong>{AREA_VERB[a.kind]}</strong>{' '}
-              <span
-                class="badge-source"
-                title="Drawn in pixeltwin: applies to every check of this snapshot, on every branch"
-              >
-                UI
+            <span class="area-text">
+              <span class="area-title">
+                <strong>{AREA_VERB[a.kind]}</strong>{' '}
+                <span
+                  class="badge-source"
+                  title="Drawn in pixeltwin: applies to every check of this snapshot, on every branch"
+                >
+                  UI
+                </span>
               </span>
-              <span class="muted">{` ${areaPlace(a, size)}${a.width}×${a.height} px`}</span>
+              <span class="area-place muted">{`${areaPlace(a, size)}${a.width}×${a.height} px`}</span>
             </span>
             {props.canReview && (
               <span class="area-actions">
@@ -532,12 +534,14 @@ function Areas(props: {
         ))}
         {api.map((r) => (
           <li class="area-item area-item-api">
-            <span>
-              <strong>Ignored</strong>{' '}
-              <span class="badge-source" title="Sent with the check through the API (ignoreRegions)">
-                API
+            <span class="area-text">
+              <span class="area-title">
+                <strong>Ignored</strong>{' '}
+                <span class="badge-source" title="Sent with the check through the API (ignoreRegions)">
+                  API
+                </span>
               </span>
-              <span class="muted">{` ${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+              <span class="area-place muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
             </span>
           </li>
         ))}

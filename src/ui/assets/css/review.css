@@ -858,6 +858,17 @@ body.focus main {
 .area-item-compare {
   border-left-color: var(--blue-dot);
 }
+/* Two lines, like a change: what it is and where it comes from, then where it is and how big. */
+.area-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-block: var(--space-1);
+}
+.area-place {
+  font-size: var(--text-xs);
+}
 .badge-source {
   padding: 0 var(--space-1);
   border: 1px solid var(--border-strong);
