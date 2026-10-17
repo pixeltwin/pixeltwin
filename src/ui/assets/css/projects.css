@@ -73,7 +73,7 @@
   align-items: center;
   gap: var(--space-3);
 }
-.lane-meta a {
+.lane-number {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }

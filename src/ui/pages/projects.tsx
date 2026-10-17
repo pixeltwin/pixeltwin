@@ -231,9 +231,26 @@ function Lane(props: {
         <a class="lane-branch mono" href={ui.url(`/ui/p/${slug}/builds?branch=${encodeURIComponent(summary.branch)}`)}>
           {summary.branch}
         </a>
+        <a class="lane-number" href={ui.url(`/ui/builds/${build.id}`)}>{`#${build.number}`}</a>
         {summary.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
         <BuildStatus build={build} />
+        <span class="muted">
+          <Ago at={build.createdAt} />
+        </span>
         <span class="lane-meta">
+          <ol class="history" aria-label="Recent builds, newest first">
+            {summary.recent.map((r) => (
+              <li>
+                <a
+                  class={`square tone-${toneOf(r.verdict)}`}
+                  href={ui.url(`/ui/builds/${r.id}`)}
+                  title={`#${r.number} ${VERDICT_LABELS[r.verdict]}`}
+                >
+                  <span class="visually-hidden">{`#${r.number} ${VERDICT_LABELS[r.verdict]}`}</span>
+                </a>
+              </li>
+            ))}
+          </ol>
           {props.promotable ? (
             <a
               class="button small"
@@ -248,26 +265,9 @@ function Lane(props: {
               Review
             </a>
           )}
-          <a href={ui.url(`/ui/builds/${build.id}`)}>{`#${build.number}`}</a>
-          <span class="muted">
-            <Ago at={build.createdAt} />
-          </span>
         </span>
       </div>
       <div class="lane-body">
-        <ol class="history" aria-label="Recent builds, newest first">
-          {summary.recent.map((r) => (
-            <li>
-              <a
-                class={`square tone-${toneOf(r.verdict)}`}
-                href={ui.url(`/ui/builds/${r.id}`)}
-                title={`#${r.number} ${VERDICT_LABELS[r.verdict]}`}
-              >
-                <span class="visually-hidden">{`#${r.number} ${VERDICT_LABELS[r.verdict]}`}</span>
-              </a>
-            </li>
-          ))}
-        </ol>
         {build.counts.total === 0 ? (
           <span class="muted">no checks</span>
         ) : (
