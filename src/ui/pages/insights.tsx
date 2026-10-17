@@ -147,7 +147,7 @@ function Tiles({ report, ui, slug }: { report: InsightsReport; ui: Ui; slug: str
         label="Auto-pass rate"
         value={percent(t.autoPassRate)}
         delta={rateDelta(t.autoPassRate, report.previous.autoPassRate, report.days)}
-        sub={`${t.autoPassed} of ${plural(t.checks, 'check')} passed with no one looking`}
+        sub={`${t.autoPassed} of ${plural(t.checks, 'check')} passed with no one looking${t.withinTolerance > 0 ? `, ${t.withinTolerance} of them within tolerance` : ''}`}
       />
       <Tile
         id="time-to-decision"

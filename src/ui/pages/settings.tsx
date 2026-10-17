@@ -398,6 +398,20 @@ function SettingsPage(props: {
           <label class="option">
             <input
               type="checkbox"
+              name="reviewWithinTolerance"
+              checked={props.values ? props.values.reviewWithinTolerance === 'on' : project.reviewWithinTolerance}
+            />
+            <span>
+              <strong>Within-tolerance checks need review</strong>{' '}
+              <span class="muted">
+                A screenshot whose pixels differ, but no more than the tolerance, waits for review instead of passing.
+                Off: it passes, marked within tolerance on the build page.
+              </span>
+            </span>
+          </label>
+          <label class="option">
+            <input
+              type="checkbox"
               name="autoApproveNew"
               checked={props.values ? props.values.autoApproveNew === 'on' : project.autoApproveNew}
             />
@@ -641,11 +655,13 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
     values.agentReview = field(form, 'agentReview') ?? '';
     values.agentMaxDiffPercent = field(form, 'agentMaxDiffPercent') ?? '';
     values.visibleToAll = field(form, 'visibleToAll') === 'on' ? 'on' : '';
+    values.reviewWithinTolerance = field(form, 'reviewWithinTolerance') === 'on' ? 'on' : '';
     const input: Record<string, unknown> = {
       name: values.name,
       mainBranch: values.mainBranch,
       autoApproveNew: values.autoApproveNew === 'on',
       visibleToAll: values.visibleToAll === 'on',
+      reviewWithinTolerance: values.reviewWithinTolerance === 'on',
     };
     for (const name of NUMBER_FIELDS) if (values[name]) input[name] = Number(values[name]);
     // An older form without the agent fields leaves the policy as it is.
