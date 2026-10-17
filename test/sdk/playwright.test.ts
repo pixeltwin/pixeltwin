@@ -92,6 +92,26 @@ describe('Playwright Test through @pixeltwin/playwright', () => {
     expect(footer?.x).toBeLessThanOrEqual(133);
     expect((footer?.x ?? 0) + (footer?.width ?? 0)).toBeGreaterThanOrEqual(528);
 
+    // Every screenshot came with its page elements, in screenshot pixels like the ignore regions.
+    const buy = async (name: string, viewport: string) => {
+      const id = find(name, viewport)?.id ?? '';
+      return (await client.checkElements(id)).current?.find((e) => e.key === '[data-testid=buy]');
+    };
+    expect(await buy('home', '800x600')).toMatchObject({
+      tag: 'button',
+      role: 'button',
+      name: 'Buy',
+      width: 120,
+      height: 36,
+    });
+    expect(await buy('home', '640x480')).toMatchObject({ width: 240, height: 72 }); // device scale factor 2
+    expect((await buy('full page', '800x600'))?.y).toBe((await buy('home', '800x600'))?.y);
+    expect(await buy('header', '800x600')).toBeUndefined(); // only the header's elements
+    const headerElements = (await client.checkElements(find('header', '800x600')?.id ?? '')).current ?? [];
+    expect(headerElements.map((e) => e.text)).toContain('Shop');
+    for (const e of headerElements) expect(e.y + e.height).toBeLessThanOrEqual(64);
+    for (const c of checks) expect(c.elementCount).toBeGreaterThan(0);
+
     await client.approveBuild(first.buildId);
 
     // Run 2 with the gate: the clocks changed but are ignored, so everything is unchanged.
@@ -109,6 +129,15 @@ describe('Playwright Test through @pixeltwin/playwright', () => {
     expect(third.output).toContain('not "passed"');
     const changed = await client.getBuild(third.buildId);
     expect(changed.counts.result).toEqual({ unchanged: 3, changed: 6, new: 0, error: 0 });
+    // The diff names the element: the heading's colour changed.
+    const home = (await checksOf(third.buildId)).find((c) => c.name === 'home' && c.variant.viewport === '800x600');
+    const diff = home?.diff && 'changes' in home.diff ? home.diff : null;
+    expect(diff?.changes?.[0]).toMatchObject({
+      kind: 'style',
+      role: 'heading',
+      style: { color: { from: '#222222', to: '#d1242f' } },
+    });
+    expect(diff?.summary).toStartWith('Heading "Welcome" colour changed from #222222 to #d1242f.');
 
     // failOnChange: the changed checks fail their tests at once, with the link, and the test gets
     // the expected, actual and diff images.

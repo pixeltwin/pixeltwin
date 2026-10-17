@@ -58,6 +58,12 @@ On `browser`: the viewport. On an element: that element. Resolves to the compare
 | `variant` | extra variant keys for this check |
 | `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
 | `retakes`, `failOnChange` | override the service's settings for this check |
+| `elements` | `false`: send no page elements with this screenshot |
+
+In a browser (desktop or phone) each screenshot goes with the boxes of its visible elements (test
+ids, roles, text; at most 300), so the diff names what changed, as with
+[`@pixeltwin/playwright`](../playwright/README.md#pixeltwinchecktarget-name-options); the
+service option `elements: false` or `PIXELTWIN_ELEMENTS=0` turns it off.
 
 Every check gets the variant `{ browser: <browserName>, viewport: '<innerWidth>x<innerHeight>' }`.
 Ignored elements are measured in the page and scaled to screenshot pixels. Full-page screenshots

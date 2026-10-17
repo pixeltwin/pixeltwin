@@ -59,6 +59,11 @@ export interface PixeltwinOptions {
   parallelTotal?: number;
   /** `PIXELTWIN_PARALLEL_PART`: this job's part id. Default: the CI job id (GitLab), else a random id. */
   parallelPart?: string;
+  /**
+   * `PIXELTWIN_ELEMENTS=0`: send no page elements with the screenshots. By default the SDKs send the
+   * boxes of the visible elements (test ids, roles, text) so the diff can name what changed.
+   */
+  elements?: boolean;
 }
 
 export interface Settings {
@@ -82,6 +87,7 @@ export interface Settings {
   allowOffline: boolean;
   parallelTotal: number | undefined;
   parallelPart: string | undefined;
+  elements: boolean;
 }
 
 export interface CiInfo {
@@ -187,6 +193,7 @@ export function resolveSettings(options: PixeltwinOptions = {}, env: Env = proce
     allowOffline: options.allowOffline ?? flag(env.PIXELTWIN_ALLOW_OFFLINE) ?? false,
     parallelTotal: partCount(options.parallelTotal ?? text(env.PIXELTWIN_PARALLEL_TOTAL)),
     parallelPart: options.parallelPart ?? text(env.PIXELTWIN_PARALLEL_PART),
+    elements: options.elements ?? flag(env.PIXELTWIN_ELEMENTS) ?? true,
   };
 }
 
@@ -217,6 +224,7 @@ export function optionsToEnv(options: PixeltwinOptions): Record<string, string> 
   set('PIXELTWIN_DISABLED', options.disabled);
   set('PIXELTWIN_PARALLEL_TOTAL', options.parallelTotal);
   set('PIXELTWIN_PARALLEL_PART', options.parallelPart);
+  set('PIXELTWIN_ELEMENTS', options.elements);
   return out;
 }
 

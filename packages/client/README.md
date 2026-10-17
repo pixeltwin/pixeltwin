@@ -26,11 +26,13 @@ if (done.verdict !== 'passed') process.exitCode = 1;  // empty | error | rejecte
 | Method | |
 |---|---|
 | `openBuild(project, { branch?, baseBranch?, commitSha?, externalId?, parallelTotal? })` | the same `externalId` returns the same build (`created: false`); one is generated when missing. `parallelTotal`: that many parts (CI jobs) finalize it |
-| `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent? })` | answers after the comparison; the same name + variant again replaces the check |
-| `getBuild(id)`, `listChecks(buildId, { result?, review?, limit?, cursor? })` | |
+| `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent?, elements? })` | answers after the comparison; the same name + variant again replaces the check. `elements`: the page's elements in screenshot pixels (`collectElements` in the page, then `elementsToPixels`); with them the diff names what changed |
+| `getBuild(id)`, `listBuilds(project, { branch?, limit? })`, `listChecks(buildId, { result?, review?, limit?, cursor? })`, `getCheck(id)`, `checkElements(id)`, `listReviews(id)` | |
+| `review(checkId, 'approve' \| 'reject', { reason? })` | needs the `review` scope; `outcome` says whether it applied or the project's agent review policy recorded it as a suggestion |
+| `addIgnoreArea(checkId, { x, y, width, height })` | an ignore area on the check's snapshot; the check is compared again |
 | `finalize(buildId, { part? })` | idempotent; a part of a parallel build is counted once, and the build stays open until every part has finalized it |
 | `waitForVerdict(buildId, { timeoutMs, intervalMs? })` | polls while the verdict is `pending` |
-| `approveBuild(buildId)` | needs the `review` scope |
+| `approveBuild(buildId, { reason? })` | needs the `review` scope; `suggested` counts what became suggestions |
 | `promotionCandidates(project, branch)` | the branch's screens whose baseline differs from main's |
 | `promote(project, branch, snapshotKeys?)` | copies them to main, all or some; needs the `write` scope |
 | `buildUrl(id)`, `checkUrl(check)` | links into the web UI |

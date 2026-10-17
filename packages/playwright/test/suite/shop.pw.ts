@@ -10,7 +10,7 @@ const html = `<!doctype html>
     <span class="clock" style="display:inline-block;width:150px;overflow:hidden;white-space:nowrap">${Date.now()}-${Math.random()}</span>
   </header>
   <h1 style="margin:24px 16px;color:${heading}">Welcome</h1>
-  <button style="margin:0 16px;width:120px;height:36px;background:#0070f3;color:#fff;border:0">Buy</button>
+  <button data-testid="buy" style="margin:0 16px;width:120px;height:36px;background:#0070f3;color:#fff;border:0">Buy</button>
   <div style="height:1200px"></div>
   <footer style="height:48px;background:#eee">Footer <span class="clock" style="display:inline-block;width:150px;overflow:hidden">${Math.random()}</span></footer>
 </body></html>`;

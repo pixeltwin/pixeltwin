@@ -7,13 +7,19 @@ import {
   type CheckInput,
   CheckTimer,
   type CheckTiming,
+  type CollectOptions,
+  type CssToPixels,
+  collectElements,
   cssBoxToPixels,
+  elementsToPixels,
   failsOnChange,
+  MAX_ELEMENTS,
   PixeltwinCheckError,
   type PixeltwinClient,
   PixeltwinGateError,
   pngSize,
   postWithRetakes,
+  type RawElement,
   type Rect,
   TimingTotals,
   timingLine,
@@ -57,6 +63,11 @@ export interface WdioCheckOptions {
   /** Override the service's `retakes` and `failOnChange` for this check. */
   retakes?: number;
   failOnChange?: boolean;
+  /**
+   * Send the visible elements' boxes (test ids, roles, text) with the screenshot so the diff names
+   * what changed. Default: the service's `elements` option (on). Not in a native app.
+   */
+  elements?: boolean;
 }
 
 /** A session's capabilities, as WebdriverIO reports them. */
@@ -252,6 +263,20 @@ function measure(...elements: (Element | null)[]): Measured {
   };
 }
 
+/** The page's elements in the captured area (an element's box, else the viewport); none when they cannot be measured. */
+async function elementsIn(target: BrowserLike, clip: Rect | null, name: string): Promise<RawElement[]> {
+  try {
+    const options: CollectOptions = { clip, max: MAX_ELEMENTS };
+    const found = await target.execute(collectElements, options);
+    return Array.isArray(found) ? found : [];
+  } catch (err) {
+    console.warn(
+      `pixeltwin: "${name}": could not measure the page's elements, sending the screenshot without them: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return [];
+  }
+}
+
 export class PixeltwinService {
   readonly #options: PixeltwinServiceOptions;
   #build: Build | null = null;
@@ -344,7 +369,9 @@ export class PixeltwinService {
     const timer = new CheckTimer();
     const check = await postWithRetakes(
       async () => {
-        const input = await timer.shoot(() => this.#shoot(target, element, name, options));
+        const input = await timer.shoot(() =>
+          this.#shoot(target, element, name, { ...options, elements: options.elements ?? settings.elements }),
+        );
         // A retake is the same screen: keep the first screenshot's variant even if the window moved.
         variant ??= input.variant;
         return timer.post(() => client.postCheck(buildId, { ...input, variant }));
@@ -424,18 +451,21 @@ export class PixeltwinService {
     const found = selectors.length > 0 ? await target.execute(selectorBoxes, selectors) : [];
     // A phone's screenshot also shows the system bars: find where the page starts in it (once per size).
     const offset = mobile && measured && !element ? await this.#pageOffset(target, name, measured) : { x: 0, y: 0 };
+    const raw =
+      measured && options.elements !== false ? await elementsIn(target, element ? measured.target : null, name) : [];
     const image = decode(
       element ? await target.takeElementScreenshot(element.elementId) : await target.takeScreenshot(),
     );
     const size = pngSize(image);
     const ignoreRegions: Rect[] = rects.map((r) => toPixelRect(r, size)).filter((r) => r !== null);
+    let mapping: CssToPixels | null = null;
     if (measured) {
       const origin = element ? measured.target : { x: 0, y: 0, width: measured.width, height: measured.height };
       if (!origin || origin.width <= 0)
         throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
       // Screenshot pixels per CSS pixel: the device pixel ratio, read from the image itself.
       const scale = (size?.width ?? origin.width) / origin.width;
-      const mapping = { origin: element ? origin : { x: -offset.x / scale, y: -offset.y / scale }, scale };
+      mapping = { origin: element ? origin : { x: -offset.x / scale, y: -offset.y / scale }, scale };
       for (const box of [...measured.boxes, ...found]) {
         const region = box ? cssBoxToPixels(box, mapping, size) : null;
         if (region) ignoreRegions.push(region);
@@ -460,6 +490,7 @@ export class PixeltwinService {
       ignoreRegions,
       colorThreshold: options.colorThreshold,
       tolerancePercent: options.tolerancePercent,
+      ...(mapping && options.elements !== false ? { elements: elementsToPixels(raw, mapping, size) } : {}),
     };
   }
 }

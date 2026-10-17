@@ -2,6 +2,7 @@ import { type FieldError, PixeltwinError, PixeltwinNetworkError } from './errors
 import { toPixelRect } from './png.js';
 import type { TimingInput } from './timing.js';
 import type {
+  Area,
   Build,
   Check,
   CheckInput,
@@ -9,7 +10,11 @@ import type {
   CheckReview,
   OpenBuildInput,
   Page,
+  PageElement,
   PromotionCandidate,
+  Rect,
+  ReviewEvent,
+  ReviewOutcome,
 } from './types.js';
 
 export const SDK_VERSION = '0.1.0';
@@ -86,6 +91,8 @@ export class PixeltwinClient {
   readonly #retryDelayMs: number;
   readonly #timeoutMs: number;
   readonly #fetch: typeof fetch;
+  /** The server refused `elements` (older than this SDK): later checks are posted without them. */
+  #noElements = false;
 
   constructor(options: ClientOptions) {
     if (!options.url) throw new Error('pixeltwin: `url` is required.');
@@ -111,7 +118,10 @@ export class PixeltwinClient {
     return (await this.#request<Build>('GET', `/builds/${encodeURIComponent(id)}`)).data;
   }
 
-  /** Posts a screenshot; the answer comes after the comparison. Same name + variant again replaces it. */
+  /**
+   * Posts a screenshot; the answer comes after the comparison. Same name + variant again replaces it.
+   * A server older than this SDK refuses `elements`: the check is then posted again without them.
+   */
   async postCheck(buildId: string, input: CheckInput): Promise<Check> {
     if (!input.name) throw new Error('pixeltwin: a check needs a name.');
     const ignoreRegions = (input.ignoreRegions ?? []).map((r) => toPixelRect(r)).filter((r) => r !== null);
@@ -122,10 +132,74 @@ export class PixeltwinClient {
       ...(input.colorThreshold === undefined ? {} : { colorThreshold: input.colorThreshold }),
       ...(input.tolerancePercent === undefined ? {} : { tolerancePercent: input.tolerancePercent }),
     };
-    const form = new FormData();
-    form.set('image', new Blob([input.image as Uint8Array<ArrayBuffer>], { type: 'image/png' }), 'image.png');
-    form.set('meta', JSON.stringify(meta));
-    return (await this.#request<Check>('POST', `/builds/${encodeURIComponent(buildId)}/checks`, { form })).data;
+    const send = async (elements: PageElement[] | undefined) => {
+      const form = new FormData();
+      form.set('image', new Blob([input.image as Uint8Array<ArrayBuffer>], { type: 'image/png' }), 'image.png');
+      form.set('meta', JSON.stringify(elements ? { ...meta, elements } : meta));
+      return (await this.#request<Check>('POST', `/builds/${encodeURIComponent(buildId)}/checks`, { form })).data;
+    };
+    const elements = this.#noElements || !input.elements?.length ? undefined : input.elements;
+    if (!elements) return send(undefined);
+    try {
+      return await send(elements);
+    } catch (err) {
+      const refused =
+        err instanceof PixeltwinError &&
+        err.code === 'validation_failed' &&
+        (err.errors ?? []).some((e) => e.message.includes('"elements"'));
+      if (!refused) throw err;
+      this.#noElements = true;
+      return send(undefined);
+    }
+  }
+
+  async getCheck(id: string): Promise<Check> {
+    return (await this.#request<Check>('GET', `/checks/${encodeURIComponent(id)}`)).data;
+  }
+
+  /** The page elements sent with the check and with the baseline it was compared with (null where none). */
+  async checkElements(checkId: string): Promise<{ current: PageElement[] | null; baseline: PageElement[] | null }> {
+    const path = `/checks/${encodeURIComponent(checkId)}/elements`;
+    return (await this.#request<{ current: PageElement[] | null; baseline: PageElement[] | null }>('GET', path)).data;
+  }
+
+  /** The project's builds, newest first, optionally of one branch. */
+  async listBuilds(
+    project: string,
+    query: { branch?: string; limit?: number; cursor?: string } = {},
+  ): Promise<Page<Build>> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const qs = params.size ? `?${params}` : '';
+    return (await this.#request<Page<Build>>('GET', `/projects/${encodeURIComponent(project)}/builds${qs}`)).data;
+  }
+
+  /** Every approval, rejection, undo and suggestion of a check, newest first. */
+  async listReviews(checkId: string): Promise<ReviewEvent[]> {
+    const path = `/checks/${encodeURIComponent(checkId)}/reviews`;
+    return (await this.#request<{ items: ReviewEvent[] }>('GET', path)).data.items;
+  }
+
+  /**
+   * Approves or rejects a check (needs the `review` scope) with a reason, kept in its history. Under
+   * the project's agent review policy the review may be recorded as a suggestion for a person
+   * (`outcome: 'suggested'`), and a reason is required.
+   */
+  async review(
+    checkId: string,
+    action: 'approve' | 'reject',
+    options: { reason?: string } = {},
+  ): Promise<Check & { outcome: ReviewOutcome }> {
+    const path = `/checks/${encodeURIComponent(checkId)}/${action}`;
+    const body = options.reason ? { json: { reason: options.reason } } : undefined;
+    return (await this.#request<Check & { outcome: ReviewOutcome }>('POST', path, body)).data;
+  }
+
+  /** Draws an ignore area on the check's snapshot (screenshot pixels); the check is compared again. */
+  async addIgnoreArea(checkId: string, rect: Rect): Promise<{ area: Area; check: Check }> {
+    const path = `/checks/${encodeURIComponent(checkId)}/areas`;
+    return (await this.#request<{ area: Area; check: Check }>('POST', path, { json: { kind: 'ignore', ...rect } }))
+      .data;
   }
 
   async listChecks(

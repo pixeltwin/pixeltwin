@@ -69,6 +69,31 @@ function fakeBrowser(button: Rgba | ((shot: number) => Rgba) = [0, 112, 243, 255
       ).toString('base64');
     },
     execute: (async (script: { name?: string }, ...args: ({ elementId: string } | null)[]) => {
+      if (script.name === 'collectElements') {
+        // What the page shows in the captured area: the header (with its title) or the whole viewport.
+        const clip = (args[0] as unknown as { clip: { y: number; height: number } | null }).clip;
+        const title = {
+          key: 'role=heading[name="Shop"]',
+          tag: 'h1',
+          role: 'heading',
+          text: 'Shop',
+          x: 10,
+          y: 10,
+          width: 60,
+          height: 20,
+        };
+        const buy = {
+          key: '[data-testid=buy]',
+          tag: 'button',
+          role: 'button',
+          text: 'Buy',
+          x: 20,
+          y: 100,
+          width: 100,
+          height: 30,
+        };
+        return clip ? [title] : [title, buy];
+      }
       if (script.name === 'selectorBoxes') {
         const selectors = args[0] as unknown as string[];
         return selectors.flatMap((s) => (elements[s.replace(/^\./, '')] ? [elements[s.replace(/^\./, '')]] : []));
@@ -126,6 +151,20 @@ describe('PixeltwinService', () => {
     expect(header?.variant).toEqual({ browser: 'chrome', viewport: '400x300', theme: 'light' });
     expect(header?.ignoreRegions).toEqual([{ x: 600, y: 20, width: 160, height: 40 }]);
     expect(fake.executed[1]?.[0]).toEqual({ elementId: 'header' }); // the target goes first
+    // The page's elements go with each screenshot, in device pixels, relative to what was captured.
+    expect(page?.elementCount).toBe(2);
+    const sent = await client.checkElements(page?.id ?? '');
+    expect(sent.current?.find((e) => e.key === '[data-testid=buy]')).toMatchObject({
+      x: 40,
+      y: 200,
+      width: 200,
+      height: 60,
+    });
+    expect((await client.checkElements(header?.id ?? '')).current?.map((e) => e.key)).toEqual([
+      'role=heading[name="Shop"]',
+    ]);
+    const without = await fake.check('plain', { elements: false });
+    expect(without?.elementCount).toBeNull();
 
     // New checks wait for review: the gate stops the launcher with a severe error.
     const gated = await run1.launcher.onComplete().catch((e) => e);
@@ -383,6 +422,7 @@ describe('PixeltwinService', () => {
         if (script.name === 'placeMarker') marker = true;
         if (script.name === 'removeMarker') marker = false;
         if (script.name === 'selectorBoxes') return (args[0] as string[]).map((s) => boxes[s]);
+        if (script.name === 'collectElements') return [{ key: '#date', tag: 'div', ...boxes.date }];
         if (script.name === 'measure') {
           const ids = args.slice(1) as { elementId: string }[];
           return { width: 390, height: 700, target: null, boxes: ids.map((e) => boxes[e.elementId] ?? null) };
@@ -403,6 +443,10 @@ describe('PixeltwinService', () => {
       { x: 600, y: STATUS, width: 150, height: 30 },
     ]);
     expect(marker).toBe(false);
+    // Elements land below the status bar too.
+    expect((await client.checkElements(check?.id ?? '')).current).toEqual([
+      { key: '#date', tag: 'div', x: 30, y: STATUS + 300, width: 300, height: 60 },
+    ]);
     // The offset is found once per viewport size: one marker screenshot, then one per check.
     await commands.pixeltwinCheck?.call(browser, 'delivery-again', { ignore: ['.timer'] });
     expect(screenshots).toBe(3);
