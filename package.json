@@ -18,7 +18,9 @@
     "openapi": "bun run scripts/openapi.ts",
     "e2e": "playwright test -c e2e/playwright.config.ts",
     "examples": "bun scripts/examples.ts",
-    "screenshots": "UPDATE_SCREENSHOTS=1 playwright test -c e2e/playwright.config.ts screenshots"
+    "screenshots": "UPDATE_SCREENSHOTS=1 playwright test -c e2e/playwright.config.ts screenshots",
+    "site:images": "bun scripts/site-images.ts",
+    "site:check": "bun scripts/site-check.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.6.3",

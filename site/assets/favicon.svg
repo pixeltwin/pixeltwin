@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>pixeltwin</title>
+  <style>
+    rect { fill: #111111; }
+    path { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      rect { fill: #ffffff; }
+      path { fill: #111111; }
+    }
+  </style>
+  <rect width="32" height="32" rx="7" />
+  <path d="M16 7 26 24H6Z" />
+</svg>
