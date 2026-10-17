@@ -499,3 +499,38 @@ export async function getInsights(deps: DbDeps, project: Project, range: Insight
     retentionDays: project.retentionDays,
   };
 }
+
+export interface InsightBucket {
+  fromDay: number;
+  toDay: number;
+  totals: Totals;
+  flakyScreens: number;
+}
+
+/**
+ * The range in buckets of `size` days, the last one ending on the range's last day (the first may
+ * be shorter): weeks for a 90-day chart. Read after getInsights, which refreshes.
+ */
+export async function insightBuckets(
+  deps: DbDeps,
+  projectId: string,
+  range: InsightsRange,
+  size: number,
+): Promise<InsightBucket[]> {
+  const days = await readDays(deps, projectId, range.branch, range.fromDay, range.toDay);
+  const byDay = new Map(days.map((d) => [d.day, d.totals]));
+  const out: InsightBucket[] = [];
+  for (let end = range.toDay; end >= range.fromDay; end -= size) {
+    const start = Math.max(range.fromDay, end - size + 1);
+    let sum = emptyTotals();
+    let flaky = 0;
+    for (let day = start; day <= end; day++) {
+      const t = byDay.get(day);
+      if (!t) continue;
+      sum = mergeTotals(sum, t);
+      flaky = Math.max(flaky, t.flakyScreens);
+    }
+    out.unshift({ fromDay: start, toDay: end, totals: totalsOf(sum), flakyScreens: flaky });
+  }
+  return out;
+}
