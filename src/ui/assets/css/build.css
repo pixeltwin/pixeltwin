@@ -184,6 +184,11 @@
 .check-card[class*="card-"]:hover {
   border-color: var(--card-strong, var(--border-strong));
 }
+/* Passed within the tolerance: green word, amber border: worth a look, nothing to do. */
+.check-card.card-passed.card-tolerance {
+  --card-border: var(--amber-border);
+  --card-strong: var(--amber-dot);
+}
 /* A passing screen is the normal case: only its border and word are green. */
 .check-card.card-passed .check-card-body {
   background: none;
