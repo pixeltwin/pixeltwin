@@ -85,6 +85,13 @@ const NOT_PROJECT_SCOPED = new Set([
   'POST /ui/invite/:token',
   'GET /ui/reset/:token',
   'POST /ui/reset/:token',
+  'GET /ui/verify/:token',
+  'POST /ui/verify/:token',
+  'GET /ui/signup',
+  'POST /ui/signup',
+  'POST /ui/admin/signup',
+  'POST /ui/admin/requests/:id/approve',
+  'POST /ui/admin/requests/:id/reject',
 ]);
 
 const PROJECT_SCOPED = /:slug\b|^\/api\/v1\/(builds|checks|images|invites)\/|^\/ui\/(builds|checks)\//;

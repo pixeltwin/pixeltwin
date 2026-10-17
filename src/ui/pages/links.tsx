@@ -5,10 +5,12 @@ import { acceptReset } from '../../domain/auth/resets';
 import { createSession } from '../../domain/auth/sessions';
 import { acceptInvite, describeLink } from '../../domain/invites';
 import { membershipsOf } from '../../domain/members';
+import { verifySignup } from '../../domain/signup';
 import { AppError } from '../../errors';
 import { clientIp } from '../../http/client-ip';
 import { setSessionCookie } from '../../http/cookies';
 import type { AppEnv, Services } from '../../http/env';
+import { notifyAdmins } from '../../http/routes/signup';
 import { describedBy, Field, formErrors, PasswordField } from '../components';
 import { type Ui, uiOf } from '../context';
 import { Layout } from '../layout';
@@ -90,6 +92,33 @@ function PasswordPage(props: {
   );
 }
 
+/** The email check of a sign-up. GET only shows a button: mail scanners that open links confirm nothing. */
+function VerifyPage({ ui, email, action, done }: { ui: Ui; email: string; action: string; done: boolean }) {
+  return (
+    <Layout ui={ui} title={done ? 'Email confirmed' : 'Confirm your email'}>
+      <div class="auth-card">
+        <h1>{done ? 'Email confirmed' : 'Confirm your email'}</h1>
+        <p class="sub">
+          {done
+            ? 'Thank you. An admin now looks at your request; log in any time to see whether it was approved.'
+            : `Confirm that ${email} is yours, so an admin can look at your request.`}
+        </p>
+        {done ? (
+          <a class="button wide" href={ui.url('/ui/login')}>
+            Go to log in
+          </a>
+        ) : (
+          <form method="post" action={ui.url(action)}>
+            <button class="primary wide" type="submit">
+              Confirm my email
+            </button>
+          </form>
+        )}
+      </div>
+    </Layout>
+  );
+}
+
 const PURPOSE_OF: Record<string, LinkPurpose> = { invite: 'invite', reset: 'password_reset' };
 
 export function registerLinkPages(app: OpenAPIHono<AppEnv>, s: Services): void {
@@ -165,4 +194,27 @@ export function registerLinkPages(app: OpenAPIHono<AppEnv>, s: Services): void {
       }
     });
   }
+
+  app.get('/ui/verify/:token', async (c) => {
+    if (limited(c)) throw new AppError('rate_limited', 429, 'Too many attempts; wait a minute and try again.');
+    const token = c.req.param('token') ?? '';
+    try {
+      const link = await describeLink(s.deps, token);
+      if (link.purpose !== 'verify_email') throw new AppError('link_invalid', 404, 'Wrong kind of link.');
+      return c.html(<VerifyPage ui={uiOf(c, s)} email={link.email} action={`/ui/verify/${token}`} done={false} />);
+    } catch (err) {
+      return problem(c, err);
+    }
+  });
+
+  app.post('/ui/verify/:token', async (c) => {
+    if (limited(c)) throw new AppError('rate_limited', 429, 'Too many attempts; wait a minute and try again.');
+    try {
+      const { email } = await verifySignup(s.deps, c.req.param('token') ?? '');
+      void notifyAdmins(s);
+      return c.html(<VerifyPage ui={uiOf(c, s)} email={email} action="" done />);
+    } catch (err) {
+      return problem(c, err);
+    }
+  });
 }

@@ -7,6 +7,12 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
+.auth-alt {
+  margin: var(--space-4) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
 .auth-card h1 {
   font-size: var(--text-xl);
 }
@@ -124,6 +130,46 @@ pre.command {
 .row-actions {
   display: inline-flex;
   gap: var(--space-2);
+}
+
+/* Access requests on the Users page. */
+.access-requests {
+  margin-bottom: var(--space-6);
+}
+.access-requests h2 {
+  font-size: var(--text-lg);
+}
+.request-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.request-note {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+}
+.request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.request-actions details[open] {
+  flex-basis: 100%;
+}
+.request-actions summary {
+  list-style: none;
+}
+.request-actions summary::-webkit-details-marker {
+  display: none;
 }
 
 /* A user's projects, each with its role. */

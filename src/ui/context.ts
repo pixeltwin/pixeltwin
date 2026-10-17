@@ -15,6 +15,8 @@ export interface Ui {
   theme: Theme;
   /** This page's path and query without the PUBLIC_URL prefix: the `next` of forms that come back here. */
   here: string;
+  /** Admins: access requests waiting for a decision. */
+  accessRequests: number;
 }
 
 export function uiOf(c: Context<AppEnv>, s: Services): Ui {
@@ -26,6 +28,7 @@ export function uiOf(c: Context<AppEnv>, s: Services): Ui {
     url: (path) => `${base}${path}`,
     theme: themeOf(c),
     here: url.pathname + url.search,
+    accessRequests: c.get('accessRequests') ?? 0,
   };
 }
 
@@ -83,6 +86,9 @@ export const NOTICES: Record<string, string> = {
   'member-removed': 'Member removed.',
   'welcome-invite': 'Welcome! Your account is ready.',
   'password-set': 'Your new password is set.',
+  'request-approved': 'Access approved.',
+  'request-rejected': 'Request turned down.',
+  'signup-saved': 'Sign-up settings saved.',
   'invite-revoked': 'Invite revoked.',
   'member-had-account': 'They already had an account, so they were added as a member.',
   'user-created': 'User created. Add them to projects in each project’s settings.',

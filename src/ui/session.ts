@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { userPrincipal } from '../domain/auth/policy';
 import { resolveSession } from '../domain/auth/sessions';
+import { listAccessRequests } from '../domain/signup';
 import { AppError } from '../errors';
 import { setSessionCookie } from '../http/cookies';
 import { type AppEnv, SESSION_COOKIE, type Services } from '../http/env';
@@ -11,7 +12,7 @@ import { waitingPage } from './pages/waiting';
 export const UI_CSP =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'";
 
-const PUBLIC_PAGES = /^\/ui\/(login|setup|assets\/)/;
+const PUBLIC_PAGES = /^\/ui\/(login|setup|signup|assets\/)/;
 /** One-time links: public, never with a session (a link opened in a logged-in browser stays about its own email). */
 const LINK_PAGES = /^\/ui\/(invite|reset|verify)\//;
 /** What a pending (or rejected) user may still do: log out, switch the theme. */
@@ -69,6 +70,10 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
     if (!user && !PUBLIC_PAGES.test(c.req.path)) {
       const here = c.req.path + (new URL(c.req.url).search || '');
       return c.redirect(`${base}/ui/login?next=${encodeURIComponent(here)}`, 303);
+    }
+    c.set('accessRequests', 0);
+    if (user?.role === 'admin' && user.status === 'active' && c.req.method === 'GET') {
+      c.set('accessRequests', (await listAccessRequests(s.deps, { verifiedOnly: !!s.mailer })).length);
     }
     // A sign-up waiting for an admin (or turned down) sees that, whatever page it asks for.
     if (user && user.status !== 'active' && !PENDING_PAGES.test(c.req.path)) {

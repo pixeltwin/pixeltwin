@@ -17,6 +17,8 @@ only sees its own project. A user's personal token (POST /auth/token) sees the p
 can open: others answer 404, as if they did not exist. To give a person access, an admin or
 maintainer POSTs /projects/<slug>/invites {"email":…,"role":"viewer|reviewer|maintainer"}: an account
 becomes a member at once (kind "member"), anyone else gets a one-time link (kind "invite", \`link\`).
+A user whose sign-up waits for an admin gets 403 account_pending (account_rejected once turned down)
+on everything but GET /me and POST /auth/logout.
 
 ## Workflow (five calls)
 

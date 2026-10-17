@@ -8,9 +8,19 @@ import { createUser, deleteUser, listUsers, type UserView, updateUser } from '..
 import { type InviteView, inviteToServer, listInvites, resendInvite, revokeInvite } from '../../domain/invites';
 import { membershipsOf } from '../../domain/members';
 import { listProjects } from '../../domain/projects';
+import {
+  type AccessRequestView,
+  approveAccessRequest,
+  getSignupSettings,
+  listAccessRequests,
+  rejectAccessRequest,
+  type SignupSettings,
+  updateSignupSettings,
+} from '../../domain/signup';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { sendInvite } from '../../http/routes/invites';
+import { mailDecision } from '../../http/routes/signup';
 import { resetMail } from '../../mail/messages';
 import { deliver } from '../../mail/smtp';
 import { Ago, describedBy, Field, formErrors, PasswordField, Pill } from '../components';
@@ -203,12 +213,136 @@ function InviteUserForm({
   );
 }
 
+/** Sign-ups waiting for an admin: approve with a role and projects, or turn down with a reason. */
+function AccessRequests({ ui, requests, projects }: { ui: Ui; requests: AccessRequestView[]; projects: Project[] }) {
+  if (requests.length === 0) return null;
+  return (
+    <section class="access-requests" aria-labelledby="requests-title">
+      <h2 id="requests-title">
+        Access requests <span class="count-badge">{String(requests.length)}</span>
+      </h2>
+      <ul class="request-list">
+        {requests.map((r) => (
+          <li class="panel request">
+            <div class="request-head">
+              <strong>{r.email}</strong>
+              {r.name && <span>{r.name}</span>}
+              {r.verified ? <Pill tone="green">email confirmed</Pill> : <Pill tone="amber">email not verified</Pill>}
+              <span class="muted">
+                {'asked '}
+                <Ago at={r.createdAt} />
+              </span>
+            </div>
+            {r.note && <p class="request-note">{r.note}</p>}
+            <div class="request-actions">
+              <details>
+                <summary class="button primary small">Approve…</summary>
+                <form method="post" action={ui.url(`/ui/admin/requests/${r.id}/approve`)}>
+                  <Field id={`approve-role-${r.id}`} label="Server role">
+                    <select name="role" id={`approve-role-${r.id}`}>
+                      {USER_ROLES.map((role) => (
+                        <option value={role} selected={role === 'viewer'}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {projects.length > 0 && (
+                    <fieldset>
+                      <legend>Projects</legend>
+                      {projects.map((p) => (
+                        <label class="scope">
+                          <input type="checkbox" name="project" value={p.slug} />
+                          <span>{p.name}</span>
+                          <select name={`role-${p.slug}`} aria-label={`Role in ${p.name}`}>
+                            {PROJECT_ROLES.map((role) => (
+                              <option value={role}>{role}</option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
+                  <div class="form-actions">
+                    <button class="primary" type="submit">
+                      Approve
+                    </button>
+                  </div>
+                </form>
+              </details>
+              <details>
+                <summary class="button small">Turn down…</summary>
+                <form method="post" action={ui.url(`/ui/admin/requests/${r.id}/reject`)}>
+                  <Field id={`reject-reason-${r.id}`} label="Reason (optional, they see it)">
+                    <input name="reason" id={`reject-reason-${r.id}`} type="text" maxlength={1000} />
+                  </Field>
+                  <div class="form-actions">
+                    <button class="danger" type="submit">
+                      Turn down
+                    </button>
+                  </div>
+                </form>
+              </details>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SignupSettingsForm({ ui, settings, mailer }: { ui: Ui; settings: SignupSettings; mailer: boolean }) {
+  const hint = 'Comma-separated, e.g. company.com, contractor.io. Empty: any domain.';
+  return (
+    <section class="settings-section" aria-labelledby="signup-title">
+      <div class="section-head">
+        <h2 id="signup-title">Sign-up</h2>
+        <p class="muted">
+          {mailer
+            ? 'People who ask for access confirm their email first; you approve them here.'
+            : 'Without SMTP, emails are not confirmed: requests come marked "email not verified" and your approval is the check.'}
+        </p>
+      </div>
+      <form class="panel" method="post" action={ui.url('/ui/admin/signup')}>
+        <div class="form-grid">
+          <Field id="signup-mode" label="Requests">
+            <select name="mode" id="signup-mode">
+              <option value="off" selected={settings.mode === 'off'}>
+                off: only admins add people
+              </option>
+              <option value="approval" selected={settings.mode === 'approval'}>
+                on: anyone may ask, an admin approves
+              </option>
+            </select>
+          </Field>
+          <Field id="signup-domains" label="Allowed email domains" hint={hint}>
+            <input
+              name="domains"
+              type="text"
+              value={settings.domains.join(', ')}
+              {...describedBy('signup-domains', hint)}
+            />
+          </Field>
+        </div>
+        <div class="form-actions">
+          <button class="primary" type="submit">
+            Save
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function UsersPage({
   ui,
   users,
   memberships,
   projects,
   invites,
+  requests,
+  signup,
+  mailer,
   newLink,
   notice,
   error,
@@ -218,6 +352,9 @@ function UsersPage({
   memberships: Memberships;
   projects: Project[];
   invites: InviteView[];
+  requests: AccessRequestView[];
+  signup: SignupSettings;
+  mailer: boolean;
   newLink?: { title: string; email: string; link: string; mailed: boolean; note: string } | undefined;
   notice?: string;
   error?: string;
@@ -243,6 +380,7 @@ function UsersPage({
           <LinkCreated {...newLink} />
         </section>
       )}
+      <AccessRequests ui={ui} requests={requests} projects={projects} />
       <table class="stack-on-phone">
         <thead>
           <tr>
@@ -312,6 +450,7 @@ function UsersPage({
         </tbody>
       </table>
       <PendingInvites ui={ui} invites={invites} base="/ui/admin/invites" showProject />
+      <SignupSettingsForm ui={ui} settings={signup} mailer={mailer} />
       <dialog id="new-user" aria-labelledby="new-user-title">
         <h2 id="new-user-title">Add user</h2>
         <NewUserForm ui={ui} inDialog />
@@ -380,11 +519,13 @@ export function registerUserPages(app: OpenAPIHono<AppEnv>, s: Services): void {
     error?: string,
     newLink?: { title: string; email: string; link: string; mailed: boolean; note: string },
   ) => {
-    const [users, memberships, projects, invites] = await Promise.all([
+    const [users, memberships, projects, invites, requests, signup] = await Promise.all([
       listUsers(s.deps),
       membershipsOf(s.deps),
       listProjects(s.deps),
       listInvites(s.deps, null),
+      listAccessRequests(s.deps, { verifiedOnly: !!s.mailer }),
+      getSignupSettings(s.deps),
     ]);
     return (
       <UsersPage
@@ -393,6 +534,9 @@ export function registerUserPages(app: OpenAPIHono<AppEnv>, s: Services): void {
         memberships={memberships}
         projects={projects}
         invites={invites}
+        requests={requests}
+        signup={signup}
+        mailer={!!s.mailer}
         newLink={newLink}
         notice={noticeOf(c)}
         {...(error ? { error } : {})}
@@ -451,6 +595,53 @@ export function registerUserPages(app: OpenAPIHono<AppEnv>, s: Services): void {
     await revokeInvite(s.deps, c.req.param('id'));
     return c.redirect(uiOf(c, s).url('/ui/admin/users?done=invite-revoked'), 303);
   });
+
+  app.post('/ui/admin/signup', async (c) => {
+    requireUserAdmin(c);
+    const form = await c.req.parseBody();
+    try {
+      await updateSignupSettings(s.deps, { mode: field(form, 'mode'), domains: field(form, 'domains') ?? '' });
+      return c.redirect(uiOf(c, s).url('/ui/admin/users?done=signup-saved#signup-title'), 303);
+    } catch (err) {
+      return c.html(await list(c, messageOf(err)), statusOf(err));
+    }
+  });
+
+  for (const action of ['approve', 'reject'] as const) {
+    app.post(`/ui/admin/requests/:id/${action}`, async (c) => {
+      requireUserAdmin(c);
+      const form = await c.req.parseBody({ all: true });
+      const options = { verifiedOnly: !!s.mailer };
+      try {
+        let request: AccessRequestView;
+        if (action === 'approve') {
+          const picked = ([] as unknown[]).concat(form.project ?? []).filter((v): v is string => typeof v === 'string');
+          const projects = picked.map((slug) => ({ slug, role: field(form, `role-${slug}`) || 'viewer' }));
+          request = await approveAccessRequest(
+            s.deps,
+            c.req.param('id'),
+            { role: field(form, 'role') || 'viewer', projects },
+            userOf(c).id,
+            options,
+          );
+        } else {
+          const reason = field(form, 'reason');
+          request = await rejectAccessRequest(
+            s.deps,
+            c.req.param('id'),
+            reason ? { reason } : {},
+            userOf(c).id,
+            options,
+          );
+        }
+        mailDecision(s, request);
+        const done = action === 'approve' ? 'request-approved' : 'request-rejected';
+        return c.redirect(uiOf(c, s).url(`/ui/admin/users?done=${done}`), 303);
+      } catch (err) {
+        return c.html(await list(c, messageOf(err)), statusOf(err));
+      }
+    });
+  }
 
   app.post('/ui/admin/users/:id/reset-link', async (c) => {
     requireUserAdmin(c);

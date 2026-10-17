@@ -28,7 +28,7 @@ export async function waitingPage(c: Context<AppEnv>, s: Services, rejected: boo
             ? 'An admin decided not to give this account access.'
             : 'Your request reached the admins. Once one of them approves it, this page shows your projects.'}
         </p>
-        {reason && <p class="flash notice">{`Reason: ${reason}`}</p>}
+        {reason && <p class="warning">{`Reason: ${reason}`}</p>}
         <form method="post" action={ui.url('/ui/logout')}>
           <button class="wide" type="submit">
             Log out

@@ -33,5 +33,7 @@ export interface AppEnv {
     projectChecked: boolean;
     /** For route middleware that needs the database (access.ts). */
     deps: Deps;
+    /** For admins on UI pages: access requests waiting (the badge by Users). */
+    accessRequests: number;
   };
 }

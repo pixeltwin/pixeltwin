@@ -71,6 +71,12 @@ function UserMenu({ ui }: { ui: Ui }) {
           {user.email.charAt(0).toUpperCase()}
         </span>
         <span class="menu-email">{user.email}</span>
+        {ui.accessRequests > 0 && (
+          <span class="count-badge">
+            {String(ui.accessRequests)}
+            <span class="visually-hidden"> access requests waiting</span>
+          </span>
+        )}
       </summary>
       <div class="menu-panel">
         <form class="theme-switch" method="post" action={ui.url('/ui/theme')}>
@@ -90,6 +96,11 @@ function UserMenu({ ui }: { ui: Ui }) {
         {user.role === 'admin' && (
           <a class="menu-item" href={ui.url('/ui/admin/users')}>
             Users
+            {ui.accessRequests > 0 && (
+              <span class="count-badge" title="Access requests waiting">
+                {String(ui.accessRequests)}
+              </span>
+            )}
           </a>
         )}
         <form method="post" action={ui.url('/ui/logout')}>

@@ -137,6 +137,14 @@ is also mailed; without them it is shown once to copy. Admins get a one-time **r
 for any user under Users (the `admin reset-password` command still works too). Links are never
 logged and their pages send no Referer.
 
+**Sign-up with approval.** Users → Sign-up turns on "Request access" on the login page (optionally
+only for some email domains). Anyone may then ask, with a note; the answer never says whether the
+email already has an account. With SMTP they first confirm their email by a link, and admins get a
+mail (at most every 15 minutes); without SMTP the request comes marked "email not verified". Until
+an admin approves it (with a server role and projects) or turns it down (with a reason), the person
+can log in but sees only a waiting page, and the API answers `403 account_pending`. Turned-down
+requests are removed after 30 days, never confirmed ones after 7.
+
 The server role of a non-admin is also their default role when they are added to a project. A user
 outside a project gets 404 for it and everything in it, as if it did not exist. Project tokens are
 unchanged: each one belongs to one project. Upgrading keeps everyone's access: every existing
