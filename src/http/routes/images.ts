@@ -1,6 +1,6 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
-import { visibleProjects } from '../../domain/auth/access';
-import { hasPermission } from '../../domain/auth/policy';
+import { projectRoleFor } from '../../domain/auth/access';
+import { hasPermission, type Principal } from '../../domain/auth/policy';
 import { loadImage } from '../../domain/images';
 import { AppError } from '../../errors';
 import { accessFiltered } from '../access';
@@ -9,31 +9,35 @@ import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { problems } from '../schemas';
 
+/** The projects whose checks or baselines reference the image (usually one). */
+async function referencingProjects(s: Services, sha: string): Promise<string[]> {
+  const rows = await s.deps.db
+    .selectFrom('checks')
+    .select('projectId')
+    .where((eb) => eb.or([eb('imageSha', '=', sha), eb('diffImageSha', '=', sha)]))
+    .union(s.deps.db.selectFrom('baselines').select('projectId').where('imageSha', '=', sha))
+    .execute();
+  return rows.map((r) => r.projectId);
+}
+
 /**
  * Can this caller see the image? Admins see every image; a token or another user only images that
- * a project they can see references (`projectIds`).
+ * a project they may open references.
  */
-async function visible(s: Services, sha: string, projectIds: string[] | null): Promise<boolean> {
-  if (projectIds === null) {
+async function visible(s: Services, sha: string, principal: Principal): Promise<boolean> {
+  if (principal.kind === 'user' && hasPermission(principal, 'project.read')) {
     return !!(await s.deps.db.selectFrom('images').select('sha').where('sha', '=', sha).executeTakeFirst());
   }
-  if (projectIds.length === 0) return false;
-  const viaCheck = await s.deps.db
-    .selectFrom('checks')
-    .select('id')
-    .where('projectId', 'in', projectIds)
-    .where((eb) => eb.or([eb('imageSha', '=', sha), eb('diffImageSha', '=', sha)]))
-    .limit(1)
-    .executeTakeFirst();
-  if (viaCheck) return true;
-  const viaBaseline = await s.deps.db
-    .selectFrom('baselines')
-    .select('id')
-    .where('projectId', 'in', projectIds)
-    .where('imageSha', '=', sha)
-    .limit(1)
-    .executeTakeFirst();
-  return !!viaBaseline;
+  for (const projectId of await referencingProjects(s, sha)) {
+    if (principal.kind === 'token' ? principal.projectId === projectId : await opens(s, principal, projectId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function opens(s: Services, user: Extract<Principal, { kind: 'user' }>, projectId: string): Promise<boolean> {
+  return hasPermission(user, 'project.read', await projectRoleFor(s.deps, user, projectId));
 }
 
 export function registerImageRoutes(app: OpenAPIHono<AppEnv>, s: Services): void {
@@ -56,13 +60,7 @@ export function registerImageRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     const principal = principalOf(c);
     const notFound = new AppError('image_not_found', 404, `Image ${sha} not found.`);
     if (!/^[0-9a-f]{64}$/.test(sha)) throw notFound;
-    const projectIds =
-      principal.kind === 'token'
-        ? [principal.projectId]
-        : hasPermission(principal, 'project.read')
-          ? null
-          : (await visibleProjects(s.deps, principal)).map((x) => x.project.id);
-    if (!(await visible(s, sha, projectIds))) throw notFound;
+    if (!(await visible(s, sha, principal))) throw notFound;
     accessFiltered(c);
     const bytes = await loadImage(s.deps, sha);
     if (!bytes) throw notFound;

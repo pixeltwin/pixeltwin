@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createProject } from '../../src/domain/projects';
 import { createTestApp, problemOf, type TestApp } from '../helpers/app';
-import { makePng } from '../helpers/png';
-import { openBuild, submit } from '../helpers/scenario';
+import { BLACK, makePng, WHITE } from '../helpers/png';
+import { openBuild, seedBaseline, submit } from '../helpers/scenario';
 
 type Who = { cookie: string; id: string };
 
@@ -134,6 +134,28 @@ describe('project members (API)', () => {
     // A membership raises the role there; it never lowers it.
     await add(admin, 'web', { email: 'alice@example.com', role: 'viewer' });
     expect((await t.request('POST', `/api/v1/checks/${check.id}/reset`, { as: alice })).status).toBe(200);
+  });
+
+  test('images: a member sees screenshots, baselines and diffs of their projects only', async () => {
+    const web = await createProject(t.deps, { slug: 'shop', name: 'Shop' });
+    const baseline = await seedBaseline(t.deps, web, makePng(10, 10));
+    const buildId = await openBuild(t.deps, 'shop');
+    const { check } = await submit(
+      t.deps,
+      buildId,
+      makePng(10, 10, WHITE, [{ x: 1, y: 1, width: 3, height: 3, color: BLACK }]),
+    );
+    const shas = [baseline.imageSha, check.imageSha, check.diffImageSha ?? ''];
+    const status = async (as: Who | { token: string }, sha: string) =>
+      (await t.request('GET', `/api/v1/images/${sha}`, { as })).status;
+    for (const sha of shas) expect([await status(alice, sha), await status(admin, sha)]).toEqual([404, 200]);
+    await add(admin, 'shop', { email: 'alice@example.com', role: 'viewer' });
+    for (const sha of shas) expect(await status(alice, sha)).toBe(200);
+    for (const sha of shas) expect(await status(bob, sha)).toBe(404);
+    await t.request('PATCH', '/api/v1/projects/shop', { as: admin, json: { visibleToAll: true } });
+    for (const sha of shas) expect(await status(bob, sha)).toBe(200);
+    const other = await t.tokenAs('app', ['read']);
+    for (const sha of shas) expect(await status(other, sha)).toBe(404);
   });
 
   test('tokens keep working as before: their own project only', async () => {

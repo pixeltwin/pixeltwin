@@ -290,7 +290,9 @@ describe('UI projects', () => {
 
     test('the token step is done once the project has a token; viewers are told to ask an admin', async () => {
       await newProject('web', 'Web shop');
-      expect(await html(await t.request('GET', '/ui/p/web', { as: viewer }))).toContain('Ask an admin for a token');
+      expect(await html(await t.request('GET', '/ui/p/web', { as: viewer }))).toContain(
+        'Ask an admin or a maintainer of this project for a token',
+      );
       await createProjectToken(t.deps, 'web', { name: 'ci', scopes: ['read', 'write'] });
       expect(await html(await t.request('GET', '/ui/p/web', { as: viewer }))).toContain('class="step done"');
     });
