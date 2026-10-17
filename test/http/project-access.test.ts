@@ -7,6 +7,7 @@ import { inviteToProject } from '../../src/domain/invites';
 import { addMember } from '../../src/domain/members';
 import { createProject } from '../../src/domain/projects';
 import { requestAccess, updateSignupSettings } from '../../src/domain/signup';
+import { createWebhook } from '../../src/domain/webhooks';
 import { openApiDocument } from '../../src/http/docs';
 import { API } from '../../src/http/env';
 import { defineRoute } from '../../src/http/route';
@@ -136,6 +137,10 @@ describe('project access for users', () => {
       height: 2,
     });
     const { view: token } = await createProjectToken(t.deps, 'secret', { name: 'ci', scopes: ['read'] });
+    const { webhook } = await createWebhook(t.deps, 'secret', {
+      url: 'https://hooks.example.com/x',
+      events: ['build.finalized'],
+    });
     const member = await t.userAs('reviewer', 'member@example.com', { projects: ['secret'] });
     const invite = await inviteToProject(t.deps, 'secret', { email: 'later@example.com' }, member.id);
     if (invite.kind !== 'invite') throw new Error('expected an invite');
@@ -145,7 +150,16 @@ describe('project access for users', () => {
     await addMember(t.deps, 'other', { email: 'outsider@example.com', role: 'maintainer' });
 
     const base = { snapshotKey: check.snapshotKey, branch: 'feature/x', areaId: area.id, userId: member.id };
-    hidden = { ...base, slug: 'secret', sha: check.imageSha, build: buildId, check: check.id, token: token.id };
+    hidden = {
+      ...base,
+      slug: 'secret',
+      sha: check.imageSha,
+      build: buildId,
+      check: check.id,
+      token: token.id,
+      webhook: webhook.id,
+      groupId: check.groupId ?? 'grp',
+    };
     missing = {
       ...base,
       slug: 'nope',
@@ -153,6 +167,8 @@ describe('project access for users', () => {
       build: 'bld_missing',
       check: 'chk_missing',
       token: 'tok_x',
+      webhook: 'whk_missing',
+      groupId: 'grp_missing',
     };
     permissions = new Map();
     for (const [path, item] of Object.entries(openApiDocument(t.app).paths ?? {})) {
@@ -174,7 +190,9 @@ describe('project access for users', () => {
         ? values.check
         : /\/invites\//.test(path)
           ? values.invite
-          : values.token,
+          : /\/webhooks\//.test(path)
+            ? values.webhook
+            : values.token,
   });
 
   async function send(method: string, path: string, values: Record<string, string>, as = outsider) {
