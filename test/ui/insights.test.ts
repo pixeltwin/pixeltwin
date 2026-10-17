@@ -61,7 +61,7 @@ describe('Insights page', () => {
     const weeks = await page('?range=90');
     expect(weeks).toContain('class="chart-svg bars-13"');
     const none = await page('?range=30&branch=feature%2Fnone');
-    expect(none).toContain('No builds in this range');
+    expect(none).toContain('No checks in this range');
     expect(none).not.toContain('<figure class="chart');
     expect(none).toContain('<option value="feature/none" selected="">feature/none</option>');
     expect(none).toContain('No noisy screens in this range.');

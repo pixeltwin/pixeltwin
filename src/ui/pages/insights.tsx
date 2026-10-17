@@ -513,7 +513,7 @@ function InsightsPage(props: {
   notice?: string | undefined;
 }) {
   const { ui, project, report } = props;
-  const empty = report.totals.builds === 0;
+  const empty = report.totals.checks === 0;
   return (
     <Layout
       ui={ui}
@@ -560,9 +560,9 @@ function InsightsPage(props: {
       )}
       {empty ? (
         <div class="empty insights-empty">
-          <h3>No builds in this range</h3>
+          <h3>No checks in this range</h3>
           <p class="muted">
-            {`Nothing was finalized on ${report.branch} between ${dateOf(props.span.fromDay)} and ${dateOf(props.span.toDay)}. Pick a longer range or another branch.`}
+            {`No finalized build on ${report.branch} compared a screenshot between ${dateOf(props.span.fromDay)} and ${dateOf(props.span.toDay)}. Pick a longer range or another branch.`}
           </p>
         </div>
       ) : (
