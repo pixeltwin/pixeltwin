@@ -273,6 +273,53 @@ export const GroupReviewSchema = z
   })
   .openapi('GroupReview');
 
+export const FlakySchema = z
+  .object({
+    score: z.number().openapi({ description: 'Flips per run in the history, 0 to 1' }),
+    flips: z
+      .number()
+      .int()
+      .openapi({
+        description:
+          'Runs in which the screen flipped: back to a screenshot it had before (A→B→A), or a change nobody ' +
+          'approved that went away by itself',
+      }),
+    checks: z.number().int().openapi({ description: 'Checks looked at: the last 20 of the screen on the branch' }),
+    lastSeen: z.number().int().openapi({ description: 'When it last flipped' }),
+    unstableArea: RectSchema.nullable().openapi({
+      description:
+        'Where it keeps changing. POST it as an ignore area (/checks/{id}/areas, kind "ignore") to stop the noise.',
+    }),
+  })
+  .openapi('Flaky');
+
+export const HistoryEntrySchema = z
+  .object({
+    checkId: z.string(),
+    buildId: z.string(),
+    buildNumber: z.number().int(),
+    imageSha: z.string(),
+    result: z.enum(CHECK_RESULTS),
+    review: z.enum(CHECK_REVIEWS),
+    createdAt: z.number().int(),
+  })
+  .openapi('HistoryEntry');
+
+export const ScreenHistorySchema = z
+  .object({
+    snapshotKey: z.string(),
+    name: z.string(),
+    variant: z.record(z.string(), z.string()),
+    branch: z.string(),
+    flaky: FlakySchema.nullable().openapi({
+      description: 'Set when the screen is flaky: it flipped at least twice. Null once an ignore area covers it.',
+    }),
+    items: z
+      .array(HistoryEntrySchema)
+      .openapi({ description: 'The last 20 checks of the screen on the branch, newest first' }),
+  })
+  .openapi('ScreenHistory');
+
 export const BaselineSchema = z
   .object({
     id: z.string(),
