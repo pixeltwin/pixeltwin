@@ -20,7 +20,7 @@ const ROLE_HELP =
 /** What each role may do, shown under the Role select for the chosen one. */
 const ROLE_HINTS: Record<UserRole, string> = {
   viewer:
-    'Cannot change anything. Sees the projects they are added to and those visible to everyone; a project can give them more.',
+    'Sees the projects they are added to and those visible to everyone, but cannot change anything unless a project gives them more.',
   reviewer:
     'Approves or rejects changes and manages ignore and compare areas, in the projects they are added to and those visible to everyone. Cannot change users.',
   admin: 'Manages everything: every project, its settings, tokens and members, and users. Reviews too.',

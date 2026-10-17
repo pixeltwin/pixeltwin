@@ -103,6 +103,8 @@ export const test = base.extend<
     const slug = `e2e-${Math.random().toString(36).slice(2, 10)}`;
     const name = `Shop ${slug.slice(4)}`;
     await admin.call('POST', '/projects', { slug, name });
+    // New projects are members only: the reviewer the tests log in as is added to each one.
+    await admin.call('POST', `/projects/${slug}/members`, { email: REVIEWER, role: 'reviewer' });
     const { token } = await admin.call<{ token: string }>('POST', `/projects/${slug}/tokens`, {
       name: 'e2e',
       scopes: ['read', 'write', 'review'],
