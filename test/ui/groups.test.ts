@@ -98,7 +98,7 @@ describe('UI change groups and flaky screens', () => {
     }
     const check = await html(await t.request('GET', `/ui/checks/${last}?filter=all`, { as: reviewer }));
     expect(check).toContain('class="flaky-badge"');
-    expect(check).toContain('Ignore the area that keeps changing');
+    expect(check).toContain('Ignore noisy area');
     expect(check).toContain('class="history screen-history-strip"');
     expect(check).toContain('class="area-layer unstable-layer"');
 

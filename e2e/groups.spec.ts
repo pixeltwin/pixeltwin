@@ -124,7 +124,7 @@ test('a flaky screen offers to ignore the area that keeps changing, with a previ
   await expect(page.locator('.screen-history-strip .square')).toHaveCount(7);
   const stageArea = page.locator('.pane-overlay .unstable-layer');
   await expect(stageArea).toBeHidden();
-  await page.getByText('Ignore the area that keeps changing').click();
+  await page.getByText('Ignore noisy area').click();
   // The preview, and the same area on the stage while it is unfolded.
   await expect(page.locator('.unstable-preview .unstable-mark rect')).toBeVisible();
   await expect(stageArea).toBeVisible();

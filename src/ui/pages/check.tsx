@@ -770,8 +770,12 @@ function ScreenSection(props: {
       )}
       {flaky && area && props.canReview && (
         <details class="unstable" data-unstable-trigger>
-          <summary class="button small" aria-disabled={blocked || props.off ? 'true' : undefined}>
-            Ignore the area that keeps changing
+          <summary
+            class="button small ignore-change"
+            aria-disabled={blocked || props.off ? 'true' : undefined}
+            title="Ignore the area that keeps changing, for every check of this snapshot"
+          >
+            Ignore noisy area
           </summary>
           <div class="unstable-preview">
             {size && (
