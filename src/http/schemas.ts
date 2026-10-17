@@ -65,6 +65,15 @@ export const BuildSchema = z
     baseBranch: z.string(),
     externalId: z.string().nullable(),
     commitSha: z.string().nullable(),
+    repository: z
+      .string()
+      .nullable()
+      .openapi({ description: '`owner/name` of the repository the commit is in; the SDK fills it in from CI' }),
+    pullRequest: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'The pull (merge) request CI ran for; the GitHub integration comments on it' }),
     state: z.enum(BUILD_STATES),
     createdAt: z.number().int(),
     finalizedAt: z.number().int().nullable(),

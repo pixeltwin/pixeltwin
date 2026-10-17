@@ -11,6 +11,13 @@ export const slugSchema = z
 
 export const branchSchema = z.string().trim().min(1).max(255);
 
+/** `owner/name`; GitLab paths may nest groups (`group/sub/project`). */
+export const repositorySchema = z
+  .string()
+  .trim()
+  .max(200)
+  .regex(/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)+$/, 'Use owner/name, e.g. acme/shop');
+
 // Coordinates fit a 32-bit integer column (snapshot_areas on Postgres).
 const coordinate = z.number().int().max(2_147_483_647);
 
@@ -57,6 +64,10 @@ export const createBuildSchema = z.strictObject({
   baseBranch: branchSchema.optional(),
   externalId: z.string().trim().min(1).max(200).optional(),
   commitSha: z.string().trim().min(1).max(64).optional(),
+  /** `owner/name` (GitLab: `group/sub/project`): with `pullRequest`, where pixeltwin reports the verdict. */
+  repository: repositorySchema.optional(),
+  /** The pull (merge) request number CI ran for. */
+  pullRequest: z.number().int().min(1).max(2_147_483_647).optional(),
   /** A parallel build: this many parts (CI jobs) each finalize it; the last one closes it. */
   parallelTotal: z.number().int().min(1).max(1000).optional(),
 });

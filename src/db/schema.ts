@@ -49,6 +49,10 @@ export interface BuildsTable {
   baseBranch: string;
   externalId: string | null;
   commitSha: string | null;
+  /** `owner/name` of the repository the commit is in (from CI); links the build to a pull request. */
+  repository: string | null;
+  /** The pull (merge) request's number, when CI ran for one. */
+  pullRequest: number | null;
   state: BuildState;
   createdAt: number;
   finalizedAt: number | null;
@@ -59,6 +63,8 @@ export interface BuildsTable {
   timingScreenshotMs: Generated<number>;
   timingUploadMs: Generated<number>;
   timingRetakes: Generated<number>;
+  /** The verdict last announced to webhooks (finalize or a change); internal, never sent to clients. */
+  notifiedVerdict: Generated<string | null>;
 }
 
 /** A finished part of a parallel build. */
@@ -164,6 +170,97 @@ export interface SnapshotAreasTable {
   createdAt: number;
 }
 
+export const WEBHOOK_EVENTS = ['build.finalized', 'build.verdict_changed', 'check.reviewed'] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+export const WEBHOOK_FORMATS = ['json', 'slack'] as const;
+export type WebhookFormat = (typeof WEBHOOK_FORMATS)[number];
+export const DELIVERY_STATES = ['pending', 'delivered', 'failed'] as const;
+export type DeliveryState = (typeof DELIVERY_STATES)[number];
+
+/** A project's GitHub integration. Secrets are sealed (see domain/secrets.ts); flags are 0 or 1. */
+export interface GithubIntegrationsTable {
+  projectId: string;
+  /** `owner/name`, used when a build names none (and to match incoming GitHub webhooks). */
+  repository: string | null;
+  /** `https://api.github.com`, or a GitHub Enterprise Server's `https://host/api/v3`. */
+  apiUrl: string;
+  token: string | null;
+  tokenLast4: string | null;
+  commitStatus: number;
+  prComment: number;
+  autoPromote: number;
+  /** Verifies `X-Hub-Signature-256` of the repository's webhook (auto-promote on merge). */
+  webhookSecret: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A build whose state GitHub should see: coalesced, one replica at a time (`lockedUntil`). */
+export interface GithubSyncsTable {
+  buildId: string;
+  projectId: string;
+  requested: number;
+  done: number;
+  dueAt: number;
+  lockedUntil: number | null;
+  attempts: number;
+  /** The pull request comment this build edits. */
+  commentId: string | null;
+  lastError: string | null;
+  syncedAt: number | null;
+  updatedAt: number;
+}
+
+/** A merged pull request handled by auto-promote (its key makes a redelivery a no-op). */
+export interface GithubMergesTable {
+  projectId: string;
+  repository: string;
+  pullRequest: number;
+  headBranch: string;
+  baseBranch: string;
+  mergeSha: string | null;
+  mergedBy: string | null;
+  deliveryId: string | null;
+  /** Baselines promoted; null while the promotion runs. */
+  promoted: number | null;
+  createdAt: number;
+}
+
+export interface WebhooksTable {
+  id: string;
+  projectId: string;
+  url: string;
+  /** Sealed; signs each delivery (X-Pixeltwin-Signature). */
+  secret: string;
+  secretLast4: string;
+  /** JSON array of WebhookEvent. */
+  events: string;
+  format: WebhookFormat;
+  enabled: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One event sent (or to be sent) to one webhook; the newest are kept as its history. */
+export interface WebhookDeliveriesTable {
+  id: string;
+  webhookId: string;
+  projectId: string;
+  /** A WebhookEvent, or `ping` for Send test. */
+  event: string;
+  /** The JSON body, fixed when the event happened. */
+  payload: string;
+  state: DeliveryState;
+  attempts: number;
+  dueAt: number;
+  lockedUntil: number | null;
+  statusCode: number | null;
+  error: string | null;
+  durationMs: number | null;
+  createdAt: number;
+  finishedAt: number | null;
+}
+
 export interface DB {
   projects: ProjectsTable;
   images: ImagesTable;
@@ -177,10 +274,15 @@ export interface DB {
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
   storedObjects: StoredObjectsTable;
+  githubIntegrations: GithubIntegrationsTable;
+  githubSyncs: GithubSyncsTable;
+  githubMerges: GithubMergesTable;
+  webhooks: WebhooksTable;
+  webhookDeliveries: WebhookDeliveriesTable;
 }
 
 export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew'> & { autoApproveNew: boolean };
-export type Build = Selectable<BuildsTable>;
+export type Build = Omit<Selectable<BuildsTable>, 'notifiedVerdict'>;
 export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;
 export type ReviewEvent = Selectable<ReviewEventsTable>;

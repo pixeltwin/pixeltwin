@@ -121,7 +121,9 @@ async function sumCompareMs(deps: DbDeps, buildIds: string[]): Promise<Map<strin
 }
 
 function toView(build: Build, counts: BuildCounts, partsFinished: number, compareMs: number): BuildView {
-  const { timingChecks, timingScreenshotMs, timingUploadMs, timingRetakes, ...row } = build;
+  // Rows read with selectAll carry the internal notifiedVerdict too; it never leaves the domain.
+  const { timingChecks, timingScreenshotMs, timingUploadMs, timingRetakes, ...rest } = build;
+  const { notifiedVerdict: _notified, ...row } = rest as typeof rest & { notifiedVerdict?: unknown };
   return {
     ...row,
     verdict: deriveVerdict(counts),
@@ -186,6 +188,15 @@ export async function createBuild(
         .where('id', '=', existing.id)
         .execute();
     }
+    // A later part (or a retry) may know the commit or pull request the first one did not.
+    const fill = {
+      ...(existing.commitSha === null && data.commitSha ? { commitSha: data.commitSha } : {}),
+      ...(existing.repository === null && data.repository ? { repository: data.repository } : {}),
+      ...(existing.pullRequest === null && data.pullRequest ? { pullRequest: data.pullRequest } : {}),
+    };
+    if (Object.keys(fill).length > 0) {
+      await deps.db.updateTable('builds').set(fill).where('id', '=', existing.id).execute();
+    }
     if (existing.parallelTotal === null && data.parallelTotal !== undefined) {
       await deps.db
         .updateTable('builds')
@@ -221,6 +232,8 @@ export async function createBuild(
         baseBranch: data.baseBranch ?? project.mainBranch,
         externalId: data.externalId ?? null,
         commitSha: data.commitSha ?? null,
+        repository: data.repository ?? null,
+        pullRequest: data.pullRequest ?? null,
         state: 'open',
         createdAt: Date.now(),
         finalizedAt: null,

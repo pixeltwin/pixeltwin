@@ -305,6 +305,20 @@
               "null"
             ]
           },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name` of the repository the commit is in; the SDK fills it in from CI"
+          },
+          "pullRequest": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The pull (merge) request CI ran for; the GitHub integration comments on it"
+          },
           "state": {
             "type": "string",
             "enum": [
@@ -453,6 +467,8 @@
           "baseBranch",
           "externalId",
           "commitSha",
+          "repository",
+          "pullRequest",
           "state",
           "createdAt",
           "finalizedAt",
@@ -2592,6 +2608,16 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "repository": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9_.-]+(\\/[A-Za-z0-9_.-]+)+$"
+                  },
+                  "pullRequest": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
                   },
                   "parallelTotal": {
                     "type": "integer",

@@ -62,6 +62,34 @@ describe('builds', () => {
     expect(second.build.id).toBe(first.build.id);
   });
 
+  test('keeps the commit, repository and pull request; a reused build fills in those it lacks', async () => {
+    const { build } = await createBuild(deps, 'web', {
+      branch: 'feature/login',
+      externalId: 'ci-7',
+      repository: 'acme/shop',
+      pullRequest: 42,
+    });
+    expect(build).toMatchObject({ commitSha: null, repository: 'acme/shop', pullRequest: 42 });
+    expect(build).not.toHaveProperty('notifiedVerdict');
+    const again = await createBuild(deps, 'web', {
+      externalId: 'ci-7',
+      commitSha: 'a1b2c3d',
+      repository: 'other/repo',
+      pullRequest: 7,
+    });
+    // Missing values are filled in; values the build has stay (the first part of a run named them).
+    expect(again.build).toMatchObject({ id: build.id, commitSha: 'a1b2c3d', repository: 'acme/shop', pullRequest: 42 });
+  });
+
+  test('refuses a repository that is not owner/name and a pull request that is not a positive number', async () => {
+    expect((await appError(createBuild(deps, 'web', { repository: 'no-slash' }))).code).toBe('validation_failed');
+    expect((await appError(createBuild(deps, 'web', { pullRequest: 0 }))).code).toBe('validation_failed');
+    // GitLab paths may have nested groups.
+    expect((await createBuild(deps, 'web', { repository: 'group/sub/project' })).build.repository).toBe(
+      'group/sub/project',
+    );
+  });
+
   test('concurrent creates with one externalId return one build', async () => {
     const results = await Promise.all([1, 2, 3].map(() => createBuild(deps, 'web', { externalId: 'ci-7' })));
     expect(new Set(results.map((r) => r.build.id)).size).toBe(1);
