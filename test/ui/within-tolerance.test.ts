@@ -48,7 +48,7 @@ describe('UI: checks within the tolerance', () => {
       body.slice(body.indexOf(`id="${id}"`), body.indexOf('</a>', body.indexOf(`id="${id}"`)));
     expect(card(home.id)).toContain('class="check-card card-passed card-tolerance"');
     expect(card(home.id)).toContain('<span class="card-state">passed</span>');
-    expect(card(home.id)).toContain('within tolerance 1% ≤ 2%</span>');
+    expect(card(home.id)).toContain('<span class="tolerance-word">within tolerance </span>1% ≤ 2%</span>');
     expect(card(home.id)).toContain('data-diff="/api/v1/images/');
     expect(card(footer.id)).toContain('class="check-card card-passed"');
     expect(card(footer.id)).not.toContain('tolerance');

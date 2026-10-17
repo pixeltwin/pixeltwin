@@ -40,7 +40,6 @@ import {
   flakyText,
   HistoryStrip,
   thumbnailSha,
-  toleranceText,
   toneOf,
   Variant,
 } from '../components';
@@ -938,13 +937,13 @@ function GroupNote(props: { ui: Ui; check: CheckView; group: ChangeGroup; filter
 function ToleranceNote({ check, canReview }: { check: CheckView; canReview: boolean }) {
   if (!check.withinTolerance) return null;
   const percent = check.diff && 'percent' in check.diff ? check.diff.percent : 0;
-  const amount = `${percent > 0 ? `${percent}%` : 'Less than 0.01%'} of the pixels differ; up to ${check.tolerancePercent}% is allowed.`;
+  const amount = `${percent > 0 ? `${percent}%` : 'less than 0.01%'} of the pixels differ; up to ${check.tolerancePercent}% is allowed.`;
   const open = check.review === 'none' || check.review === 'pending';
   return (
     <section class="tolerance-note" aria-label="Within tolerance" data-tolerance-note>
       <p>
         <strong>{check.review === 'pending' ? 'Within tolerance, waits for review' : 'Passed within tolerance'}</strong>
-        {` (${toleranceText(check)}). `}
+        {': '}
         <span class="muted">{amount}</span>
       </p>
       {open && canReview && (

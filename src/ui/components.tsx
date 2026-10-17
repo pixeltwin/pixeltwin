@@ -430,7 +430,8 @@ export function ToleranceTag({ check }: { check: ToleranceFields }) {
       class="tolerance-tag"
       title={`Within tolerance: some pixels differ (${toleranceText(check)} allowed), so it was not called changed`}
     >
-      {`within tolerance ${toleranceText(check)}`}
+      <span class="tolerance-word">within tolerance </span>
+      {toleranceText(check)}
     </span>
   );
 }

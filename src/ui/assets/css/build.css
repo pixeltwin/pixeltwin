@@ -243,6 +243,10 @@
   .check-card-body {
     padding: var(--space-2);
   }
+  /* Two cards a row: the numbers stay, the words are the chip's (and the tooltip's). */
+  .tolerance-word {
+    display: none;
+  }
 }
 /* Filter chips at the left, the search at the right; they wrap on narrow screens. */
 .build-tools {
