@@ -167,17 +167,62 @@ export function BuildTime({ timing }: { timing: BuildView['timing'] }) {
  * by the project setting) against those that needed a person (changed or new: decided or waiting).
  */
 export function ReviewStats({ counts }: { counts: BuildCounts }) {
+  if (counts.total === 0) return null;
   const auto = counts.result.unchanged + counts.autoApproved;
   const { pending, approved, rejected, outdated } = counts.review;
   const needed = pending + approved - counts.autoApproved + rejected + outdated;
   const left = pending > 0 ? ` · ${pending} left` : '';
   return (
-    <span
-      class="review-stats"
-      title="Passed automatically: unchanged, or new and approved by the project setting. Needed review: changed or new, decided by a person or still waiting."
-    >
-      {`${auto} automatically · ${needed} needed review${left}`}
+    <span class="review-stats" title={`${auto} automatically · ${needed} needed review${left}`}>
+      <Donut
+        parts={[
+          { name: 'auto', value: auto },
+          { name: 'reviewed', value: needed - pending },
+          { name: 'left', value: pending },
+        ]}
+      />
+      <span class="legend-item">
+        <span class="legend-auto">{auto}</span> auto
+      </span>
+      <span class="legend-item">
+        <span class="legend-review">{needed}</span> review
+      </span>
     </span>
+  );
+}
+
+/** Radius of the donut's ring in its 20 × 20 box; its length is the whole. */
+const DONUT_R = 8;
+const DONUT_LENGTH = 2 * Math.PI * DONUT_R;
+/** Two decimals at most, no trailing zeros: `50.27`, `0`. */
+const fixed = (n: number) => String(Number(n.toFixed(2)));
+
+/** A small ring split into parts, clockwise from the top; an empty one is just its track. */
+function Donut({ parts }: { parts: Array<{ name: string; value: number }> }) {
+  const total = parts.reduce((sum, p) => sum + p.value, 0);
+  let start = 0;
+  return (
+    <svg class="donut" viewBox="0 0 20 20" aria-hidden="true">
+      <g transform="rotate(-90 10 10)">
+        <circle class="donut-track" cx="10" cy="10" r={DONUT_R} />
+        {parts.map((p) => {
+          if (total === 0 || p.value === 0) return null;
+          const length = (p.value / total) * DONUT_LENGTH;
+          const ring = (
+            <circle
+              class={`donut-${p.name}`}
+              cx="10"
+              cy="10"
+              r={DONUT_R}
+              stroke-dasharray={`${fixed(length)} ${fixed(DONUT_LENGTH - length)}`}
+              stroke-dashoffset={fixed(-start)}
+            />
+          );
+          start += length;
+          return ring;
+        })}
+      </g>
+    </svg>
   );
 }
 
