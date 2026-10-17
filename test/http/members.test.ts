@@ -158,6 +158,31 @@ describe('project members (API)', () => {
     for (const sha of shas) expect(await status(other, sha)).toBe(404);
   });
 
+  test('thumbnails: the same access as the image, for users and tokens', async () => {
+    await createProject(t.deps, { slug: 'shop', name: 'Shop' });
+    const buildId = await openBuild(t.deps, 'shop');
+    const { check } = await submit(
+      t.deps,
+      buildId,
+      makePng(400, 400, WHITE, [{ x: 1, y: 1, width: 30, height: 30, color: BLACK }]),
+    );
+    const urls = [
+      `/api/v1/images/${check.imageSha}/thumb?w=160`,
+      `/api/v1/images/${check.imageSha}/thumb?w=160&crop=0,0,100,100`,
+    ];
+    const status = async (as: Who | { token: string }, url: string) => (await t.request('GET', url, { as })).status;
+    for (const url of urls) {
+      const outside = await t.request('GET', url, { as: alice });
+      expect(await problemOf(outside)).toMatchObject({ status: 404, code: 'image_not_found' });
+    }
+    await add(admin, 'shop', { email: 'alice@example.com', role: 'viewer' });
+    for (const url of urls) expect(await status(alice, url)).toBe(200);
+    for (const url of urls) expect(await status(bob, url)).toBe(404);
+    for (const url of urls) expect(await status(admin, url)).toBe(200);
+    const [own, other] = [await t.tokenAs('shop', ['read']), await t.tokenAs('app', ['read'])];
+    for (const url of urls) expect([await status(own, url), await status(other, url)]).toEqual([200, 404]);
+  });
+
   test('maintainers and admins search users to add; members with less, outsiders and tokens cannot', async () => {
     const search = (as: Who | { token: string }, q: string, slug = 'web') =>
       t.request('GET', `/api/v1/projects/${slug}/members/candidates?q=${encodeURIComponent(q)}`, { as });
