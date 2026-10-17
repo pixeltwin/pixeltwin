@@ -40,6 +40,7 @@ import {
   flakyText,
   HistoryStrip,
   thumbnailSha,
+  toleranceText,
   toneOf,
   Variant,
 } from '../components';
@@ -845,7 +846,10 @@ function Suggestion(props: { ui: Ui; check: CheckView; filter: CheckFilter; canR
   const { ui, check, filter } = props;
   const suggestion = check.suggestion;
   if (!suggestion) return null;
-  const decidable = check.review === 'pending' || (suggestion.action === 'approve' && check.review === 'rejected');
+  const decidable =
+    check.review === 'pending' ||
+    (check.withinTolerance && check.review === 'none') ||
+    (suggestion.action === 'approve' && check.review === 'rejected');
   return (
     <section class={`suggestion suggestion-${suggestion.action}`} aria-label="Agent suggestion" data-suggestion>
       <p class="suggestion-text">
@@ -922,6 +926,32 @@ function GroupNote(props: { ui: Ui; check: CheckView; group: ChangeGroup; filter
             {`Approve all ${pending}`}
           </button>
         </form>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A check that passed only within the tolerance: how much differs against the tolerance, and, while
+ * nobody decided, what the reviewer can do about it. The diff and the changes below show where.
+ */
+function ToleranceNote({ check, canReview }: { check: CheckView; canReview: boolean }) {
+  if (!check.withinTolerance) return null;
+  const percent = check.diff && 'percent' in check.diff ? check.diff.percent : 0;
+  const amount = `${percent > 0 ? `${percent}%` : 'Less than 0.01%'} of the pixels differ; up to ${check.tolerancePercent}% is allowed.`;
+  const open = check.review === 'none' || check.review === 'pending';
+  return (
+    <section class="tolerance-note" aria-label="Within tolerance" data-tolerance-note>
+      <p>
+        <strong>{check.review === 'pending' ? 'Within tolerance, waits for review' : 'Passed within tolerance'}</strong>
+        {` (${toleranceText(check)}). `}
+        <span class="muted">{amount}</span>
+      </p>
+      {open && canReview && (
+        <p class="muted">
+          Approve to take this screenshot as the baseline, so the drift does not add up; reject it if it is a real
+          change.
+        </p>
       )}
     </section>
   );
@@ -1060,6 +1090,7 @@ function Info(props: {
   return (
     <aside class="review-info" aria-label="About this check">
       {check.suggestion && <Suggestion ui={props.ui} check={check} filter={props.filter} canReview={props.canReview} />}
+      <ToleranceNote check={check} canReview={props.canReview} />
       {diffError && <p class="diff-error">{diffError.message}</p>}
       {props.group && (
         <GroupNote ui={props.ui} check={check} group={props.group} filter={props.filter} canReview={props.canReview} />
@@ -1238,7 +1269,9 @@ function ActionBar(props: {
     );
   }
   if (!props.canReview) return null;
-  const reviewable = check.review === 'pending' || check.review === 'rejected';
+  // One that passed within the tolerance can still be taken as the baseline, or flagged as a change.
+  const passedWithin = check.withinTolerance && check.review === 'none';
+  const reviewable = check.review === 'pending' || check.review === 'rejected' || passedWithin;
   const resettable = check.review === 'approved' || check.review === 'rejected';
   if (!reviewable && !resettable) return null;
   return (
@@ -1252,14 +1285,18 @@ function ActionBar(props: {
       )}
       {reviewable && (
         <div class="review-buttons">
-          {check.review === 'pending' && (
+          {(check.review === 'pending' || passedWithin) && (
             // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
             <RejectMenu
               action={ui.url(`/ui/checks/${check.id}/reject`)}
               label="Reject"
               dataKey="r"
               up
-              title="Reject, with why (R); Shift+R rejects without a reason"
+              title={
+                passedWithin
+                  ? 'Reject as a real change, with why (R); the build is then rejected'
+                  : 'Reject, with why (R); Shift+R rejects without a reason'
+              }
             >
               <input type="hidden" name="filter" value={filter.key} />
             </RejectMenu>
@@ -1271,8 +1308,18 @@ function ActionBar(props: {
           )}
           <form class="review-form" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-review-form>
             <input type="hidden" name="filter" value={filter.key} />
-            <button type="submit" class="approve" data-key="a" data-key-label="Approve">
-              Approve <kbd>A</kbd>
+            <button
+              type="submit"
+              class="approve"
+              data-key="a"
+              data-key-label={check.withinTolerance ? 'Approve as new baseline' : 'Approve'}
+              title={
+                check.withinTolerance
+                  ? 'Take this screenshot as the baseline, so the drift within the tolerance does not add up (A)'
+                  : undefined
+              }
+            >
+              {check.withinTolerance ? 'Approve as new baseline' : 'Approve'} <kbd>A</kbd>
             </button>
           </form>
         </div>
@@ -1296,6 +1343,7 @@ function Filmstrip(props: {
           const sha = thumbnailSha(c);
           const size = props.sizes.get(sha);
           const state = c.review === 'none' ? c.result : c.review;
+          const label = c.withinTolerance && c.review === 'none' ? 'passed within tolerance' : state;
           return (
             <li>
               <a
@@ -1304,6 +1352,7 @@ function Filmstrip(props: {
                 aria-current={c.id === current ? 'true' : undefined}
                 data-frame={c.id}
                 data-review={c.review}
+                data-tolerance={c.withinTolerance ? '' : undefined}
               >
                 <img
                   draggable="false"
@@ -1313,7 +1362,7 @@ function Filmstrip(props: {
                   width={size?.width}
                   height={size?.height}
                 />
-                <Dot tone={toneOf(state)} label={`${c.name}: ${state}`} />
+                <Dot tone={toneOf(state)} label={`${c.name}: ${label}`} />
               </a>
             </li>
           );
@@ -1555,7 +1604,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         return c.redirect(ui.url(`/ui/builds/${check.buildId}?${at}${page}done=${done}#${check.id}`), 303);
       }
       // Keep the reviewer moving: the next check awaiting review, else back to the build.
-      const { nextPending } = await checkNeighbors(s.deps, check);
+      const { nextPending } = await checkNeighbors(s.deps, check, { withinTolerance: filterKey === 'tolerance' });
       return c.redirect(
         ui.url(
           nextPending ? `/ui/checks/${nextPending}?${filter}done=${done}` : `/ui/builds/${check.buildId}?done=${done}`,
