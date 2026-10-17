@@ -81,5 +81,15 @@ npx @pixeltwin/client promote feature/login --only <snapshot key> --only <snapsh
 
 Admins can do the same in the web UI: Promote on the branch's lane, with a checkbox per screen.
 
+## `pixeltwin mcp`
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server on stdin/stdout for agents
+(Claude Code, Cursor, …), configured by `PIXELTWIN_URL`, `PIXELTWIN_TOKEN` and `PIXELTWIN_PROJECT`
+(and `PIXELTWIN_BRANCH`, else the checked-out branch). Tools: `latest_build`, `list_changes`,
+`get_check`, `get_check_images` (cropped to an element change or a rectangle, shrunk to 1568 px at
+most), `approve_check` and `reject_check` (with a `reason`) and `add_ignore_area`. See the
+[main README](../../README.md#agents-pixeltwin-mcp) for a `.mcp.json`. It is a small JSON-RPC loop of
+its own: the package keeps no dependencies.
+
 `@pixeltwin/client/run` exports the run lifecycle the integrations share (`resolveSettings`,
 `startRun`, `finishRun`, `summaryLines`), for wiring pixeltwin into another runner.

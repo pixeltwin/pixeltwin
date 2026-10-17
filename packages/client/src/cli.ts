@@ -1,6 +1,7 @@
 // `pixeltwin finalize`: the CI step after every shard. `pixeltwin promote`: the CI step after a
-// merge. Same environment as the test run.
+// merge. `pixeltwin mcp`: a Model Context Protocol server for agents. Same environment as the test run.
 import { PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from './errors.js';
+import { serveMcp } from './mcp.js';
 import { clientFor, externalIdFor, finishRun, resolveSettings } from './run.js';
 
 const HELP = `Usage: pixeltwin finalize [--gate] [--wait <seconds>] [--build <id>]
@@ -16,7 +17,13 @@ Usage: pixeltwin promote <branch> [--only <snapshot key>]... [--dry-run]
 
 After merging <branch>, copies its baselines to the main branch so the main branch does not ask
 to review the same screens again. --only picks screens (repeat it); --dry-run lists what would
-change. Needs a token with the write scope.`;
+change. Needs a token with the write scope.
+
+Usage: pixeltwin mcp
+
+A Model Context Protocol server on stdin/stdout for agents such as Claude Code: tools to read a
+build's changes element by element, look at the screenshots and approve or reject with a reason.
+Needs PIXELTWIN_URL, PIXELTWIN_TOKEN (read, and review to approve) and PIXELTWIN_PROJECT.`;
 
 async function promote(rest: string[], env: Record<string, string | undefined>): Promise<number> {
   const branch = rest[0] && !rest[0].startsWith('--') ? rest[0] : undefined;
@@ -72,6 +79,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
     return command ? 0 : 2;
   }
   if (command === 'promote') return promote(rest, env);
+  if (command === 'mcp') return serveMcp(env);
   if (command !== 'finalize') {
     console.error(`pixeltwin: unknown command "${command}".\n\n${HELP}`);
     return 2;
