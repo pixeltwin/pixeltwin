@@ -49,3 +49,13 @@ describe('secrets at rest', () => {
     expect(signatureMatches('s3cret', body, undefined)).toBe(false);
   });
 });
+
+describe('shared secret tokens', () => {
+  test('GitLab-style tokens compare in constant time, any length', async () => {
+    const { secretMatches } = await import('../../src/domain/secrets');
+    expect(secretMatches('a-long-secret-token', 'a-long-secret-token')).toBe(true);
+    expect(secretMatches('a-long-secret-token', 'a-long-secret-tokeN')).toBe(false);
+    expect(secretMatches('a-long-secret-token', 'short')).toBe(false);
+    expect(secretMatches('a-long-secret-token', undefined)).toBe(false);
+  });
+});

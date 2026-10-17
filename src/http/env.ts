@@ -3,6 +3,7 @@ import type { Principal } from '../domain/auth/policy';
 import type { SetupState } from '../domain/auth/setup';
 import type { Deps } from '../domain/deps';
 import type { Logger } from '../log';
+import type { Notifier } from '../notify/notifier';
 import type { LoginLimiter } from './rate-limit';
 
 export const API = '/api/v1';
@@ -15,6 +16,8 @@ export interface Services {
   logger: Logger;
   setup: SetupState;
   loginLimiter: LoginLimiter;
+  /** Queues and sends GitHub/GitLab updates and webhooks; the same object is `deps.events`. */
+  notifier: Notifier;
 }
 
 export interface AppEnv {

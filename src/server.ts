@@ -4,9 +4,11 @@ import { DiffPool } from './diff/pool';
 import { SetupState } from './domain/auth/setup';
 import type { Deps } from './domain/deps';
 import { startRetentionJob } from './domain/retention-job';
+import { SecretBox } from './domain/secrets';
 import { createApp } from './http/app';
 import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
+import { Notifier } from './notify/notifier';
 import { DatabaseStorage } from './storage/database';
 import { LocalStorage } from './storage/local';
 
@@ -31,9 +33,17 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     runDiff: pool.run,
     diffBacklog: () => pool.backlog,
     limits: { maxImageBytes: config.maxImageBytes, maxImagePixels: config.maxImagePixels },
+    secrets: new SecretBox(config.secretKey),
   };
+  const notifier = new Notifier({
+    deps,
+    publicUrl: config.publicUrl,
+    logger,
+    blockPrivate: config.outboundBlockPrivate,
+  });
+  deps.events = notifier;
   const { state, token } = await SetupState.init(deps, config.setupToken);
-  const app = createApp({ deps, config, logger, setup: state, loginLimiter: new LoginLimiter() });
+  const app = createApp({ deps, config, logger, setup: state, loginLimiter: new LoginLimiter(), notifier });
 
   const server = Bun.serve({
     port: config.port,
@@ -42,6 +52,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     maxRequestBodySize: Math.ceil(config.maxImageBytes / 3) * 4 + 1024 * 1024,
   });
   const retention = startRetentionJob({ deps, handle, logger });
+  notifier.start();
   const url = server.url.href.replace(/\/$/, '');
   logger.info('listening', {
     url,
@@ -50,6 +61,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     ...(handle.kind === 'postgres' ? { databasePoolMax: config.databasePoolMax } : {}),
     storage: config.storage,
     dataDir: config.dataDir,
+    secretsEncrypted: config.secretKey !== null,
     diffWorkers: config.diffWorkers,
   });
   if (token && config.setupToken) {
@@ -74,6 +86,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
       await Promise.race([server.stop(false), Bun.sleep(config.shutdownGraceMs)]);
       await server.stop(true);
       await retention.stop();
+      await notifier.stop();
       await pool.close();
       await handle.close();
     },

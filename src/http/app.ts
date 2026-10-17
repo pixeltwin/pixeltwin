@@ -15,6 +15,7 @@ import { registerBaselineRoutes } from './routes/baselines';
 import { registerBuildRoutes } from './routes/builds';
 import { registerCheckRoutes } from './routes/checks';
 import { registerImageRoutes } from './routes/images';
+import { INBOUND_WEBHOOK_PATH, registerIntegrationRoutes } from './routes/integrations';
 import { registerProjectRoutes } from './routes/projects';
 import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
@@ -104,7 +105,9 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
       },
     }),
   );
-  app.use(`${API}/*`, authenticate(services));
+  // Code host webhooks bring their own secret: no session, so no cookie and no CSRF check applies.
+  const auth = authenticate(services);
+  app.use(`${API}/*`, (c, next) => (INBOUND_WEBHOOK_PATH.test(c.req.path) ? next() : auth(c, next)));
 
   app.onError((err, c) => {
     const requestId = c.get('requestId') ?? newId('req');
@@ -156,6 +159,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerBuildRoutes(app, services);
   registerCheckRoutes(app, services);
   registerBaselineRoutes(app, services);
+  registerIntegrationRoutes(app, services);
   registerImageRoutes(app, services);
   registerDocRoutes(app, services);
   registerUi(app, services);

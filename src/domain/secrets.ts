@@ -1,4 +1,12 @@
-import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import { AppError } from '../errors';
 
 // Secrets pixeltwin must send again later (a GitHub token, webhook signing secrets) cannot be
@@ -69,4 +77,11 @@ export function signatureMatches(secret: string, body: Uint8Array, header: strin
   if (!hex) return false;
   const expected = Buffer.from(hmacSha256Hex(secret, body), 'hex');
   return timingSafeEqual(expected, Buffer.from(hex, 'hex'));
+}
+
+/** Compares a shared secret sent as is (GitLab's X-Gitlab-Token) in constant time, whatever its length. */
+export function secretMatches(secret: string, sent: string | undefined): boolean {
+  if (!sent) return false;
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(secret), digest(sent));
 }
