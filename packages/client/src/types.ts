@@ -24,6 +24,10 @@ export interface BuildCounts {
   withAreas: number;
   /** Checks with an agent's open suggestion, waiting for a person (agent review policy). */
   suggested: number;
+  /** Unchanged only because the diff is within the tolerance, whatever their review (servers before it leave it out). */
+  withinTolerance?: number;
+  /** Of withinTolerance, those that passed with no review. */
+  withinTolerancePassed?: number;
 }
 
 /** A branch screen whose baseline differs from main's: what a promotion would change. */
@@ -153,6 +157,11 @@ export interface Check {
   tolerancePercent: number;
   result: CheckResult;
   review: CheckReview;
+  /**
+   * Unchanged only because the diff is within the tolerance: some pixels differ (`diff.percent`,
+   * at most `tolerancePercent`). Servers before it leave it out.
+   */
+  withinTolerance?: boolean;
   diff: Diff | DiffError | null;
   reviewedBy: string | null;
   reviewedAt: number | null;
@@ -205,6 +214,8 @@ export interface CheckInput {
   ignoreRegions?: Rect[];
   colorThreshold?: number;
   tolerancePercent?: number;
+  /** A diff within the tolerance waits for review instead of passing (default: the project's setting). */
+  reviewWithinTolerance?: boolean;
   /** Page elements in the screenshot (screenshot pixels), at most 300: the diff then names what changed. */
   elements?: PageElement[];
 }

@@ -26,7 +26,7 @@ if (done.verdict !== 'passed') process.exitCode = 1;  // empty | error | rejecte
 | Method | |
 |---|---|
 | `openBuild(project, { branch?, baseBranch?, commitSha?, repository?, pullRequest?, externalId?, parallelTotal? })` | the same `externalId` returns the same build (`created: false`); one is generated when missing. `parallelTotal`: that many parts (CI jobs) finalize it |
-| `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent?, elements? })` | answers after the comparison; the same name + variant again replaces the check. `elements`: the page's elements in screenshot pixels (`collectElements` in the page, then `elementsToPixels`); with them the diff names what changed |
+| `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent?, reviewWithinTolerance?, elements? })` | answers after the comparison; the same name + variant again replaces the check. `elements`: the page's elements in screenshot pixels (`collectElements` in the page, then `elementsToPixels`); with them the diff names what changed |
 | `getBuild(id)`, `listBuilds(project, { branch?, limit? })`, `listChecks(buildId, { result?, review?, limit?, cursor? })`, `getCheck(id)`, `checkElements(id)`, `listReviews(id)` | |
 | `review(checkId, 'approve' \| 'reject', { reason? })` | needs the `review` scope; `outcome` says whether it applied or the project's agent review policy recorded it as a suggestion |
 | `addIgnoreArea(checkId, { x, y, width, height })` | an ignore area on the check's snapshot; the check is compared again |

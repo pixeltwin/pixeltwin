@@ -54,10 +54,12 @@ export class PixeltwinNetworkError extends Error {
 
 /**
  * Whether `failOnChange` fails this check: anything but unchanged, unless it is approved already
- * (a new screenshot the project approves automatically).
+ * (a new screenshot the project approves automatically), and an unchanged one that waits for review
+ * (within the tolerance, under `reviewWithinTolerance`).
  */
 export function failsOnChange(check: Check): boolean {
-  return check.result !== 'unchanged' && !(check.result !== 'error' && check.review === 'approved');
+  if (check.result === 'unchanged') return check.review === 'pending';
+  return !(check.result !== 'error' && check.review === 'approved');
 }
 
 /**
@@ -74,7 +76,8 @@ export class PixeltwinCheckError extends Error {
       .map((k) => check.variant[k]);
     const variant = values.length ? ` (${values.join(', ')})` : '';
     const diff = check.diff && 'percent' in check.diff ? `, ${check.diff.percent}% of pixels` : '';
-    super(`pixeltwin: "${check.name}"${variant} is ${check.result}${diff}. Review: ${url}`);
+    const what = check.withinTolerance ? 'within the tolerance but waits for review' : check.result;
+    super(`pixeltwin: "${check.name}"${variant} is ${what}${diff}. Review: ${url}`);
     this.name = 'PixeltwinCheckError';
     this.check = check;
     this.url = url;

@@ -137,6 +137,7 @@ export class PixeltwinClient {
       ignoreRegions,
       ...(input.colorThreshold === undefined ? {} : { colorThreshold: input.colorThreshold }),
       ...(input.tolerancePercent === undefined ? {} : { tolerancePercent: input.tolerancePercent }),
+      ...(input.reviewWithinTolerance === undefined ? {} : { reviewWithinTolerance: input.reviewWithinTolerance }),
     };
     const send = async (elements: PageElement[] | undefined) => {
       const form = new FormData();
@@ -284,7 +285,14 @@ export class PixeltwinClient {
 
   async listChecks(
     buildId: string,
-    query: { result?: CheckResult; review?: CheckReview; limit?: number; cursor?: string } = {},
+    query: {
+      result?: CheckResult;
+      review?: CheckReview;
+      /** Only checks that passed within the tolerance (a server before it ignores this: filter on the flag). */
+      withinTolerance?: boolean;
+      limit?: number;
+      cursor?: string;
+    } = {},
   ): Promise<Page<Check>> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));

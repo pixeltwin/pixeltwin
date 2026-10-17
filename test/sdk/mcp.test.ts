@@ -599,3 +599,69 @@ describe('pixeltwin mcp and the reasons screens were rejected', () => {
     });
   }, 60_000);
 });
+
+describe('pixeltwin mcp and checks within the tolerance', () => {
+  let rpc: Rpc;
+  let tc: PixeltwinClient;
+  let buildId: string;
+  let strict: string;
+  let passed: string;
+
+  const settings = (body: Record<string, unknown>) =>
+    fetch(`${server.url}/api/v1/projects/drift`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: server.cookie, origin: server.url },
+      body: JSON.stringify(body),
+    });
+
+  beforeAll(async () => {
+    const token = await server.newProject('drift');
+    tc = new PixeltwinClient({ url: server.url, token });
+    rpc = startMcp({ PIXELTWIN_URL: server.url, PIXELTWIN_TOKEN: token, PIXELTWIN_PROJECT: 'drift' });
+    expect((await settings({ tolerancePercent: 5 })).status).toBe(200);
+    const first = await tc.openBuild('drift', { branch: 'main' });
+    for (const name of ['home', 'pricing', 'docs']) await tc.postCheck(first.id, { name, image: headerPage(30, 100) });
+    const approved = await fetch(`${server.url}/api/v1/builds/${first.id}/approve`, {
+      method: 'POST',
+      headers: { cookie: server.cookie, origin: server.url },
+    });
+    expect(approved.status).toBe(200);
+    // The logo grows by 4 px: 32 of 12 000 pixels, well within 5%.
+    const build = await tc.openBuild('drift', { branch: 'main' });
+    buildId = build.id;
+    passed = (await tc.postCheck(buildId, { name: 'home', image: headerPage(34, 100) })).id;
+    strict = (await tc.postCheck(buildId, { name: 'pricing', image: headerPage(34, 100), reviewWithinTolerance: true }))
+      .id;
+    await tc.postCheck(buildId, { name: 'docs', image: headerPage(30, 100) });
+  }, 60_000);
+
+  afterAll(async () => {
+    await rpc?.stop();
+  });
+
+  test('the check that waits is listed, the passed one counted, and listed on request', async () => {
+    const listed = await tool('list_changes', { buildId }, rpc);
+    expect(texts(listed)[0]).toContain('verdict pending; 0 changed or new checks and 1 within the tolerance.');
+    expect(texts(listed)[0]).toContain(
+      '1 check passed within the tolerance (some pixels differ): pass includeWithinTolerance',
+    );
+    const { checks } = lastJson(listed);
+    expect(checks).toEqual([
+      expect.objectContaining({
+        checkId: strict,
+        result: 'unchanged',
+        review: 'pending',
+        withinTolerance: true,
+        tolerancePercent: 5,
+      }),
+    ]);
+
+    const all = lastJson(await tool('list_changes', { buildId, includeWithinTolerance: true }, rpc));
+    expect(all.checks.map((c: { checkId: string }) => c.checkId).sort()).toEqual([passed, strict].sort());
+    expect(all.checks.find((c: { checkId: string }) => c.checkId === passed)).toMatchObject({
+      review: 'none',
+      withinTolerance: true,
+      percent: expect.any(Number),
+    });
+  });
+});

@@ -56,7 +56,7 @@ On `browser`: the viewport. On an element: that element. Resolves to the compare
 |---|---|
 | `ignore` | elements, `$()` or `$$()` results (every element), CSS selectors (`'.delivery-date'`: every match, found when the screenshot is taken) or `{x, y, width, height}` rectangles in screenshot pixels: never compared |
 | `variant` | extra variant keys for this check |
-| `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
+| `colorThreshold`, `tolerancePercent`, `reviewWithinTolerance` | override the project's settings for this check (`reviewWithinTolerance`: a diff within the tolerance waits for review instead of passing) |
 | `retakes`, `failOnChange` | override the service's settings for this check |
 | `elements` | `false`: send no page elements with this screenshot |
 

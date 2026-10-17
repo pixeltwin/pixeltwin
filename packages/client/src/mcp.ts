@@ -270,6 +270,7 @@ function changeItem(check: Check, url: string, flaky: Flaky | undefined, rejecte
     name: `${check.name}${variantText(check.variant)}`,
     result: check.result,
     review: check.review,
+    ...(check.withinTolerance && diff ? { withinTolerance: true, tolerancePercent: diff.tolerancePercent } : {}),
     ...(flaky ? { flakyScore: flaky.score } : {}),
     ...(diff ? { percent: diff.percent, summary: diff.summary } : {}),
     ...(diff?.changes
@@ -370,12 +371,17 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
     {
       name: 'list_changes',
       description:
-        "What changed in a build: the checks that differ from their baselines (changed) or have none yet (new), each with its one-sentence summary and its element changes (moved, resized, text, style, added, removed, with the element's key such as [data-testid=submit] and its boxes in screenshot pixels), its review state and any agent suggestion. Checks with exactly the same changes (a header changed on 40 screens) come once as a change group: its members by name (with their review state unless pending) and one representative check with the summary and changes they share; judge the representative and decide the group with review_group. `flakyScore` (0 to 1) marks a check whose screen keeps flipping by itself: its change is likely noise. `rejections` (and `rejectedBefore` on group members) are the screen's earlier rejections with their category, comment, who and when, and a hint on what to do: read them before deciding. Defaults to the latest build of the branch.",
+        "What changed in a build: the checks that differ from their baselines (changed) or have none yet (new), each with its one-sentence summary and its element changes (moved, resized, text, style, added, removed, with the element's key such as [data-testid=submit] and its boxes in screenshot pixels), its review state and any agent suggestion. Checks with exactly the same changes (a header changed on 40 screens) come once as a change group: its members by name (with their review state unless pending) and one representative check with the summary and changes they share; judge the representative and decide the group with review_group. `flakyScore` (0 to 1) marks a check whose screen keeps flipping by itself: its change is likely noise. `rejections` (and `rejectedBefore` on group members) are the screen's earlier rejections with their category, comment, who and when, and a hint on what to do: read them before deciding. `withinTolerance` marks an unchanged check whose pixels differ by no more than `tolerancePercent` (`percent`): it passed unless the project makes such checks wait for review; those waiting are always listed, the others with includeWithinTolerance. Approving one makes its screenshot the baseline (small drift does not add up); reject one only if the difference is a real change. Defaults to the latest build of the branch.",
       inputSchema: {
         type: 'object',
         properties: {
           buildId: { type: 'string', description: 'A build id (bld_…); default: the latest build of `branch`' },
           branch: { type: 'string', description: 'Used when buildId is missing' },
+          includeWithinTolerance: {
+            type: 'boolean',
+            description:
+              'Also list the checks that passed within the tolerance (some pixels differ); default false: only counted',
+          },
         },
         additionalProperties: false,
       },
@@ -399,6 +405,27 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
             cursor = page.nextCursor ?? undefined;
           } while (cursor);
         }
+        // Within the tolerance: unchanged, so not in the lists above. Those waiting for review always
+        // come (a person or an agent has to decide); the passed ones on request. An older server
+        // ignores the filter, hence the check of the flag.
+        const tolerated: Check[] = [];
+        if ((build.counts.withinTolerance ?? 0) > 0) {
+          let cursor: string | undefined;
+          do {
+            const page = await c.listChecks(buildId, {
+              withinTolerance: true,
+              limit: 200,
+              ...(cursor ? { cursor } : {}),
+            });
+            tolerated.push(...page.items.filter((check) => check.withinTolerance === true));
+            cursor = page.nextCursor ?? undefined;
+          } while (cursor);
+        }
+        const includeTolerated = args.includeWithinTolerance === true;
+        const passedTolerated = tolerated.filter((check) => check.review === 'none');
+        const changedOrNew = checks.length;
+        checks.push(...tolerated.filter((check) => includeTolerated || check.review !== 'none'));
+        const listedTolerated = checks.length - changedOrNew;
         const [groups, noisy, rejections] = await Promise.all([
           optional(c.listGroups(buildId), []),
           optional(c.noisyScreens(project), []),
@@ -464,13 +491,16 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
         const flakyCount = checks.filter((check) => flakyByScreen.has(check.snapshotKey)).length;
         const rejectedCount = checks.filter((check) => rejectedByScreen.has(check.snapshotKey)).length;
         const head = [
-          `Build #${build.number} on ${build.branch}: verdict ${build.verdict}; ${plural(checks.length, 'changed or new check')}`,
+          `Build #${build.number} on ${build.branch}: verdict ${build.verdict}; ${plural(changedOrNew, 'changed or new check')}${listedTolerated ? ` and ${listedTolerated} within the tolerance` : ''}`,
           groupItems.length
             ? `: ${plural(groupItems.length, 'change group')} of ${plural(grouped.size, 'check')} (each member has the same changes as its representative: judge it once, decide with review_group) and ${single.length} on ${single.length === 1 ? 'its' : 'their'} own.`
             : '.',
           flakyCount ? ` ${plural(flakyCount, 'check')} on flaky screens (flakyScore): likely noise.` : '',
           rejectedCount
             ? ` ${plural(rejectedCount, 'check')} on screens rejected before (rejections, rejectedBefore): read why before deciding.`
+            : '',
+          passedTolerated.length
+            ? ` ${plural(passedTolerated.length, 'check')} passed within the tolerance (some pixels differ)${includeTolerated ? ', listed with withinTolerance' : ': pass includeWithinTolerance to list them'}.`
             : '',
         ].join('');
         return {

@@ -70,7 +70,7 @@ the test and added as a `pixeltwin` annotation (visible in the HTML report).
 | `mask` | `Locator[]`: Playwright's own masking, painted into the screenshot |
 | `fullPage` | the whole scrollable page (page targets) |
 | `variant` | extra variant keys for this check |
-| `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
+| `colorThreshold`, `tolerancePercent`, `reviewWithinTolerance` | override the project's settings for this check (`reviewWithinTolerance`: a diff within the tolerance waits for review instead of passing) |
 | `screenshot` | other Playwright screenshot options (`animations` defaults to `disabled`, `caret` to `hide`) |
 | `retakes`, `failOnChange` | override the run's settings (below) for this check |
 | `elements` | `false`: send no page elements with this screenshot (see below) |
