@@ -1,6 +1,6 @@
 // Global keyboard shortcuts (UI spec §3.2). Islands register handlers with `onKey`; elements
 // with `data-key="a"` are clicked (links, buttons) or submitted (forms) when `a` is pressed.
-import { shortcutOf } from './keymap.ts';
+import { plainOf, shortcutOf } from './keymap.ts';
 
 export interface Shortcut {
   /** What `shortcutOf` returns, e.g. `a`, `?`, `escape`, `mod+k`. */
@@ -46,6 +46,7 @@ const KEY_NAMES: Record<string, string> = {
   arrowright: '→',
   'shift+arrowleft': 'Shift ←',
   'shift+arrowright': 'Shift →',
+  'shift+r': 'Shift R',
 };
 
 /** The `?` sheet: every labelled shortcut that works on this page right now. */
@@ -102,16 +103,21 @@ export function initKeys(): void {
     if (!key) return;
     // An open modal dialog owns the keyboard; Escape is the browser's to close it.
     if (document.querySelector('dialog[open]') && key !== 'mod+k') return;
-    const shortcut = shortcuts.find((s) => s.key === key);
-    if (shortcut) {
-      event.preventDefault();
-      shortcut.run(event);
-      return;
-    }
-    const element = [...document.querySelectorAll<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)].find(visible);
-    if (element) {
-      event.preventDefault();
-      trigger(element);
+    // Shift+A does what A does unless something listens for Shift+A itself.
+    for (const k of [key, plainOf(key)]) {
+      if (!k) continue;
+      const shortcut = shortcuts.find((s) => s.key === k);
+      if (shortcut) {
+        event.preventDefault();
+        shortcut.run(event);
+        return;
+      }
+      const element = [...document.querySelectorAll<HTMLElement>(`[data-key="${CSS.escape(k)}"]`)].find(visible);
+      if (element) {
+        event.preventDefault();
+        trigger(element);
+        return;
+      }
     }
   });
 }

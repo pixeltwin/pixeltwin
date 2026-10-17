@@ -78,13 +78,34 @@ test('a group card approves every screen at once with A, in place, and U undoes 
   await expect(card).toBeFocused();
   for (const id of ids) expect((await ci.call<CheckJson>('GET', `/checks/${id}`)).review).toBe('pending');
 
-  // R rejects the whole group; Undo on the toast takes it back.
+  // R asks why for the whole group; the reason goes on every member. Undo on the toast takes it back.
   await page.keyboard.press('r');
+  await expect(card.locator('.reject-popover')).toBeVisible();
+  await page.keyboard.press('1');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.toast')).toHaveCount(1);
   await expect(page.locator('.toast.tone-danger').last()).toContainText('Rejected the same change on 3 screens');
   await expect(card.locator('.card-state')).toHaveText('rejected');
+  await expect(card).toBeFocused();
+  for (const id of ids) {
+    expect((await ci.call<CheckJson & { reviewReasonCode: string }>('GET', `/checks/${id}`)).reviewReasonCode).toBe(
+      'not_loaded',
+    );
+  }
   await page.locator('.toast.tone-danger').last().getByRole('button', { name: 'Undo (U)' }).click();
   await expect(card.getByRole('button', { name: 'Approve all 3' })).toBeVisible();
   for (const id of ids) expect((await ci.call<CheckJson>('GET', `/checks/${id}`)).review).toBe('pending');
+
+  // Shift+R: the old one-key reject, without a reason.
+  await card.focus();
+  await page.keyboard.press('Shift+R');
+  await expect(card.locator('.card-state')).toHaveText('rejected');
+  for (const id of ids) {
+    expect(await ci.call<CheckJson & { reviewReasonCode: string | null }>('GET', `/checks/${id}`)).toMatchObject({
+      review: 'rejected',
+      reviewReasonCode: null,
+    });
+  }
 });
 
 test('a check of a group approves the whole group from focus mode, and U undoes it', async ({

@@ -7,6 +7,7 @@ import { type FlakySignal, screenHistories } from '../../domain/flaky';
 import { type ChangeGroup, listGroups, reviewGroup } from '../../domain/groups';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
+import { REJECT_REASON_INFO } from '../../domain/reject-reasons';
 import { approveBuild } from '../../domain/reviews';
 import { visibleBuild } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
@@ -24,6 +25,15 @@ import {
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
+import { RejectMenu, reasonInput } from '../reject-menu';
+
+/** A card's tooltip: its status and, rejected, why (category and comment). */
+function cardTitle(check: CheckView): string {
+  if (check.review !== 'rejected') return statusText(check);
+  const why = check.reviewReasonCode ? REJECT_REASON_INFO[check.reviewReasonCode].meaning : null;
+  const parts = [why, check.reviewComment ? `“${check.reviewComment}”` : null].filter(Boolean);
+  return parts.length ? `${statusText(check)}: ${parts.join(' · ')}` : statusText(check);
+}
 
 /**
  * One check: a link to it, and for reviewers an Approve button on a new screenshot waiting for
@@ -52,7 +62,7 @@ function CheckCard(props: {
     >
       <a
         class={`check-card card-${cardStatus(check)}`}
-        title={statusText(check)}
+        title={cardTitle(check)}
         href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
       >
         <div class="thumb" data-diff={diffSrc ?? undefined}>
@@ -73,6 +83,11 @@ function CheckCard(props: {
           <Variant variant={check.variant} />
           <span class="card-status">
             <span class="card-state">{cardStatus(check)}</span>
+            {check.review === 'rejected' && check.reviewReasonCode && (
+              <span class="card-reason" title={cardTitle(check)}>
+                {REJECT_REASON_INFO[check.reviewReasonCode].label.toLowerCase()}
+              </span>
+            )}
             {check.result === 'changed' && check.review !== 'rejected' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}
@@ -223,6 +238,34 @@ function GroupCard(props: {
   const title =
     byName.size === 1 ? `Same change in ${members.length} variants` : `Same change on ${members.length} screens`;
   const api = `/builds/${build.id}/groups/${groupId}`;
+  const hidden = (
+    <>
+      <input type="hidden" name="filter" value={filter.key} />
+      <input type="hidden" name="back" value="build" />
+      {members.map((m) => (
+        <input type="hidden" name="checkIds" value={m.id} />
+      ))}
+    </>
+  );
+  // Reject all asks why first, in the same popover as a single check; the reason goes on every member.
+  const reject = (
+    <RejectMenu
+      action={ui.url(`/ui/builds/${build.id}/groups/${groupId}/reject`)}
+      label="Reject all"
+      small
+      title={`Reject the ${pending} screens of this group that wait for review, with why (R when the card is focused; Shift+R without a reason)`}
+      formAttrs={{
+        class: 'reject-popover group-action',
+        'data-inplace': `${api}/reject`,
+        'data-inplace-done': 'Rejected the same change on {n} screens',
+        'data-inplace-undo': `${api}/reset`,
+        'data-inplace-tone': 'danger',
+        'data-group-action': 'reject',
+      }}
+    >
+      {hidden}
+    </RejectMenu>
+  );
   const action = (kind: 'approve' | 'reject') => (
     <form
       class="group-action"
@@ -303,7 +346,7 @@ function GroupCard(props: {
                     <a
                       class="member-check"
                       href={ui.url(`/ui/checks/${m.id}?filter=${filter.key}`)}
-                      title={`${m.name} ${Object.values(m.variant).join(' ')}: ${statusText(m)}`}
+                      title={`${m.name} ${Object.values(m.variant).join(' ')}: ${cardTitle(m)}`}
                     >
                       <span class={`member-state state-${cardStatus(m)}`}>{cardStatus(m)}</span>
                       {Object.values(m.variant).join(' ').replaceAll('_', ' ') || 'no variant'}
@@ -319,7 +362,7 @@ function GroupCard(props: {
           <div class="group-actions">
             {pending > 0 ? (
               <>
-                {action('reject')}
+                {reject}
                 {action('approve')}
               </>
             ) : (
@@ -741,7 +784,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       const groupId = c.req.param('groupId');
       const form = await c.req.parseBody({ all: true });
       const checkIds = ([] as unknown[]).concat(form.checkIds ?? []).filter((v): v is string => typeof v === 'string');
-      await reviewGroup(s.deps, id, groupId, action, user.id, checkIds.length > 0 ? { checkIds } : {});
+      const why = reasonInput(form, action === 'reject');
+      await reviewGroup(s.deps, id, groupId, action, user.id, { ...why, ...(checkIds.length > 0 ? { checkIds } : {}) });
       const filter = filterFromQuery({ filter: field(form, 'filter') });
       const done = action === 'approve' ? 'approved' : 'rejected';
       // From the check page: on to the next check waiting for review.

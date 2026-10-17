@@ -618,3 +618,128 @@ td select {
 .legend-review::before {
   background: var(--blue-dot);
 }
+
+/*
+ * Reject with a reason: a small popover anchored to the Reject button (a <details>, so it opens
+ * without JavaScript too). Categories as chips with their number key, an optional comment, then
+ * Cancel and Reject. `.up` opens it above the button (the check page's action bar).
+ */
+.reject-menu {
+  position: relative;
+  display: inline-block;
+}
+.reject-menu > summary {
+  list-style: none;
+  color: var(--red);
+  user-select: none;
+}
+.reject-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.reject-menu > summary:hover,
+.reject-menu[open] > summary {
+  background: var(--red-bg);
+  border-color: var(--red-border);
+}
+.reject-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: var(--space-2);
+  width: min(320px, calc(100vw - 2 * var(--space-4)));
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
+}
+.reject-menu.up .reject-popover {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.reason-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+}
+.reason-chips legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.reason-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.reason-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.reason-chips .reason-chip kbd {
+  min-width: 16px;
+  padding: 0 3px;
+  line-height: 14px;
+}
+.reason-chip:hover {
+  background: var(--surface-hover);
+}
+.reason-chip:has(input:checked) {
+  border-color: var(--red-border);
+  background: var(--red-bg);
+  color: var(--red);
+}
+.reason-chip:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.reason-comment {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-xs);
+}
+.reason-comment input {
+  width: 100%;
+}
+.reject-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+@media (scripting: none) {
+  .reject-actions [data-reject-cancel] {
+    display: none;
+  }
+}
+/* A rejection's category: the review history, a suggestion, a rejected card. */
+.reason-tag {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 6px;
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-full);
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}

@@ -501,3 +501,30 @@
   display: block;
   font-size: var(--text-xs);
 }
+/*
+ * A group card lets its open reject popover out, under the card and as wide as it, so it stays on
+ * the page whichever column the card is in.
+ */
+.check-card.group-card {
+  position: relative;
+}
+.check-card.group-card:has(.reject-menu[open]) {
+  overflow: visible;
+}
+.group-actions .reject-menu {
+  position: static;
+}
+.group-actions .reject-popover {
+  right: 0;
+  left: 0;
+  width: auto;
+}
+.group-card-wrap:has(.reject-menu[open]) {
+  position: relative;
+  z-index: 25;
+}
+/* Why a rejected check was rejected, beside its state (all of it in the card's tooltip). */
+.card-reason {
+  color: var(--red);
+  font-size: var(--text-xs);
+}
