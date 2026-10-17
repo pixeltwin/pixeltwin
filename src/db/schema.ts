@@ -301,7 +301,13 @@ export interface SnapshotAreasTable {
   createdAt: number;
 }
 
-export const WEBHOOK_EVENTS = ['build.finalized', 'build.verdict_changed', 'check.reviewed', 'member.added'] as const;
+export const WEBHOOK_EVENTS = [
+  'build.finalized',
+  'build.verdict_changed',
+  'check.reviewed',
+  'member.added',
+  'insights.weekly',
+] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 export const WEBHOOK_FORMATS = ['json', 'slack'] as const;
 export type WebhookFormat = (typeof WEBHOOK_FORMATS)[number];
@@ -416,6 +422,86 @@ export interface MailOutboxTable {
   finishedAt: number | null;
 }
 
+export const INSIGHT_PARTS = ['live', 'kept'] as const;
+export type InsightPart = (typeof INSIGHT_PARTS)[number];
+
+/** A project's numbers on one branch and UTC day (see migration 0017). Counts, sums in ms. */
+export interface InsightDaysTable {
+  projectId: string;
+  branch: string;
+  /** Days since the epoch, UTC. */
+  day: number;
+  /** `live`: recomputed from the builds that exist; `kept`: what retention deleted, added up. */
+  part: InsightPart;
+  builds: Generated<number>;
+  checks: Generated<number>;
+  autoPassed: Generated<number>;
+  neededReview: Generated<number>;
+  approved: Generated<number>;
+  rejected: Generated<number>;
+  rejectedNotLoaded: Generated<number>;
+  rejectedLateAsset: Generated<number>;
+  rejectedAnimation: Generated<number>;
+  rejectedDynamicData: Generated<number>;
+  rejectedEnvironment: Generated<number>;
+  rejectedRealBug: Generated<number>;
+  rejectedOther: Generated<number>;
+  rejectedUncategorized: Generated<number>;
+  outdated: Generated<number>;
+  pending: Generated<number>;
+  errors: Generated<number>;
+  suggestions: Generated<number>;
+  suggestionsAccepted: Generated<number>;
+  suggestionsDismissed: Generated<number>;
+  decidedBuilds: Generated<number>;
+  latencySumMs: Generated<number>;
+  screenshotMs: Generated<number>;
+  uploadMs: Generated<number>;
+  compareMs: Generated<number>;
+  retakes: Generated<number>;
+  timedChecks: Generated<number>;
+  flakyScreens: Generated<number>;
+  /** JSON array: decided builds per LATENCY_BUCKETS bucket. */
+  latencyHist: Generated<string>;
+  /** JSON object: per reviewer (`user:<id>`, `token:<id>`) decisions, latency and suggestions. */
+  reviewers: Generated<string>;
+  computedAt: Generated<number>;
+}
+
+/** A day whose live insights are out of date (append-only; deleted once recomputed). */
+export interface InsightMarksTable {
+  id: string;
+  projectId: string;
+  branch: string;
+  day: number;
+  createdAt: number;
+}
+
+export interface InsightDigestSettingsTable {
+  projectId: string;
+  enabled: Generated<number>;
+  /** 0 Sunday … 6 Saturday, server time. */
+  weekday: Generated<number>;
+  hour: Generated<number>;
+  updatedAt: number;
+}
+
+export interface InsightDigestSubscribersTable {
+  projectId: string;
+  userId: string;
+  createdAt: number;
+}
+
+/** One weekly digest sent: the key makes a slot go out once across replicas. */
+export interface InsightDigestsTable {
+  projectId: string;
+  slot: string;
+  kind: 'scheduled' | 'manual';
+  webhooks: Generated<number>;
+  mails: Generated<number>;
+  sentAt: number;
+}
+
 export interface DB {
   projects: ProjectsTable;
   images: ImagesTable;
@@ -440,6 +526,11 @@ export interface DB {
   webhookDeliveries: WebhookDeliveriesTable;
   elementSets: ElementSetsTable;
   mailOutbox: MailOutboxTable;
+  insightDays: InsightDaysTable;
+  insightMarks: InsightMarksTable;
+  insightDigestSettings: InsightDigestSettingsTable;
+  insightDigestSubscribers: InsightDigestSubscribersTable;
+  insightDigests: InsightDigestsTable;
 }
 
 export type UserRow = Selectable<UsersTable>;

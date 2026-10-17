@@ -17,7 +17,8 @@ export type IdPrefix =
   | 'dlv'
   | 'lnk'
   | 'acr'
-  | 'mal';
+  | 'mal'
+  | 'imk';
 
 /** Returns a prefixed ULID, e.g. `bld_01JA2…`. IDs created later sort after earlier ones. */
 export function newId(prefix: IdPrefix): string {

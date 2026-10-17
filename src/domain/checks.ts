@@ -9,6 +9,7 @@ import { getBuildRow } from './builds';
 import type { Deps } from './deps';
 import { comparedElements, loadElements, storeElements } from './elements';
 import { loadImage, type PngSize, readPngHeader, sha256Hex, storeImage } from './images';
+import { markBuilds } from './insight-marks';
 import { supersedingCheck } from './outdated';
 import { type Page, toPage } from './pagination';
 import { getProjectById } from './projects';
@@ -701,6 +702,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
       }))
       .where('id', '=', checkId)
       .execute();
+    await markBuilds(deps.db, [check.buildId]);
     await deps.events?.buildsChanged([check.buildId]);
     return getCheck(deps, checkId);
   }
