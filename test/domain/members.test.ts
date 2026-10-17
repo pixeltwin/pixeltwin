@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { UserRole } from '../../src/db/schema';
 import { projectRoleFor, visibleProjects } from '../../src/domain/auth/access';
 import { createUser, deleteUser, type UserView, updateUser } from '../../src/domain/auth/users';
-import { addMember, listMembers, membershipsOf, removeMember, updateMember } from '../../src/domain/members';
+import {
+  addMember,
+  listMembers,
+  memberCandidates,
+  membershipsOf,
+  removeMember,
+  updateMember,
+} from '../../src/domain/members';
 import { createProject, updateProject } from '../../src/domain/projects';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
 import { appError } from '../helpers/errors';
@@ -105,5 +112,49 @@ describe('project members', () => {
     expect((await listMembers(deps, 'web')).map((m) => m.email)).toEqual(['alice@example.com']);
     await updateUser(deps, alice.id, { role: 'admin' });
     expect(await listMembers(deps, 'web')).toEqual([]);
+  });
+
+  describe('candidates to add', () => {
+    const emails = async (q: unknown, slug = 'web') => (await memberCandidates(deps, slug, q)).map((c) => c.email);
+
+    test('match the email anywhere, ignoring case, and leave out members and admins', async () => {
+      expect(await memberCandidates(deps, 'web', 'ALI')).toEqual([
+        { id: alice.id, email: 'alice@example.com', role: 'reviewer' },
+      ]);
+      expect(await emails('example')).toEqual(['alice@example.com', 'bob@example.com']);
+      await addMember(deps, 'web', { email: 'alice@example.com' });
+      expect(await emails('example')).toEqual(['bob@example.com']);
+      expect(await emails('example', 'app')).toEqual(['alice@example.com', 'bob@example.com']);
+      expect(await emails('admin')).toEqual([]);
+    });
+
+    test('an email stored with capitals still matches (case-insensitive on SQLite and Postgres)', async () => {
+      await deps.db
+        .insertInto('users')
+        .values({ id: 'usr_caps', email: 'Carol@Example.COM', passwordHash: 'x', role: 'viewer', createdAt: 1 })
+        .execute();
+      expect(await emails('carol@exa')).toEqual(['Carol@Example.COM']);
+      expect(await emails('CAROL')).toEqual(['Carol@Example.COM']);
+    });
+
+    test('% and _ are plain characters, not wildcards', async () => {
+      await make('a_b@example.com', 'viewer');
+      await make('a%c@example.com', 'viewer');
+      expect(await emails('a_b')).toEqual(['a_b@example.com']);
+      expect(await emails('a%')).toEqual(['a%c@example.com']);
+      expect(await emails('%%')).toEqual([]);
+      expect(await emails('__')).toEqual([]);
+      expect(await emails('a\\')).toEqual([]);
+    });
+
+    test('need 2 characters and give at most 10, by email', async () => {
+      expect((await appError(memberCandidates(deps, 'web', 'a'))).code).toBe('validation_failed');
+      expect((await appError(memberCandidates(deps, 'web', '  b  '))).code).toBe('validation_failed');
+      for (let i = 0; i < 12; i++) await make(`user${String(i).padStart(2, '0')}@team.test`, 'viewer');
+      const found = await emails('@team');
+      expect(found).toHaveLength(10);
+      expect(found[0]).toBe('user00@team.test');
+      expect((await appError(memberCandidates(deps, 'nope', 'ab'))).code).toBe('project_not_found');
+    });
   });
 });

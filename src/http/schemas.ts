@@ -41,6 +41,15 @@ export const MemberSchema = z
   .object({ userId: z.string(), email: z.string(), role: z.enum(PROJECT_ROLES), createdAt: z.number().int() })
   .openapi('Member');
 
+/** A user who could be added to a project. */
+export const CandidateSchema = z
+  .object({
+    id: z.string(),
+    email: z.string(),
+    role: z.enum(USER_ROLES).openapi({ description: 'Global role: the default when added without one' }),
+  })
+  .openapi('MemberCandidate');
+
 /** One of a user's memberships. */
 export const MembershipSchema = z
   .object({ slug: z.string(), name: z.string(), role: z.enum(PROJECT_ROLES) })

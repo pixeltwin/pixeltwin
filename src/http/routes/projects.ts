@@ -4,7 +4,10 @@ import { createProjectToken, createTokenSchema, deleteProjectToken, listProjectT
 import {
   addMember,
   addMemberSchema,
+  CANDIDATE_LIMIT,
+  candidateQuerySchema,
   listMembers,
+  memberCandidates,
   removeMember,
   updateMember,
   updateMemberSchema,
@@ -15,7 +18,16 @@ import { accessFiltered } from '../access';
 import { principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
-import { CreatedTokenSchema, json, MemberSchema, ProjectSchema, pageOf, problems, TokenSchema } from '../schemas';
+import {
+  CandidateSchema,
+  CreatedTokenSchema,
+  json,
+  MemberSchema,
+  ProjectSchema,
+  pageOf,
+  problems,
+  TokenSchema,
+} from '../schemas';
 
 const slugParam = z.object({ slug: z.string() });
 const ProjectPageSchema = pageOf(ProjectSchema, 'ProjectPage');
@@ -148,6 +160,22 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
     const { slug } = c.req.valid('param');
     return c.json({ items: await listMembers(s.deps, slug), nextCursor: null }, 200);
   });
+
+  const candidates = defineRoute('project.admin', {
+    method: 'get',
+    path: `${API}/projects/{slug}/members/candidates`,
+    tags: ['members'],
+    summary: 'Find users to add: email contains q (at least 2 characters), not members yet, not admins',
+    description: `Case-insensitive; \`%\` and \`_\` are plain characters. At most ${CANDIDATE_LIMIT} users, by email.`,
+    request: { params: slugParam, query: z.object({ q: candidateQuerySchema }) },
+    responses: {
+      200: json(z.object({ items: z.array(CandidateSchema) }), 'Matching users'),
+      ...problems(401, 403, 404, 422),
+    },
+  });
+  app.openapi(candidates, async (c) =>
+    c.json({ items: await memberCandidates(s.deps, c.req.valid('param').slug, c.req.valid('query').q) }, 200),
+  );
 
   const addOne = defineRoute('project.admin', {
     method: 'post',

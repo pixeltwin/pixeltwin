@@ -158,6 +158,30 @@ describe('project members (API)', () => {
     for (const sha of shas) expect(await status(other, sha)).toBe(404);
   });
 
+  test('maintainers and admins search users to add; members with less, outsiders and tokens cannot', async () => {
+    const search = (as: Who | { token: string }, q: string, slug = 'web') =>
+      t.request('GET', `/api/v1/projects/${slug}/members/candidates?q=${encodeURIComponent(q)}`, { as });
+    const found = await search(admin, 'EXAMPLE');
+    expect(found.status).toBe(200);
+    expect(await found.json()).toEqual({
+      items: [
+        { id: alice.id, email: 'alice@example.com', role: 'reviewer' },
+        { id: bob.id, email: 'bob@example.com', role: 'viewer' },
+      ],
+    });
+    await add(admin, 'web', { email: 'alice@example.com', role: 'maintainer' });
+    const byMaintainer = (await (await search(alice, 'example')).json()) as { items: Array<{ email: string }> };
+    expect(byMaintainer.items.map((u) => u.email)).toEqual(['bob@example.com']);
+    expect(await problemOf(await search(alice, 'b'))).toMatchObject({ status: 422, code: 'validation_failed' });
+    // Not their project: as if it did not exist, whatever the query.
+    expect((await search(alice, 'example', 'app')).status).toBe(404);
+    expect((await search(alice, 'b', 'app')).status).toBe(404);
+    await add(admin, 'web', { email: 'bob@example.com', role: 'reviewer' });
+    expect(await problemOf(await search(bob, 'example'))).toMatchObject({ status: 403, code: 'forbidden' });
+    const token = await t.tokenAs('web', ['read', 'write', 'review']);
+    expect(await problemOf(await search(token, 'example'))).toMatchObject({ status: 403, code: 'forbidden' });
+  });
+
   test('tokens keep working as before: their own project only', async () => {
     const web = await t.tokenAs('web', ['read']);
     expect((await t.request('GET', '/api/v1/projects/web', { as: web })).status).toBe(200);

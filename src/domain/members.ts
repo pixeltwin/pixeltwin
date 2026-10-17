@@ -1,6 +1,7 @@
+import { sql } from 'kysely';
 import { z } from 'zod';
 import { isUniqueViolation } from '../db/database';
-import { PROJECT_ROLES, type ProjectRole } from '../db/schema';
+import { PROJECT_ROLES, type ProjectRole, type UserRole } from '../db/schema';
 import { AppError } from '../errors';
 import { emailSchema } from './auth/users';
 import type { Deps } from './deps';
@@ -14,6 +15,17 @@ export const projectRoleSchema = z.enum(PROJECT_ROLES);
 /** Without a role, the user's global role (viewer or reviewer) is used. */
 export const addMemberSchema = z.strictObject({ email: emailSchema, role: projectRoleSchema.optional() });
 export const updateMemberSchema = z.strictObject({ role: projectRoleSchema });
+
+/** What a search for users to add needs: at least 2 characters, so it never lists everyone. */
+export const candidateQuerySchema = z.string().trim().min(2, 'Type at least 2 characters').max(254);
+export const CANDIDATE_LIMIT = 10;
+
+export interface CandidateView {
+  id: string;
+  email: string;
+  /** The global role: the default when added without one. */
+  role: UserRole;
+}
 
 export interface MemberView {
   userId: string;
@@ -126,4 +138,33 @@ export async function membershipsOf(
     out.set(id, [...(out.get(id) ?? []), membership]);
   }
   return out;
+}
+
+/**
+ * Users who could be added to the project: email contains `q` (case-insensitive; `%` and `_` are
+ * literal), not a member yet, not an admin (admins have every project). At most 10, by email.
+ */
+export async function memberCandidates(deps: DbDeps, slug: string, q: unknown): Promise<CandidateView[]> {
+  const query = parseInput(candidateQuerySchema, q).toLowerCase();
+  const project = await getProjectBySlug(deps, slug);
+  const pattern = `%${query.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  return deps.db
+    .selectFrom('users')
+    .select(['id', 'email', 'role'])
+    .where('role', '!=', 'admin')
+    .where(sql<boolean>`lower(email) like ${pattern} escape '\\'`)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom('projectMembers')
+            .select('userId')
+            .whereRef('projectMembers.userId', '=', 'users.id')
+            .where('projectMembers.projectId', '=', project.id),
+        ),
+      ),
+    )
+    .orderBy('email')
+    .limit(CANDIDATE_LIMIT)
+    .execute();
 }
