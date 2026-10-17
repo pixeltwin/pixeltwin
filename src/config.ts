@@ -21,6 +21,11 @@ const envSchema = z.object({
   SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).default(20_000),
   STORAGE: z.enum(['local', 'postgres']).default('local'),
   SETUP_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
+  SECRET_KEY: z.string().min(32, 'must be at least 32 characters').optional(),
+  OUTBOUND_BLOCK_PRIVATE: z
+    .enum(['1', 'true', 'yes', 'on', '0', 'false', 'no', 'off'])
+    .transform((value) => ['1', 'true', 'yes', 'on'].includes(value))
+    .default(false),
   MAX_IMAGE_BYTES: z.coerce
     .number()
     .int()
@@ -51,6 +56,10 @@ export interface Config {
   storage: 'local' | 'postgres';
   /** The first-run setup token, fixed (e.g. from a Kubernetes Secret); null makes a random one. */
   setupToken: string | null;
+  /** Encrypts the secrets integrations keep (GitHub token, webhook secrets); null stores them as they are. */
+  secretKey: string | null;
+  /** Webhooks and GitHub calls refuse loopback and private addresses too (link-local always is). */
+  outboundBlockPrivate: boolean;
   maxImageBytes: number;
   maxImagePixels: number;
 }
@@ -125,6 +134,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     shutdownGraceMs: e.SHUTDOWN_GRACE_MS,
     storage: e.STORAGE,
     setupToken: e.SETUP_TOKEN ?? null,
+    secretKey: e.SECRET_KEY ?? null,
+    outboundBlockPrivate: e.OUTBOUND_BLOCK_PRIVATE,
     maxImageBytes: e.MAX_IMAGE_BYTES,
     maxImagePixels: e.MAX_IMAGE_PIXELS,
   };
