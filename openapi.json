@@ -782,6 +782,13 @@
             ],
             "description": "Server time this check took, in ms: baseline, compare and store"
           },
+          "groupId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The change group: other checks of this build with exactly the same changes (GET /builds/{id}/groups). Review them all at once with POST /builds/{id}/groups/{groupId}/approve."
+          },
           "supersededBy": {
             "type": [
               "string",
@@ -847,6 +854,7 @@
           "elementCount",
           "suggestion",
           "compareMs",
+          "groupId",
           "supersededBy",
           "createdAt",
           "updatedAt",
@@ -929,6 +937,10 @@
                 },
                 "pixels": {
                   "type": "integer"
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "description": "What changed, wherever it is on the screen: the same change on another screen has the same fingerprint. Only on changed checks whose screenshot kept its size."
                 }
               },
               "required": [
@@ -1401,6 +1413,375 @@
           "actorKind",
           "actorName",
           "comment",
+          "createdAt"
+        ]
+      },
+      "ChangeGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The members' change key (the set of their change fingerprints)"
+          },
+          "buildId": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "description": "Checks in the group (at least 2)"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer"
+              },
+              "approved": {
+                "type": "integer"
+              },
+              "rejected": {
+                "type": "integer"
+              },
+              "outdated": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "pending",
+              "approved",
+              "rejected",
+              "outdated"
+            ],
+            "description": "Members per review state"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "pixels": {
+                  "type": "integer"
+                },
+                "fingerprint": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height",
+                "pixels"
+              ]
+            },
+            "description": "The changes, as found on the first member (other members may show them elsewhere)"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "variant": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "review": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "outdated"
+                  ]
+                },
+                "reviewedBy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "suggestion": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "approve",
+                    "reject",
+                    null
+                  ],
+                  "description": "An agent's open suggestion for the check, if any"
+                },
+                "imageSha": {
+                  "type": "string"
+                },
+                "diffImageSha": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "baselineImageSha": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "variant",
+                "review",
+                "reviewedBy",
+                "suggestion",
+                "imageSha",
+                "diffImageSha",
+                "baselineImageSha"
+              ]
+            },
+            "description": "Members, newest first"
+          }
+        },
+        "required": [
+          "id",
+          "buildId",
+          "size",
+          "counts",
+          "regions",
+          "checks"
+        ]
+      },
+      "GroupReview": {
+        "type": "object",
+        "properties": {
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Checks this call reviewed (or undid)"
+          },
+          "suggested": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Checks a token's review left as suggestions for a person (agent review policy); empty for a person and for a reset"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "checkId": {
+                  "type": "string"
+                },
+                "review": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "outdated"
+                  ]
+                }
+              },
+              "required": [
+                "checkId",
+                "review"
+              ]
+            },
+            "description": "Members left as they were (already reviewed, outdated), with their review state"
+          },
+          "group": {
+            "$ref": "#/components/schemas/ChangeGroup"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "error",
+              "rejected",
+              "pending",
+              "outdated",
+              "passed"
+            ],
+            "description": "The build's verdict after the call"
+          }
+        },
+        "required": [
+          "changed",
+          "suggested",
+          "skipped",
+          "group",
+          "verdict"
+        ]
+      },
+      "ScreenHistory": {
+        "type": "object",
+        "properties": {
+          "snapshotKey": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "branch": {
+            "type": "string"
+          },
+          "flaky": {
+            "$ref": "#/components/schemas/Flaky"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "description": "The last 20 checks of the screen on the branch, newest first"
+          }
+        },
+        "required": [
+          "snapshotKey",
+          "name",
+          "variant",
+          "branch",
+          "flaky",
+          "items"
+        ]
+      },
+      "Flaky": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "score": {
+            "type": "number",
+            "description": "Flips per run in the history, 0 to 1"
+          },
+          "flips": {
+            "type": "integer",
+            "description": "Runs in which the screen flipped: back to a screenshot it had before (A→B→A), or a change nobody approved that went away by itself"
+          },
+          "checks": {
+            "type": "integer",
+            "description": "Checks looked at: the last 20 of the screen on the branch"
+          },
+          "lastSeen": {
+            "type": "integer",
+            "description": "When it last flipped"
+          },
+          "unstableArea": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "description": "Where it keeps changing. POST it as an ignore area (/checks/{id}/areas, kind \"ignore\") to stop the noise."
+          }
+        },
+        "required": [
+          "score",
+          "flips",
+          "checks",
+          "lastSeen",
+          "unstableArea"
+        ],
+        "description": "Set when the screen is flaky: it flipped at least twice. Null once an ignore area covers it."
+      },
+      "HistoryEntry": {
+        "type": "object",
+        "properties": {
+          "checkId": {
+            "type": "string"
+          },
+          "buildId": {
+            "type": "string"
+          },
+          "buildNumber": {
+            "type": "integer"
+          },
+          "imageSha": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "unchanged",
+              "changed",
+              "new",
+              "error"
+            ]
+          },
+          "review": {
+            "type": "string",
+            "enum": [
+              "none",
+              "pending",
+              "approved",
+              "rejected",
+              "outdated"
+            ]
+          },
+          "createdAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkId",
+          "buildId",
+          "buildNumber",
+          "imageSha",
+          "result",
+          "review",
           "createdAt"
         ]
       },
@@ -5763,6 +6144,593 @@
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/ReviewEvent"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Change groups of a build: checks with exactly the same changes, to review at once",
+        "description": "A group is two or more checks of the build with the same change key: the same change (a new header) on several screens or variants, wherever it is on each. A check with that change and one more is not in the group. Each check's `groupId` names its group. Biggest first.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The change groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ChangeGroup"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups/{groupId}/approve": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Approve every check of a change group that waits for review",
+        "description": "Optional `checkIds` limits it to those members (what a filtered page shows); `reason` is kept on each review. One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a single review: it must give a `reason` unless the policy is `off` (422 reason_required), and the members it may not decide itself become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response has the build’s new verdict.",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "checkIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups/{groupId}/reject": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Reject every check of a change group that waits for review",
+        "description": "Optional `checkIds` limits it to those members (what a filtered page shows); `reason` is kept on each review. One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a single review: it must give a `reason` unless the policy is `off` (422 reason_required), and the members it may not decide itself become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response has the build’s new verdict.",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "checkIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups/{groupId}/reset": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Undo the reviews of a change group's checks: those in checkIds, else all of them",
+        "description": "Send the `changed` list of a group approve or reject as `checkIds` to undo exactly that. All or nothing: when one approval cannot be undone (409 review_not_resettable), none is.",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "checkIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/history": {
+      "get": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "The check's screen over its last 20 checks on the branch, and whether it is flaky",
+        "description": "A flaky screen keeps flipping (a clock, an ad, an animation): `flaky` says how often and where (`unstableArea`). Changes on a flaky screen are usually noise, not regressions.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/noisy-screens": {
+      "get": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "The project's flaky screens, per branch, most flaky first",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flaky screens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ScreenHistory"
                       }
                     }
                   },

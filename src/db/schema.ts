@@ -125,6 +125,11 @@ export interface ChecksTable {
   suggestedByName: Generated<string | null>;
   suggestionReason: Generated<string | null>;
   suggestedAt: Generated<number | null>;
+  /**
+   * The set of this changed check's change fingerprints (diff/fingerprint.ts); checks of a build
+   * with the same key form a change group. Null when unchanged, new, resized or older than groups.
+   */
+  changeKey: string | null;
   createdAt: number;
   updatedAt: number;
 }

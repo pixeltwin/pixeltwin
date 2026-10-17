@@ -66,6 +66,26 @@ button.small,
   padding: 0 var(--space-2);
   font-size: var(--text-sm);
 }
+/*
+ * An ignore action (Ignore next to a change, Ignore noisy area): a regular button with the
+ * toolbar's ignore colour mark, amber when pointed at and pressed while what it opens is unfolded.
+ */
+.ignore-action::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: 2px dashed var(--amber-dot);
+  border-radius: 2px;
+  background: rgb(245 159 0 / 0.3);
+}
+.ignore-action:hover:not(:disabled, [aria-disabled="true"]),
+.ignore-action:focus-visible,
+details[open] > .ignore-action {
+  border-color: var(--amber-border);
+  background: var(--amber-bg);
+  color: var(--amber);
+}
 .segmented {
   display: inline-flex;
   padding: 2px;

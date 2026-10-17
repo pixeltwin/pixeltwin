@@ -50,6 +50,8 @@ export interface CheckView {
   /** How many page elements the SDK sent with the screenshot; null when it sent none. */
   elementCount: number | null;
   suggestion: CheckSuggestion | null;
+  /** The change group this check is in: other checks of its build with exactly the same changes. */
+  groupId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -66,6 +68,7 @@ interface Outcome {
   diff: DiffData | DiffErrorData | null;
   diffPng: Uint8Array | null;
   diffSize: Size | null;
+  changeKey: string | null;
 }
 
 type CheckWithJoins = CheckRow & {
@@ -73,6 +76,8 @@ type CheckWithJoins = CheckRow & {
   baselineImageSha: string | null;
   buildBranch: string;
   elementCount: number | null;
+  /** Checks of the build with this check's change key (itself included); 0 without a key. */
+  groupSize: number | string | null;
 };
 
 function initialReview(result: CheckResult): CheckReview {
@@ -80,7 +85,7 @@ function initialReview(result: CheckResult): CheckReview {
 }
 
 function errorOutcome(code: 'diff_timeout' | 'diff_failed', message: string): Outcome {
-  return { result: 'error', diff: { error: { code, message } }, diffPng: null, diffSize: null };
+  return { result: 'error', diff: { error: { code, message } }, diffPng: null, diffSize: null, changeKey: null };
 }
 
 function buildFinalized(build: Build): AppError {
@@ -144,7 +149,7 @@ async function evaluate(
     const validated = await deps.runDiff({ ...job, baseline: null });
     if (validated.kind === 'invalid_image') throw invalidImage(validated.message);
     if (validated.kind === 'error') return errorOutcome(validated.code, validated.message);
-    return { result: 'new', diff: null, diffPng: null, diffSize: null };
+    return { result: 'new', diff: null, diffPng: null, diffSize: null, changeKey: null };
   }
 
   if (baseline.imageSha === imageSha) {
@@ -163,6 +168,7 @@ async function evaluate(
       },
       diffPng: null,
       diffSize: null,
+      changeKey: null,
     };
   }
 
@@ -186,7 +192,13 @@ async function evaluate(
             height: Math.max(dims.baseline.height, dims.current.height),
           }
         : header;
-      return { result: compared.result, diff: compared.diff, diffPng: compared.diffPng, diffSize };
+      return {
+        result: compared.result,
+        diff: compared.diff,
+        diffPng: compared.diffPng,
+        diffSize,
+        changeKey: compared.changeKey,
+      };
     }
   }
 }
@@ -203,6 +215,13 @@ function checksWithJoins(deps: Pick<Deps, 'db'>) {
       'baselines.imageSha as baselineImageSha',
       'builds.branch as buildBranch',
       'elementSets.count as elementCount',
+      (eb) =>
+        eb
+          .selectFrom('checks as same')
+          .select((s) => s.fn.countAll<number>().as('n'))
+          .whereRef('same.buildId', '=', 'checks.buildId')
+          .whereRef('same.changeKey', '=', 'checks.changeKey')
+          .as('groupSize'),
     ]);
 }
 
@@ -222,6 +241,8 @@ function toCheckView(row: CheckWithJoins): CheckView {
     suggestedByName,
     suggestionReason,
     suggestedAt,
+    changeKey,
+    groupSize,
     ...rest
   } = row;
   return {
@@ -236,6 +257,7 @@ function toCheckView(row: CheckWithJoins): CheckView {
             at: suggestedAt ?? 0,
           }
         : null,
+    groupId: changeKey && Number(groupSize ?? 0) >= 2 ? changeKey : null,
     variant: JSON.parse(variant) as Record<string, string>,
     ignoreRegions: JSON.parse(ignoreRegions) as Rect[],
     diff: diff ? (JSON.parse(diff) as DiffData | DiffErrorData) : null,
@@ -497,6 +519,7 @@ export async function submitCheck(
     review: newer ? ('outdated' as const) : initial,
     supersededBy: newer?.id ?? null,
     diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
+    changeKey: outcome.changeKey,
     reviewedBy: null,
     reviewedAt: null,
     reviewComment: null,
@@ -598,6 +621,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
         result: outcome.result,
         diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
         diffImageSha,
+        changeKey: outcome.changeKey,
         // Decided in SQL, not from the read above: a review made while the comparison ran stays.
         review: eb
           .case()

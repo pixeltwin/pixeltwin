@@ -93,7 +93,9 @@ describe('server end to end', () => {
     const second = await openBuild();
     const changed = await post(second, makePng(64, 64, WHITE, [{ x: 8, y: 8, width: 8, height: 8, color: BLACK }]));
     expect(changed.result).toBe('changed');
-    expect(changed.diff?.regions).toEqual([{ x: 8, y: 8, width: 8, height: 8, pixels: 64 }]);
+    expect(changed.diff?.regions).toEqual([
+      { x: 8, y: 8, width: 8, height: 8, pixels: 64, fingerprint: expect.any(String) },
+    ]);
 
     const finalized = await fetch(`${api}/builds/${second}/finalize`, { method: 'POST', headers: auth });
     expect(await finalized.json()).toMatchObject({ state: 'finalized', verdict: 'pending' });
@@ -169,7 +171,7 @@ describe('command line', () => {
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(lines).toEqual([
-      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers, 0004_review_events, 0005_snapshot_areas, 0006_outdated_checks, 0007_stored_objects, 0008_parallel_builds, 0009_auto_approve_new, 0010_timings, 0011_integrations, 0012_agent_review',
+      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers, 0004_review_events, 0005_snapshot_areas, 0006_outdated_checks, 0007_stored_objects, 0008_parallel_builds, 0009_auto_approve_new, 0010_timings, 0011_integrations, 0012_agent_review, 0013_change_groups',
       'Database is up to date.',
     ]);
   });

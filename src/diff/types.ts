@@ -8,6 +8,11 @@ export interface Rect {
 export interface Region extends Rect {
   /** Changed pixels in this region. */
   pixels: number;
+  /**
+   * What changed, wherever it is on the screen (fingerprint.ts): the same change on other screens
+   * has the same value. Only on changed checks whose screenshots kept their size.
+   */
+  fingerprint?: string;
 }
 
 export interface Size {
@@ -121,7 +126,14 @@ export interface DiffJob {
 
 export type DiffJobResult =
   | { kind: 'validated'; width: number; height: number }
-  | { kind: 'compared'; result: 'unchanged' | 'changed'; diff: DiffData; diffPng: Uint8Array | null }
+  | {
+      kind: 'compared';
+      result: 'unchanged' | 'changed';
+      diff: DiffData;
+      diffPng: Uint8Array | null;
+      /** The changes' fingerprints together (changeKeyOf); null when unchanged, resized or truncated. */
+      changeKey: string | null;
+    }
   | { kind: 'invalid_image'; message: string }
   | { kind: 'error'; code: DiffErrorCode; message: string };
 

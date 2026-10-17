@@ -51,6 +51,10 @@ describe('documentation routes', () => {
       '"reason"',
       'suggestion',
       'npx pixeltwin mcp',
+      'groupId',
+      '/groups/<groupId>/approve',
+      'flaky',
+      'noisy-screens',
     ]) {
       expect(text).toContain(word);
     }

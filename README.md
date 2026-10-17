@@ -10,6 +10,12 @@ Review a build with the keyboard: Side, Slider, Onion and Diff views, zoom to a 
 <kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>U</kbd> undo, <kbd>→</kbd>/<kbd>←</kbd> (or <kbd>J</kbd>/<kbd>K</kbd>)
 next and previous, <kbd>?</kbd> for every shortcut.
 
+The same change on many screens is reviewed once: checks of a build with exactly the same changes
+(a new header on 40 pages and 3 browsers) form a change group, shown as one card with Approve all
+and Reject all (<kbd>A</kbd>/<kbd>R</kbd> on the focused card, <kbd>U</kbd> to undo). Screens that keep
+flipping back and forth (a clock, an ad) are marked flaky and listed under Noisy screens; on the
+check, Ignore noisy area previews the area that keeps changing and ignores it.
+
 ![Reviewing a changed check in the slider view, dark theme](docs/screenshots/review-slider-dark.png)
 
 ## Run it
@@ -123,6 +129,15 @@ on `PORT` answers; the Docker image uses it).
 Builds older than a project's retention period (5 days by default, set per project; baselines are always kept) and images
 nothing references any more are deleted by an hourly job.
 
+Change groups: every changed region gets a fingerprint of what changed (its changed pixels before
+and after, wherever it is on the screen), and a check's change key is the set of its fingerprints.
+Checks of one build with the same key form a group (`groupId` on each check,
+`GET /api/v1/builds/{id}/groups`, `POST …/groups/{groupId}/approve|reject|reset`); a check with one
+more change of its own is not in the group. Flaky screens are found from each screen's last 20
+checks on its branch: a screenshot that comes back after a change (A→B→A), or a change nobody
+approved that goes away by itself, is a flip, and two flips make the screen flaky
+(`GET /api/v1/checks/{id}/history`, `GET /api/v1/projects/{slug}/noisy-screens`).
+
 A project can approve new screenshots automatically (Settings, or `"autoApproveNew": true` on
 `PATCH /api/v1/projects/{slug}`): a screen with no baseline yet becomes one as soon as it arrives,
 recorded in its review history as approved by auto-approve, and only changes wait for review.
@@ -135,7 +150,8 @@ waits until a person clicks Accept or Dismiss) or `auto-below` (approvals of a d
 `agentMaxDiffPercent` apply, larger ones become suggestions). Unless `off`, a token must give a
 reason and cannot change areas. A suggestion changes neither the pull request's
 status nor the build's verdict and sends no `check.reviewed`; accepting it does, as the person's
-review with the agent's reason.
+review with the agent's reason. A change group reviewed by a token goes through the policy check by
+check: the answer lists what applied (`changed`) and what became a suggestion (`suggested`).
 
 ### Pull requests: GitHub and GitLab
 
@@ -151,7 +167,8 @@ A project can report every build on its pull (merge) request. In **Settings → 
 Then each finalized build gets a commit status `pixeltwin/<project>`: *pending* "3 screenshots to
 review" while changes wait, *success* when the verdict is `passed`, *failure* when something was
 rejected or could not be compared. It is posted again whenever a review changes the build (approve,
-reject, undo, an area, auto-approve, a promotion), so approving in pixeltwin turns the pull request
+reject, undo, a change group's Approve all, an area, auto-approve, a promotion; once per action,
+however many checks it reviewed), so approving in pixeltwin turns the pull request
 green without running CI again. With *Pull request comment* each build keeps one comment (GitLab: a
 merge request note) with its counts and up to six changed screens linking to their review pages,
 edited in place. The token is never shown again; the API returns `tokenSet` and `tokenLast4`.

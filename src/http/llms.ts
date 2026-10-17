@@ -61,11 +61,26 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
    \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject with {"reason":"…"} (kept in
    the review history, GET ${api}/checks/<checkId>/reviews, with actorKind user | token | auto).
    /reset undoes either. The answer's \`outcome\` is \`applied\` or \`suggested\` (see Agent reviews).
+   The same change on several screens is reviewed once: checks of a build with exactly the same
+   changes share a \`groupId\` (\`diff.regions[].fingerprint\` names each change, wherever it is on
+   the screen). GET ${api}/builds/<buildId>/groups lists the groups; POST
+   ${api}/builds/<buildId>/groups/<groupId>/approve (or /reject) with {"reason":"…"} reviews every
+   check of the group that waits, one review event each, skips reviewed and outdated ones and
+   answers with \`changed\`, \`suggested\` (see Agent reviews), \`skipped\` and the build's new
+   \`verdict\`. /reset with {"checkIds":[…]} (the \`changed\` list) undoes exactly that.
+   Prefer one group call over one call per check. A check with the group's change and one more is
+   not in the group: review it on its own.
    A screen part that always changes (a clock, an ad) can be skipped for good: POST
    ${api}/checks/<checkId>/areas {"kind":"ignore","x":…,"y":…,"width":…,"height":…} applies
    to every later check of that snapshot; kind "compare" compares only inside such areas.
    A snapshot has one kind of area (409 area_kind_conflict otherwise). PATCH
    ${api}/checks/<checkId>/areas/<areaId> {"x":…,"y":…,"width":…,"height":…} moves one.
+
+   Before approving or rejecting a change, check whether its screen is flaky: GET
+   ${api}/checks/<checkId>/history returns its last 20 checks on the branch and \`flaky\`
+   ({score, flips, checks, lastSeen, unstableArea}, null when it is steady). A flaky screen's
+   change is likely noise, not a regression: suggest an ignore area over \`unstableArea\` instead
+   of approving it again. GET ${api}/projects/<slug>/noisy-screens lists every flaky screen.
 
 6. After merging a branch, promote it so main does not ask to review the same screens again:
    GET ${api}/projects/<slug>/branches/<branch>/promote lists the screens that differ from main;
@@ -93,12 +108,16 @@ POST ${api}/projects/<slug>/webhooks.
 3. Intended: POST /checks/<id>/approve {"reason":"Moved the submit button below the form, as asked"}.
    Not intended: POST /checks/<id>/reject {"reason":"…"} and fix the code. Never approve what you
    did not intend; leave it for a person instead.
+4. A check with a \`groupId\` has the same changes as the group's other checks: judge it once and
+   POST /builds/<buildId>/groups/<groupId>/approve (or /reject) {"reason":"…"} instead of one
+   call per check.
 
 A project's \`agentReview\` policy decides what a token's review does: \`off\` (it applies),
 \`suggest\` (it is recorded as \`check.suggestion\`; the check stays pending until a person accepts
 or dismisses it: POST /checks/<id>/suggestion/accept or /suggestion/dismiss) or \`auto-below\`
 (approvals of a diff up to \`agentMaxDiffPercent\` apply; larger ones and new screenshots become
-suggestions; rejections apply). Unless \`off\`, a token must give a reason (422 reason_required)
+suggestions; rejections apply). A group review goes through the policy check by check:
+\`changed\` lists what applied, \`suggested\` what became a suggestion. Unless \`off\`, a token must give a reason (422 reason_required)
 and cannot change areas (403 agent_review_policy). \`build.counts.suggested\` counts open suggestions.
 A suggestion leaves the commit status pending and sends no check.reviewed webhook; a person
 accepting it does both, with the agent's reason.

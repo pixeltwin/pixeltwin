@@ -124,6 +124,7 @@ describe('openDatabase', () => {
         '0010_timings',
         '0011_integrations',
         '0012_agent_review',
+        '0013_change_groups',
       ]);
       await handle.close();
     } finally {

@@ -9,6 +9,8 @@ import { hasPermission } from '../../domain/auth/policy';
 import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, compareWithoutAreas, getCheck, listChecks } from '../../domain/checks';
+import { type ScreenHistory, screenHistory } from '../../domain/flaky';
+import { type ChangeGroup, getGroup } from '../../domain/groups';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import {
@@ -21,7 +23,18 @@ import {
 } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
+import {
+  Ago,
+  CheckStatus,
+  cardStatus,
+  Dot,
+  FlakyBadge,
+  flakyText,
+  HistoryStrip,
+  thumbnailSha,
+  toneOf,
+  Variant,
+} from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { type CheckFilter, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
@@ -111,6 +124,8 @@ function Shot(props: {
   apiIgnore?: Rect[] | undefined;
   /** Boxes of element changes: where the element is, and (dashed) where it was. */
   marks?: Mark[] | undefined;
+  /** Where a flaky screen keeps changing: shown while the reviewer points at its Ignore. */
+  unstable?: Rect | undefined;
 }) {
   const { ui, sha, alt, size, regions } = props;
   const marks = props.marks ?? [];
@@ -142,7 +157,23 @@ function Shot(props: {
         </svg>
       )}
       {size && <AreaLayer areas={props.areas} apiIgnore={props.apiIgnore} size={size} />}
+      <UnstableLayer area={props.unstable} size={size} />
     </div>
+  );
+}
+
+/** The area a flaky screen keeps changing in, over a screenshot; hidden until asked for (CSS). */
+function UnstableLayer({ area, size }: { area: Rect | undefined; size: Size | undefined }) {
+  if (!area || !size) return null;
+  return (
+    <svg
+      class="area-layer unstable-layer"
+      viewBox={`0 0 ${size.width} ${size.height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <rect class="area area-ignore unstable-rect" x={area.x} y={area.y} width={area.width} height={area.height} />
+    </svg>
   );
 }
 
@@ -253,6 +284,7 @@ function Stage(props: {
   areas: Area[];
   canReview: boolean;
   areasSwitch?: AreasSwitch | undefined;
+  unstable?: Rect | undefined;
 }) {
   const { ui, check, sizes, areas } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
@@ -379,6 +411,7 @@ function Stage(props: {
             marks={marks}
             areas={areas}
             apiIgnore={check.ignoreRegions}
+            unstable={props.unstable}
           />
         </Pane>
         {check.diffImageSha && (
@@ -421,6 +454,7 @@ function Stage(props: {
               height={currentSize?.height}
             />
             <AreaLayer areas={areas} apiIgnore={check.ignoreRegions} size={currentSize} />
+            <UnstableLayer area={props.unstable} size={currentSize} />
             <div class="divider" aria-hidden="true" />
           </div>
         </Pane>
@@ -740,7 +774,7 @@ function IgnoreChange(props: {
       <input type="hidden" name="height" value={String(area.height)} />
       <button
         type="submit"
-        class="small ignore-change"
+        class="small ignore-action"
         aria-label={`Ignore ${props.label}`}
         title={
           props.off
@@ -799,6 +833,149 @@ function Suggestion(props: { ui: Ui; check: CheckView; filter: CheckFilter; canR
   );
 }
 
+/**
+ * A check of a change group: the same change is on other screens of the build. Lists them and,
+ * for reviewers, approves all that wait at once (the review island does it in place).
+ */
+function GroupNote(props: { ui: Ui; check: CheckView; group: ChangeGroup; filter: CheckFilter; canReview: boolean }) {
+  const { ui, check, group, filter } = props;
+  const others = group.checks.filter((c) => c.id !== check.id);
+  const pending = group.counts.pending;
+  const path = `/builds/${check.buildId}/groups/${group.id}`;
+  return (
+    <section class="group-note" aria-label="The same change on other screens">
+      <p>
+        <strong>{`Also on ${others.length} other screen${others.length === 1 ? '' : 's'}`}</strong>
+        <span class="muted"> of this build: exactly the same change</span>
+      </p>
+      <details class="group-others">
+        <summary>
+          Screens <span class="count">{others.length}</span>
+        </summary>
+        <ul>
+          {others.map((c) => (
+            <li>
+              <a href={ui.url(`/ui/checks/${c.id}?filter=${filter.key}`)}>
+                <span class={`member-state state-${cardStatus({ result: 'changed', ...c })}`}>{c.review}</span>
+                <span class="member-name">{c.name}</span>
+                <Variant variant={c.variant} />
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+      {props.canReview && pending > 0 && (
+        <form
+          class="group-approve"
+          method="post"
+          action={ui.url(`/ui${path}/approve`)}
+          data-group-review={`${path}/approve`}
+          data-group-undo={`${path}/reset`}
+        >
+          <input type="hidden" name="filter" value={filter.key} />
+          <input type="hidden" name="back" value="check" />
+          <button type="submit" class="small approve" title="Approve every screen of this build with this change">
+            {`Approve all ${pending}`}
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The screen's last results on this branch and, when it keeps flipping, why it is flaky and a way
+ * to ignore the area that keeps changing: a preview of the area first, then one click.
+ */
+function ScreenSection(props: {
+  ui: Ui;
+  check: CheckView;
+  screen: ScreenHistory | null;
+  size: Size | undefined;
+  areas: Area[];
+  filter: CheckFilter;
+  canReview: boolean;
+  /** Show diff is on: nothing can be ignored until the areas are back. */
+  off?: boolean;
+}) {
+  const { ui, check, screen, size } = props;
+  if (!screen || screen.history.length < 2) return null;
+  const flaky = screen.flaky;
+  const area = flaky?.unstableArea ? aroundChange(flaky.unstableArea, size) : null;
+  const blocked = props.areas.some((a) => a.kind === 'compare');
+  return (
+    <section class="screen-section" aria-label="This screen's history">
+      <h3>
+        This screen <span class="muted">{`on ${screen.branch}`}</span> <FlakyBadge flaky={flaky} />
+      </h3>
+      <HistoryStrip ui={ui} history={screen.history} current={check.id} />
+      {flaky && (
+        <p class="hint">{`It keeps changing back and forth: ${flakyText(flaky)}. Its changes are likely noise.`}</p>
+      )}
+      {flaky && area && props.canReview && (
+        <details class="unstable" data-unstable-trigger>
+          <summary
+            class="button small ignore-action"
+            aria-disabled={blocked || props.off ? 'true' : undefined}
+            title="Preview the area that keeps changing, then ignore it for every check of this snapshot"
+          >
+            Ignore noisy area
+          </summary>
+          <div class="unstable-preview">
+            {size && (
+              <span class="unstable-shot">
+                <img
+                  class="unstable-img"
+                  src={ui.url(`/api/v1/images/${check.imageSha}`)}
+                  alt=""
+                  width={size.width}
+                  height={size.height}
+                />
+                <svg
+                  class="unstable-mark"
+                  viewBox={`0 0 ${size.width} ${size.height}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <rect class="area area-ignore" x={area.x} y={area.y} width={area.width} height={area.height} />
+                </svg>
+              </span>
+            )}
+            <p class="muted">
+              {`${areaPlace(area, size)}${area.width}×${area.height} px. An ignore area applies to every check of this snapshot, on every branch.`}
+            </p>
+            <form class="unstable-actions" method="post" action={ui.url(`/ui/checks/${check.id}/areas`)} data-area-add>
+              <input type="hidden" name="filter" value={props.filter.key} />
+              <input type="hidden" name="kind" value="ignore" />
+              <input type="hidden" name="x" value={String(area.x)} />
+              <input type="hidden" name="y" value={String(area.y)} />
+              <input type="hidden" name="width" value={String(area.width)} />
+              <input type="hidden" name="height" value={String(area.height)} />
+              <button type="button" class="small ghost" data-unstable-close>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="small primary"
+                disabled={blocked || props.off}
+                title={
+                  props.off
+                    ? 'Back to the comparison with the areas to ignore this area'
+                    : blocked
+                      ? 'Delete the compare areas first to ignore an area'
+                      : 'Add this ignore area; the check is compared again at once'
+                }
+              >
+                Ignore this area
+              </button>
+            </form>
+          </div>
+        </details>
+      )}
+    </section>
+  );
+}
+
 function Info(props: {
   ui: Ui;
   check: CheckView;
@@ -811,6 +988,8 @@ function Info(props: {
   canReview: boolean;
   /** Shown compared without any area (the Areas switch is off). */
   areasOff?: boolean;
+  group: ChangeGroup | null;
+  screen: ScreenHistory | null;
 }) {
   const { check, branch, size } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
@@ -821,6 +1000,9 @@ function Info(props: {
     <aside class="review-info" aria-label="About this check">
       {check.suggestion && <Suggestion ui={props.ui} check={check} filter={props.filter} canReview={props.canReview} />}
       {diffError && <p class="diff-error">{diffError.message}</p>}
+      {props.group && (
+        <GroupNote ui={props.ui} check={check} group={props.group} filter={props.filter} canReview={props.canReview} />
+      )}
       <dl class="facts">
         {diff && (
           <>
@@ -952,6 +1134,16 @@ function Info(props: {
           )}
         </details>
       )}
+      <ScreenSection
+        ui={props.ui}
+        check={check}
+        screen={props.screen}
+        size={size}
+        areas={props.areas}
+        filter={props.filter}
+        canReview={props.canReview}
+        off={props.areasOff ?? false}
+      />
       <BaselineHistory ui={props.ui} check={check} entries={props.baselines} />
       <History check={check} history={props.history} />
     </aside>
@@ -1087,6 +1279,8 @@ function CheckPage(props: {
   areasSwitch?: AreasSwitch | undefined;
   /** The check compared without any area, while the Areas switch is off. */
   withoutAreas?: Pick<CheckView, 'result' | 'diff' | 'diffImageSha'> | undefined;
+  group: ChangeGroup | null;
+  screen: ScreenHistory | null;
 }) {
   const { ui, project, build, check, filter, strip } = props;
   const off = props.withoutAreas !== undefined;
@@ -1138,6 +1332,7 @@ function CheckPage(props: {
             <Variant variant={check.variant} />
           </div>
           <CheckStatus check={check} />
+          <FlakyBadge flaky={props.screen?.flaky} />
           <span class="review-nav">
             {prev && (
               <a
@@ -1170,6 +1365,7 @@ function CheckPage(props: {
             areas={off ? [] : props.areas}
             canReview={props.canReview}
             areasSwitch={props.areasSwitch}
+            unstable={off ? undefined : (props.screen?.flaky?.unstableArea ?? undefined)}
           />
           <Info
             ui={ui}
@@ -1182,6 +1378,8 @@ function CheckPage(props: {
             filter={filter}
             canReview={props.canReview}
             areasOff={off}
+            group={props.group}
+            screen={props.screen}
           />
         </div>
         <ActionBar
@@ -1214,7 +1412,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const check = await getCheck(s.deps, c.req.param('id'));
     // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
     const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
-    const [project, build, strip, history, areas, decidedBy] = await Promise.all([
+    const [project, build, strip, history, areas, decidedBy, group] = await Promise.all([
       getProjectById(s.deps, check.projectId),
       getBuild(s.deps, check.buildId),
       listChecks(s.deps, check.buildId, {
@@ -1227,7 +1425,13 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       historyOf(s, check.id),
       listAreas(s.deps, check.id),
       check.supersededBy ? decidedByOf(s, check.supersededBy) : Promise.resolve(null),
+      check.groupId ? getGroup(s.deps, check.buildId, check.groupId) : Promise.resolve(null),
     ]);
+    const screen = await screenHistory(s.deps, {
+      projectId: check.projectId,
+      snapshotKey: check.snapshotKey,
+      branch: build.branch,
+    });
     // The Areas switch: a check with areas and a baseline can be shown compared without them.
     const hasAreas = areas.length > 0 || check.ignoreRegions.length > 0;
     const base = `/ui/checks/${check.id}?filter=${filter.key}`;
@@ -1261,6 +1465,8 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         notice={noticeOf(c)}
         areasSwitch={areasSwitch}
         withoutAreas={withoutAreas ?? undefined}
+        group={group}
+        screen={screen}
       />,
     );
   });

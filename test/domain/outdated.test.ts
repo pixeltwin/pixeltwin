@@ -163,6 +163,7 @@ describe('checks outdated by a newer approval', () => {
       '0010_timings',
       '0011_integrations',
       '0012_agent_review',
+      '0013_change_groups',
     ]);
     expect(await getCheck(deps, two.check.id)).toMatchObject({ review: 'outdated', supersededBy: four.check.id });
     // Everything else survived the rebuild, review history included.
