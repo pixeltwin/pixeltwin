@@ -17,6 +17,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun run typecheck
+      - run: bun scripts/site-check.ts # the landing page: links, images, alt text, page weight
       - run: bunx playwright install --with-deps chromium # test/sdk runs a real Playwright suite
       - run: bun test
 
