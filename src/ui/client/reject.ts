@@ -22,10 +22,30 @@ function menuOf(node: EventTarget | null): HTMLDetailsElement | null {
   return node instanceof Element ? node.closest<HTMLDetailsElement>('details[data-reject-menu]') : null;
 }
 
+/**
+ * A popover that would end below the window (a card in the build page's bottom row: that page does
+ * not scroll) opens upwards instead, when there is room above; it opens downwards again next time.
+ */
+function place(menu: HTMLDetailsElement): void {
+  if (menu.classList.contains('up')) return;
+  const box = menu.querySelector('.reject-popover')?.getBoundingClientRect();
+  if (box && box.bottom > window.innerHeight && box.height < menu.getBoundingClientRect().top) {
+    menu.classList.add('up');
+    menu.dataset.flipped = '';
+  }
+}
+
+function unplace(menu: HTMLDetailsElement): void {
+  if (menu.dataset.flipped === undefined) return;
+  menu.classList.remove('up');
+  delete menu.dataset.flipped;
+}
+
 export function closeMenu(menu: HTMLDetailsElement, focusButton = true): void {
   if (!menu.open) return;
   const hadFocus = menu.contains(document.activeElement);
   menu.open = false;
+  unplace(menu);
   menu.querySelector<HTMLFormElement>('form')?.reset();
   if (focusButton && hadFocus) menu.querySelector<HTMLElement>('summary')?.focus();
 }
@@ -43,6 +63,7 @@ let started = false;
 /** Opens the menu (closing any other) and gives its categories the focus at once. */
 export function openMenu(menu: HTMLDetailsElement): void {
   menu.open = true;
+  place(menu);
   menu.querySelector<HTMLElement>('[data-reason-chips]')?.focus({ preventScroll: true });
 }
 
@@ -64,8 +85,10 @@ export function initRejectMenus(
       const details = event.target as HTMLDetailsElement;
       if (!details.open) {
         details.querySelector<HTMLFormElement>('form')?.reset();
+        unplace(details);
         return;
       }
+      place(details);
       for (const other of document.querySelectorAll<HTMLDetailsElement>('details[data-reject-menu][open]')) {
         if (other !== details) closeMenu(other, false);
       }

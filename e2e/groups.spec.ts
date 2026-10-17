@@ -1,5 +1,5 @@
 import { makePng, WHITE } from '../test/helpers/png';
-import { Api, expect, open, REVIEWER, test } from './fixtures';
+import { Api, expect, open, REVIEWER, screenshot, test } from './fixtures';
 
 interface CheckJson {
   id: string;
@@ -106,6 +106,84 @@ test('a group card approves every screen at once with A, in place, and U undoes 
       reviewReasonCode: null,
     });
   }
+});
+
+test('a group card on a later page asks why in place; a live update leaves the open popover alone', async ({
+  reviewerPage: page,
+  admin,
+}) => {
+  const { ci, buildId, ids } = await seedGroup(admin);
+  // Enough new screens for more than one page; the build stays open, so the page polls every 5 s.
+  for (let i = 0; i < 44; i++)
+    await ci.check(buildId, `n${String(i).padStart(2, '0')}`, screenshot([(i * 37) % 255, 112, 243]));
+  await open(page, `/ui/builds/${buildId}?filter=all`);
+  await expect(page).toHaveURL(/size=\d+/);
+  const pages = Number(await page.locator('[data-pager]').getAttribute('data-pages'));
+  expect(pages).toBeGreaterThan(1);
+  const card = page.locator('[data-group-card]');
+  for (let p = 1; p < pages && (await card.count()) === 0; p++) {
+    await page.keyboard.press(']');
+    await expect(page.locator('[data-pager]')).toHaveAttribute('data-page', String(p + 1));
+  }
+  await expect(card).toHaveCount(1);
+  if (Number(await page.locator('[data-pager]').getAttribute('data-page')) === 1) {
+    // On page 1: go to page 2 and back, so the card is one a page change brought in.
+    await page.keyboard.press(']');
+    await expect(page.locator('[data-pager]')).toHaveAttribute('data-page', '2');
+    await page.keyboard.press('[');
+    await expect(page.locator('[data-pager]')).toHaveAttribute('data-page', '1');
+  }
+
+  await card.focus();
+  await page.keyboard.press('r');
+  const popover = card.locator('.reject-popover');
+  await expect(popover).toBeVisible();
+  await page.keyboard.press('4');
+  await page.keyboard.type('clock');
+  // A new screen arrives: the next poll finds the page changed, but the open popover stays as it is.
+  await ci.check(buildId, 'late', screenshot([10, 200, 10]));
+  await page.waitForTimeout(6500);
+  await expect(popover).toBeVisible();
+  await expect(popover.locator('[data-reason-comment]')).toHaveValue('clock');
+  await expect(popover.locator('input[name="reasonCode"]:checked')).toHaveValue('dynamic_data');
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.toast.tone-danger').last()).toContainText('Rejected the same change on 3 screens');
+  await expect(card.locator('.card-state')).toHaveText('rejected');
+  await expect(card).toBeFocused();
+  for (const id of ids)
+    expect(await ci.call<CheckJson & { reviewReasonCode: string | null }>('GET', `/checks/${id}`)).toMatchObject({
+      review: 'rejected',
+      reviewReasonCode: 'dynamic_data',
+    });
+  // Closed again, the live update goes on: the late screen shows up (45 cards before it, a group one).
+  await expect(page.locator('.page-range')).toContainText('of 46', { timeout: 12_000 });
+});
+
+test('a group card in the bottom row opens its reject popover upwards: the fitted page does not scroll', async ({
+  reviewerPage: page,
+  admin,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const { ci, buildId } = await seedGroup(admin);
+  for (let i = 0; i < 30; i++)
+    await ci.check(buildId, `n${String(i).padStart(2, '0')}`, screenshot([(i * 37) % 255, 112, 243]));
+  await open(page, `/ui/builds/${buildId}?filter=all`);
+  const card = page.locator('[data-group-card]');
+  for (let p = 1; (await card.count()) === 0 && p < 10; p++) {
+    await page.keyboard.press(']');
+    await expect(page.locator('[data-pager]')).toHaveAttribute('data-page', String(p + 1));
+  }
+  // The last card of the page, in its bottom row.
+  await card.evaluate((c) => c.parentElement?.append(c));
+  await card.focus();
+  await page.keyboard.press('r');
+  const popover = card.locator('.reject-popover');
+  await expect(popover).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(900);
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+  await expect(card.locator('details[data-reject-menu]')).not.toHaveClass(/\bup\b/);
 });
 
 test('a check of a group approves the whole group from focus mode, and U undoes it', async ({
