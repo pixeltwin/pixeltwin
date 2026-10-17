@@ -396,7 +396,7 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
     (window as unknown as { stayed: boolean }).stayed = true;
     localStorage.setItem('pixeltwin.review.highlight', 'off');
   });
-  await expect(page.locator('.areas-off')).toHaveCount(0);
+  await expect(page.locator('.areas.is-off')).toHaveCount(0);
   await expect(page.locator('.areas-toggle')).toHaveText('Show diff');
   // The slider divider moved by the reviewer stays where it is: nothing jumps.
   await page.locator('[data-mode-button="slider"]').click();
@@ -408,14 +408,16 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   // Show diff and the tools on the right of the toolbar stay where they are.
   const where = async () =>
     Promise.all(
-      ['.areas-toggle', '.stage-actions', '.draw-tools', '.zoom-controls'].map(async (selector) => {
-        const box = await page.locator(selector).boundingBox();
-        return [selector, Math.round(box?.x ?? -1), Math.round(box?.y ?? -1), Math.round(box?.width ?? -1)];
-      }),
+      ['.areas-toggle', '.stage-actions', '.draw-tools', '.zoom-controls', '.review-info .areas'].map(
+        async (selector) => {
+          const box = await page.locator(selector).boundingBox();
+          return [selector, Math.round(box?.x ?? -1), Math.round(box?.y ?? -1), Math.round(box?.width ?? -1)];
+        },
+      ),
     );
   const before = await where();
   await page.locator('.areas-toggle').click();
-  await expect(page.locator('.areas-off')).toBeVisible();
+  await expect(page.locator('.areas.is-off')).toBeVisible();
   await expect(page).toHaveURL(/areas=off/);
   expect(await divider()).toBe(moved);
   // The button stays under the pointer.
@@ -424,7 +426,7 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   // Show diff is there to see the changes: they are highlighted even if Changes was off.
   await expect(page.locator('[data-highlight]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.areas-toggle').click();
-  await expect(page.locator('.areas-off')).toHaveCount(0);
+  await expect(page.locator('.areas.is-off')).toHaveCount(0);
   await expect(page).not.toHaveURL(/areas=off/);
   expect(await where()).toEqual(before);
   expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);

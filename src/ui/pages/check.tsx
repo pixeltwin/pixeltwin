@@ -537,12 +537,14 @@ function Areas(props: {
   size: Size | undefined;
   filter: CheckFilter;
   canReview: boolean;
+  /** Show diff is on: the areas are listed where they are, disabled. */
+  off?: boolean;
 }) {
   const { ui, check, areas, size } = props;
   const api = check.ignoreRegions;
   if (areas.length === 0 && api.length === 0) return null;
   return (
-    <section class="areas" aria-label="Areas">
+    <section class={props.off ? 'areas is-off' : 'areas'} aria-label="Areas">
       <h3>Areas</h3>
       <ul>
         {areas.map((a) => (
@@ -564,7 +566,7 @@ function Areas(props: {
                 <button
                   type="button"
                   class="small ghost icon-button"
-                  data-area-edit={a.id}
+                  data-area-edit={props.off ? undefined : a.id}
                   hidden
                   aria-label="Edit this area"
                   title="Move or resize this area"
@@ -581,7 +583,8 @@ function Areas(props: {
                     type="submit"
                     class="small ghost icon-button danger-hover"
                     aria-label="Delete this area"
-                    title="Delete this area"
+                    title={props.off ? 'Back to the comparison with the areas to change them' : 'Delete this area'}
+                    disabled={props.off}
                   >
                     <DeleteIcon />
                   </button>
@@ -621,6 +624,8 @@ function IgnoreChange(props: {
   size: Size | undefined;
   filter: CheckFilter;
   blocked: boolean;
+  /** Show diff is on: nothing can be ignored until the areas are back. */
+  off?: boolean;
 }) {
   const area = aroundChange(props.region, props.size);
   return (
@@ -636,11 +641,13 @@ function IgnoreChange(props: {
         class="small ignore-change"
         aria-label={`Ignore change ${props.index + 1}`}
         title={
-          props.blocked
-            ? 'Delete the compare areas first to ignore a change'
-            : 'Add an ignore area over this change, for every check of this snapshot'
+          props.off
+            ? 'Back to the comparison with the areas to ignore a change'
+            : props.blocked
+              ? 'Delete the compare areas first to ignore a change'
+              : 'Add an ignore area over this change, for every check of this snapshot'
         }
-        disabled={props.blocked}
+        disabled={props.blocked || props.off}
       >
         Ignore
       </button>
@@ -667,9 +674,6 @@ function Info(props: {
   const dims = diff?.dimensions;
   return (
     <aside class="review-info" aria-label="About this check">
-      {props.areasOff && (
-        <p class="areas-off">Areas are off: this is what they hide. The check and its areas stay as they are.</p>
-      )}
       {diffError && <p class="diff-error">{diffError.message}</p>}
       <dl class="facts">
         {diff && (
@@ -707,6 +711,7 @@ function Info(props: {
         size={size}
         filter={props.filter}
         canReview={props.canReview}
+        off={props.areasOff ?? false}
       />
       {diff && diff.regions.length > 0 && (
         // A few changes are listed open; a long list starts folded under its count.
@@ -736,6 +741,7 @@ function Info(props: {
                     size={size}
                     filter={props.filter}
                     blocked={props.areas.some((a) => a.kind === 'compare')}
+                    off={props.areasOff ?? false}
                   />
                 )}
               </li>
@@ -754,11 +760,13 @@ function Info(props: {
                 type="submit"
                 class="small"
                 title={
-                  props.areas.some((a) => a.kind === 'compare')
-                    ? 'Delete the compare areas first to ignore changes'
-                    : 'Add an ignore area over every change, for every check of this snapshot'
+                  props.areasOff
+                    ? 'Back to the comparison with the areas to ignore changes'
+                    : props.areas.some((a) => a.kind === 'compare')
+                      ? 'Delete the compare areas first to ignore changes'
+                      : 'Add an ignore area over every change, for every check of this snapshot'
                 }
-                disabled={props.areas.some((a) => a.kind === 'compare')}
+                disabled={props.areasOff || props.areas.some((a) => a.kind === 'compare')}
               >
                 {`Ignore all ${diff.regions.length} changes`}
               </button>
@@ -904,7 +912,9 @@ function CheckPage(props: {
 }) {
   const { ui, project, build, check, filter, strip } = props;
   const off = props.withoutAreas !== undefined;
-  const shown: CheckView = props.withoutAreas ? { ...check, ...props.withoutAreas, ignoreRegions: [] } : check;
+  // Show diff: the comparison without any area. The stage draws none; the panel keeps listing them.
+  const compared: CheckView = props.withoutAreas ? { ...check, ...props.withoutAreas } : check;
+  const shown: CheckView = props.withoutAreas ? { ...compared, ignoreRegions: [] } : check;
   const at = strip.findIndex((c) => c.id === check.id);
   // When the check is outside the filter (reviewed meanwhile), its neighbours are found by order.
   // The strip is newest first: the previous check is the next newer one, the next is older.
@@ -985,14 +995,14 @@ function CheckPage(props: {
           />
           <Info
             ui={ui}
-            check={shown}
+            check={compared}
             branch={build.branch}
             history={props.history}
             baselines={props.baselines}
             size={props.sizes.get(check.imageSha)}
-            areas={off ? [] : props.areas}
+            areas={props.areas}
             filter={filter}
-            canReview={props.canReview && !off}
+            canReview={props.canReview}
             areasOff={off}
           />
         </div>

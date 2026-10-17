@@ -172,8 +172,11 @@ describe('UI areas', () => {
     expect(on).not.toContain('class="pane pane-diff"');
 
     const off = await page(`/ui/checks/${check.id}?filter=all&areas=off`);
-    expect(off).toContain('<p class="areas-off">');
-    expect(off).toContain('Areas are off: this is what they hide. The check and its areas stay as they are.');
+    // The Areas list stays where it is, disabled, so the panel does not jump; no banner.
+    expect(off).not.toContain('class="areas-off"');
+    expect(off).toContain('<section class="areas is-off" aria-label="Areas">');
+    expect(off).toMatch(/aria-label="Delete this area"[^>]*disabled/);
+    expect(off).toMatch(/aria-label="Ignore change 1"[^>]*disabled/);
     expect(off).toContain(
       `<a class="button small areas-toggle" href="/ui/checks/${check.id}?filter=all" data-areas="off"`,
     );
