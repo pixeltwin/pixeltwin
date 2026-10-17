@@ -4,7 +4,7 @@ import { readPngHeader, sha256Hex, storeImage } from '../../src/domain/images';
 import { createProject } from '../../src/domain/projects';
 import { DAY_MS, IMAGE_GRACE_MS, runRetention } from '../../src/domain/retention';
 import { approveCheck } from '../../src/domain/reviews';
-import { imageKey } from '../../src/storage/storage';
+import { imageKey, thumbKey } from '../../src/storage/storage';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
 import { BLACK, makePng, WHITE } from '../helpers/png';
 import { openBuild, submit } from '../helpers/scenario';
@@ -77,9 +77,13 @@ describe('retention', () => {
     const orphanSha = await storeImage(deps, orphan, readPngHeader(orphan, deps.limits));
     await age('images', IMAGE_GRACE_MS + 1000);
 
+    await deps.storage.put(thumbKey(orphanSha, 320, 'plain'), orphan);
+    await deps.storage.put(thumbKey(orphanSha, 640, 'diff'), orphan);
     const result = await runRetention(deps, NOW);
     expect(result.imagesDeleted).toBe(1);
     expect(await deps.storage.exists(imageKey(orphanSha))).toBe(false);
+    expect(await deps.storage.exists(thumbKey(orphanSha, 320, 'plain'))).toBe(false);
+    expect(await deps.storage.exists(thumbKey(orphanSha, 640, 'diff'))).toBe(false);
     const kept = (await deps.db.selectFrom('images').select('sha').execute()).map((r) => r.sha).sort();
     expect(kept).toEqual([sha256Hex(white), sha256Hex(withSquare), changed.check.diffImageSha as string].sort());
   });

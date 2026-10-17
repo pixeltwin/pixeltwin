@@ -27,6 +27,16 @@ describe('DiffPool', () => {
     pool = undefined;
   });
 
+  test('makes thumbnails on the real worker, and a broken PNG is an error result', async () => {
+    pool = new DiffPool({ size: 1, timeoutMs: 10_000 });
+    const [made, failed] = await Promise.all([
+      pool.thumb({ thumb: true, png: makePng(800, 400), edge: 320, mode: 'plain' }),
+      pool.thumb({ thumb: true, png: new Uint8Array([1, 2, 3]), edge: 320, mode: 'plain' }),
+    ]);
+    expect(made).toMatchObject({ kind: 'thumb', width: 320, height: 160 });
+    expect(failed).toMatchObject({ kind: 'error', code: 'diff_failed' });
+  });
+
   test('runs compare jobs on the real worker', async () => {
     pool = new DiffPool({ size: 2, timeoutMs: 10_000 });
     const square = makePng(50, 50, WHITE, [{ x: 0, y: 0, width: 5, height: 5, color: BLACK }]);
