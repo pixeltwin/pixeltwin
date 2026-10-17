@@ -344,24 +344,19 @@ describe('UI projects', () => {
         return page.slice(from, page.indexOf('</span></span>', from) + 14);
       };
       const table = await html(await t.request('GET', '/ui/p/web/builds', { as: viewer }));
-      expect(table).toContain('<th>Review</th>');
-      // A donut (automatic, reviewed, left) and its legend; the sentence is the tooltip.
+      // One Checks column: the counts, then the review stats under them.
+      expect(table).not.toContain('<th>Review</th>');
+      expect(table).toMatch(/<td><div class="checks-cell"><span class="muted">[^<]*<\/span><span class="review-stats"/);
+      // The automatic and the reviewed counts with a coloured dot each; the sentence is the tooltip.
       const cart = statsOf(table, cartBuild);
       expect(cart).toContain('title="0 automatically · 2 needed review · 2 left"');
-      expect(cart).toContain('<svg class="donut" viewBox="0 0 20 20" aria-hidden="true">');
-      expect(cart).toMatch(/<circle class="donut-left" [^>]*stroke-dasharray="50\.27 0"/);
+      expect(cart).not.toContain('<svg');
       expect(cart).toContain('<span class="legend-auto">0</span>');
       expect(cart).toContain('<span class="legend-review">2</span>');
-      expect(statsOf(table, mainBuild)).toMatch(/<circle class="donut-auto" [^>]*stroke-dasharray="50\.27 0"/);
+      expect(statsOf(table, mainBuild)).toContain('<span class="legend-auto">1</span>');
       await approveCheck(t.deps, pendingCheck, admin.id);
       const lanes = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
-      const lane = statsOf(lanes, cartBuild);
-      expect(lane).toContain('title="0 automatically · 2 needed review · 1 left"');
-      // Half reviewed (blue), half left (amber), starting where the reviewed part ends.
-      expect(lane).toMatch(/<circle class="donut-reviewed" [^>]*stroke-dasharray="25\.13 25\.13"/);
-      expect(lane).toMatch(
-        /<circle class="donut-left" [^>]*stroke-dasharray="25\.13 25\.13" stroke-dashoffset="-25\.13"/,
-      );
+      expect(statsOf(lanes, cartBuild)).toContain('title="0 automatically · 2 needed review · 1 left"');
     });
 
     test('filters by branch from a list of the project branches', async () => {

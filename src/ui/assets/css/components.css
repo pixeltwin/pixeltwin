@@ -559,33 +559,12 @@ td select {
   animation: skeleton 1.2s ease-in-out infinite;
 }
 
-/* What a build cost its reviewers (ReviewStats): a donut and its legend. */
+/* What a build cost its reviewers (ReviewStats): the automatic and the reviewed counts. */
 .review-stats {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
-}
-.donut {
-  width: 18px;
-  height: 18px;
-  flex: none;
-}
-.donut circle {
-  fill: none;
-  stroke-width: 4;
-}
-.donut .donut-track {
-  stroke: var(--border);
-}
-.donut .donut-auto {
-  stroke: var(--green-dot);
-}
-.donut .donut-reviewed {
-  stroke: var(--blue-dot);
-}
-.donut .donut-left {
-  stroke: var(--amber-dot);
 }
 .legend-item {
   display: inline-flex;
@@ -611,4 +590,11 @@ td select {
 }
 .legend-review::before {
   background: var(--blue-dot);
+}
+/* The builds table's Checks column: the counts, then the review stats under them. */
+.checks-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }

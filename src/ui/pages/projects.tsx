@@ -376,7 +376,6 @@ function BuildsTable(props: { ui: Ui; builds: BuildView[]; watch: boolean; delet
           <th>CI run</th>
           <th>Verdict</th>
           <th>Checks</th>
-          <th>Review</th>
           <th>Created</th>
         </tr>
       </thead>
@@ -409,9 +408,11 @@ function BuildsTable(props: { ui: Ui; builds: BuildView[]; watch: boolean; delet
             <td>
               <VerdictCell build={b} />
             </td>
-            <td class="muted">{countsText(b.counts)}</td>
-            <td class="muted">
-              <ReviewStats counts={b.counts} />
+            <td>
+              <div class="checks-cell">
+                <span class="muted">{countsText(b.counts)}</span>
+                <ReviewStats counts={b.counts} />
+              </div>
             </td>
             <td>
               <Ago at={b.createdAt} />
