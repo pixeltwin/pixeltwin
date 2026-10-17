@@ -97,7 +97,7 @@ function DrawTools({ areas, off = false }: { areas: Area[]; off?: boolean }) {
     // While Show diff is on nothing can be drawn; the buttons stay so the toolbar does not move.
     if (off) {
       return (
-        <button type="button" disabled title="Back to the comparison with the areas to draw one">
+        <button type="button" data-draw-off={kind} disabled title="Back to the comparison with the areas to draw one">
           {label} <kbd>{key.toUpperCase()}</kbd>
         </button>
       );

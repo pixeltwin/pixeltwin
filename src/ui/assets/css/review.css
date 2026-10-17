@@ -818,7 +818,8 @@ body.focus main {
   border-color: var(--blue-dot);
   background: rgb(28 126 214 / 0.14);
 }
-.draw-tools [data-draw]::before {
+.draw-tools [data-draw]::before,
+.draw-tools [data-draw-off]::before {
   content: "";
   display: inline-block;
   width: 10px;
@@ -829,7 +830,8 @@ body.focus main {
   background: rgb(245 159 0 / 0.3);
   vertical-align: -1px;
 }
-.draw-tools [data-draw="compare"]::before {
+.draw-tools [data-draw="compare"]::before,
+.draw-tools [data-draw-off="compare"]::before {
   border-style: solid;
   border-color: var(--blue-dot);
   background: rgb(28 126 214 / 0.14);

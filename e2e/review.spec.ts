@@ -405,10 +405,14 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   const divider = () => page.locator('.divider').evaluate((el) => (el as HTMLElement).style.left);
   const moved = await divider();
   expect(moved).toBe('60%');
-  const where = async () => {
-    const box = await page.locator('.areas-toggle').boundingBox();
-    return [Math.round(box?.x ?? -1), Math.round(box?.y ?? -1)];
-  };
+  // Show diff and the tools on the right of the toolbar stay where they are.
+  const where = async () =>
+    Promise.all(
+      ['.areas-toggle', '.stage-actions', '.draw-tools', '.zoom-controls'].map(async (selector) => {
+        const box = await page.locator(selector).boundingBox();
+        return [selector, Math.round(box?.x ?? -1), Math.round(box?.y ?? -1), Math.round(box?.width ?? -1)];
+      }),
+    );
   const before = await where();
   await page.locator('.areas-toggle').click();
   await expect(page.locator('.areas-off')).toBeVisible();
