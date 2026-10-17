@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
 import { getCheck } from '../../src/domain/checks';
-import { createProject } from '../../src/domain/projects';
+import { reviewGroup } from '../../src/domain/groups';
+import { createProject, updateProject } from '../../src/domain/projects';
 import { rejectCheck } from '../../src/domain/reviews';
 import { createTestApp, type TestApp } from '../helpers/app';
 import { BLACK, makePng, WHITE } from '../helpers/png';
@@ -117,5 +118,26 @@ describe('UI change groups and flaky screens', () => {
     );
     const after = await html(await t.request('GET', '/ui/p/web/noisy', { as: reviewer }));
     expect(after).toContain('No noisy screens');
+  });
+
+  test("an agent's suggestions on a group show on its card and on each check, with the group's note", async () => {
+    const groupId = (await getCheck(t.deps, ids.home as string)).groupId as string;
+    await updateProject(t.deps, 'web', { agentReview: 'suggest' });
+    const agent = { kind: 'token' as const, id: 'tok_agent', name: 'claude' };
+    await reviewGroup(t.deps, buildId, groupId, 'approve', agent, { reason: 'Wider logo, as asked' });
+
+    const build = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: reviewer }));
+    expect(build).toContain(`id="group-${groupId}"`);
+    expect(build).toMatch(/class="badge-agent"[^>]*>agent: approve</);
+    expect(build).toContain('Approve all 3');
+
+    const check = await html(await t.request('GET', `/ui/checks/${ids.home}?filter=all`, { as: reviewer }));
+    expect(check).toContain('data-suggestion');
+    expect(check).toContain('Wider logo, as asked');
+    expect(check).toContain('Also on 2 other screens');
+    // Ignore next to a change looks like every other Ignore.
+    expect(check).toContain('class="small ignore-action"');
+    expect(check).not.toContain('ignore-change"');
+    expect(check.indexOf('data-suggestion')).toBeLessThan(check.indexOf('Also on 2 other screens'));
   });
 });

@@ -101,4 +101,33 @@ describe('change group routes', () => {
     expect((await t.request('GET', `/api/v1/builds/${buildId}/groups`, { as: outsider })).status).toBe(403);
     expect((await t.request('POST', `${url}/approve`, { as: outsider })).status).toBe(403);
   });
+
+  test("a token's group review takes a reason and follows the agent review policy", async () => {
+    const agent = await t.tokenAs('web', ['read', 'review']);
+    const admin = await t.userAs('admin');
+    const groups = (await (await t.request('GET', `/api/v1/builds/${buildId}/groups`, { as: ci })).json()) as {
+      items: GroupJson[];
+    };
+    const url = `/api/v1/builds/${buildId}/groups/${groups.items[0]?.id}`;
+    await t.request('PATCH', '/api/v1/projects/web', { as: admin, json: { agentReview: 'suggest' } });
+
+    expect(await problemOf(await t.request('POST', `${url}/approve`, { as: agent }))).toMatchObject({
+      status: 422,
+      code: 'reason_required',
+    });
+    const res = await t.request('POST', `${url}/approve`, { as: agent, json: { reason: 'Wider logo, as asked' } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { changed: string[]; suggested: string[]; verdict: string };
+    expect(body.changed).toEqual([]);
+    expect(body.suggested.sort()).toEqual([...checkIds].sort());
+    expect(body.verdict).toBe('pending');
+    const history = (await (await t.request('GET', `/api/v1/checks/${checkIds[0]}/reviews`, { as: ci })).json()) as {
+      items: Array<{ action: string; actorKind: string; actorName: string; comment: string }>;
+    };
+    expect(history.items[0]).toMatchObject({
+      action: 'suggested_approval',
+      actorKind: 'token',
+      comment: 'Wider logo, as asked',
+    });
+  });
 });
