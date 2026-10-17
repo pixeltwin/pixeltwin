@@ -248,6 +248,11 @@ function BuildPage(props: {
             <span class="mono">{build.branch}</span>
             {build.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
             {build.commitSha && <span class="mono">{build.commitSha.slice(0, 7)}</span>}
+            {build.pullRequest !== null && (
+              <span title={build.repository ? `Pull (merge) request in ${build.repository}` : 'Pull (merge) request'}>
+                {`PR #${build.pullRequest}`}
+              </span>
+            )}
             {build.externalId && <span>{build.externalId}</span>}
             <Ago at={build.createdAt} />
             <span>{countsText(build.counts)}</span>

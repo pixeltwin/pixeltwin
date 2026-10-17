@@ -102,6 +102,25 @@ pre.command {
   font-size: var(--text-xs);
 }
 
+/* Pull requests and webhooks (settings). */
+.wrap {
+  overflow-wrap: anywhere;
+}
+.inline-end {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+.page-head h1.mono {
+  font-size: var(--text-lg);
+}
+[data-integration-form] .hint code {
+  overflow-wrap: anywhere;
+}
+[data-integration-form] > .warning {
+  margin-top: 0;
+}
+
 /* Users. */
 .user-cell {
   display: inline-flex;

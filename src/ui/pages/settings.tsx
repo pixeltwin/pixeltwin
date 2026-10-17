@@ -3,13 +3,16 @@ import type { Context } from 'hono';
 import type { Project } from '../../db/schema';
 import { hasPermission } from '../../domain/auth/policy';
 import { createProjectToken, deleteProjectToken, listProjectTokens, type TokenView } from '../../domain/auth/tokens';
+import { getIntegration, type IntegrationView } from '../../domain/integrations';
 import { deleteProject, getProjectBySlug, updateProject } from '../../domain/projects';
+import { listWebhooks, type WebhookView } from '../../domain/webhooks';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, describedBy, Field, formErrors, Pill, ProjectTabs } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { Layout } from '../layout';
 import { NewTokenButton, NewTokenDialog, NewTokenForm, TokenCreated } from '../token-forms';
+import { IntegrationSection, registerIntegrationPages, WebhooksSection } from './integrations';
 
 function requireProjectAdmin(c: Context<AppEnv>): void {
   if (!hasPermission(userOf(c), 'project.admin'))
@@ -57,6 +60,11 @@ function SettingsPage(props: {
   ui: Ui;
   project: Project;
   tokens: TokenView[];
+  integration: IntegrationView;
+  webhooks: WebhookView[];
+  publicUrl: string;
+  integrationValues?: Record<string, string>;
+  integrationErrors?: Record<string, string>;
   values?: Record<string, string>;
   errors?: Record<string, string>;
   newToken?: { name: string; scopes: string[]; token: string };
@@ -189,6 +197,17 @@ function SettingsPage(props: {
         <NewTokenDialog ui={ui} slug={project.slug} />
       </section>
 
+      <IntegrationSection
+        ui={ui}
+        project={project}
+        integration={props.integration}
+        publicUrl={props.publicUrl}
+        values={props.integrationValues}
+        errors={props.integrationErrors}
+      />
+
+      <WebhooksSection ui={ui} project={project} webhooks={props.webhooks} />
+
       <section class="settings-section danger-zone" aria-labelledby="danger-title">
         <div class="section-head">
           <h2 id="danger-title">Danger zone</h2>
@@ -237,9 +256,26 @@ function NewTokenPage(props: {
 export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   const page = async (c: Context<AppEnv>, extra: Partial<Parameters<typeof SettingsPage>[0]> = {}) => {
     const slug = c.req.param('slug') ?? '';
-    const [project, tokens] = await Promise.all([getProjectBySlug(s.deps, slug), listProjectTokens(s.deps, slug)]);
-    return <SettingsPage ui={uiOf(c, s)} project={project} tokens={tokens} notice={noticeOf(c)} {...extra} />;
+    const [project, tokens, integration, webhooks] = await Promise.all([
+      getProjectBySlug(s.deps, slug),
+      listProjectTokens(s.deps, slug),
+      getIntegration(s.deps, slug),
+      listWebhooks(s.deps, slug),
+    ]);
+    return (
+      <SettingsPage
+        ui={uiOf(c, s)}
+        project={project}
+        tokens={tokens}
+        integration={integration}
+        webhooks={webhooks}
+        publicUrl={s.config.publicUrl}
+        notice={noticeOf(c)}
+        {...extra}
+      />
+    );
   };
+  registerIntegrationPages(app, s, page);
 
   app.get('/ui/p/:slug/settings', async (c) => {
     requireProjectAdmin(c);
