@@ -87,7 +87,13 @@ export const CLIENT_VERSION = createHash('sha256')
   .digest('hex')
   .slice(0, 12);
 
-const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'browser', minifyWhitespace: true });
+// `minify` (whitespace, syntax and local names) is a Transpiler option bun-types does not declare
+// yet; test/ui/client-assets.test.ts (the size budget) catches it if Bun ever stops honouring it.
+const transpiler = new Bun.Transpiler({
+  loader: 'ts',
+  target: 'browser',
+  minify: true,
+} as Bun.TranspilerOptions);
 
 /** `from "./keys.ts"` → `from "./keys.js?v=…"`; `import("./x.ts")` likewise. */
 function rewriteImports(code: string): string {
