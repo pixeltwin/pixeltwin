@@ -706,15 +706,26 @@ main:has([data-live="checks"]) .page-head {
 [data-density="large"] .thumb {
   --thumb-height: var(--fit-thumb-height, 260px);
 }
+/* The status (a tolerance tag too) wraps under a long name, at the right, rather than cut it short. */
 [data-density="large"] .check-card .check-card-body {
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  column-gap: var(--space-2);
 }
-[data-density="large"] .card-status {
-  grid-area: 1 / 2;
+[data-density="large"] .check-card-body > * {
+  flex-basis: 100%;
+  order: 1;
 }
-[data-density="large"] .group-members {
-  grid-column: 1 / -1;
+[data-density="large"] .check-card-body > .check-name {
+  flex: 1 1 auto;
+  order: 0;
+}
+[data-density="large"] .check-card-body > .card-status {
+  flex: 0 1 auto;
+  order: 0;
+  margin-left: auto;
+  justify-content: flex-end;
 }
 /* A group's Approve all and Reject all on its Screens line, under the list once that is open. */
 [data-density="large"] .group-actions {
