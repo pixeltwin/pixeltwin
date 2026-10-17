@@ -1,5 +1,5 @@
 import type { Config } from '../config';
-import type { Principal } from '../domain/auth/policy';
+import type { Principal, RoutePermission } from '../domain/auth/policy';
 import type { SetupState } from '../domain/auth/setup';
 import type { Deps } from '../domain/deps';
 import type { Logger } from '../log';
@@ -24,5 +24,11 @@ export interface AppEnv {
     authVia: 'cookie' | 'token' | null;
     /** Raw session cookie value when the request was authenticated by cookie. */
     sessionToken: string | null;
+    /** The permission the route declared (API routes); project checks default to it. */
+    permission: RoutePermission | null;
+    /** Set once the caller's access to the project was checked (see access.ts). */
+    projectChecked: boolean;
+    /** For route middleware that needs the database (access.ts). */
+    deps: Deps;
   };
 }

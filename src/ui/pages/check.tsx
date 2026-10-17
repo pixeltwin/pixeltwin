@@ -4,14 +4,13 @@ import type { Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
 import { type Area, aroundChange, createArea, deleteArea, ignoreChanges, listAreas } from '../../domain/areas';
-import { hasPermission } from '../../domain/auth/policy';
 import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
-import { type CheckView, checkNeighbors, compareWithoutAreas, getCheck, listChecks } from '../../domain/checks';
+import { type CheckView, checkNeighbors, compareWithoutAreas, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { AUTO_APPROVER, approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
-import { AppError } from '../../errors';
+import { visibleCheck } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
@@ -1033,7 +1032,7 @@ async function decidedByOf(s: Services, checkId: string): Promise<DecidedBy | nu
 export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   app.get('/ui/checks/:id', async (c) => {
     const ui = uiOf(c, s);
-    const check = await getCheck(s.deps, c.req.param('id'));
+    const { check, access } = await visibleCheck(c, s.deps, c.req.param('id'), 'project.read');
     // Focus mode walks what waits for review unless told otherwise (UI spec §5.1).
     const filter = filterFromQuery({ filter: c.req.query('filter') }, 'pending');
     const [project, build, strip, history, areas, decidedBy] = await Promise.all([
@@ -1075,7 +1074,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         filter={filter}
         strip={strip.items}
         sizes={sizes}
-        canReview={hasPermission(userOf(c), 'check.review')}
+        canReview={access.can('check.review')}
         history={history}
         baselines={baselines}
         areas={areas}
@@ -1091,14 +1090,12 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     app.post(`/ui/checks/:id/${action}`, async (c) => {
       const ui = uiOf(c, s);
       const user = userOf(c);
-      if (!hasPermission(user, 'check.review')) {
-        throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
-      }
+      const id = c.req.param('id');
+      await visibleCheck(c, s.deps, id, 'check.review');
       const form = await c.req.parseBody();
       const comment = field(form, 'comment');
       const filterKey = field(form, 'filter');
       const filter = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
-      const id = c.req.param('id');
       const review = action === 'approve' ? approveCheck : rejectCheck;
       const check = await review(s.deps, id, user.id, comment ? { comment } : {});
       const done = action === 'approve' ? 'approved' : 'rejected';
@@ -1120,9 +1117,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
 
   app.post('/ui/checks/:id/areas', async (c) => {
     const ui = uiOf(c, s);
-    if (!hasPermission(userOf(c), 'check.review')) {
-      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
-    }
+    await visibleCheck(c, s.deps, c.req.param('id'), 'check.review');
     const form = await c.req.parseBody();
     const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
     const number = (name: string) => Number(field(form, name));
@@ -1138,9 +1133,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
 
   app.post('/ui/checks/:id/areas/ignore-changes', async (c) => {
     const ui = uiOf(c, s);
-    if (!hasPermission(userOf(c), 'check.review')) {
-      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
-    }
+    await visibleCheck(c, s.deps, c.req.param('id'), 'check.review');
     const form = await c.req.parseBody();
     const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
     const { check } = await ignoreChanges(s.deps, c.req.param('id'), userOf(c).id);
@@ -1149,9 +1142,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
 
   app.post('/ui/checks/:id/areas/:areaId/delete', async (c) => {
     const ui = uiOf(c, s);
-    if (!hasPermission(userOf(c), 'check.review')) {
-      throw new AppError('forbidden', 403, 'Only admins and reviewers can change areas.');
-    }
+    await visibleCheck(c, s.deps, c.req.param('id'), 'check.review');
     const form = await c.req.parseBody();
     const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
     const check = await deleteArea(s.deps, c.req.param('id'), c.req.param('areaId'));
@@ -1160,9 +1151,7 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
 
   app.post('/ui/checks/:id/reset', async (c) => {
     const ui = uiOf(c, s);
-    if (!hasPermission(userOf(c), 'check.review')) {
-      throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
-    }
+    await visibleCheck(c, s.deps, c.req.param('id'), 'check.review');
     const check = await resetReview(s.deps, c.req.param('id'), userOf(c).id);
     return c.redirect(ui.url(`/ui/checks/${check.id}?done=reset`), 303);
   });

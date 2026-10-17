@@ -3,6 +3,7 @@ import type { UserRole } from '../../src/db/schema';
 import { SetupState } from '../../src/domain/auth/setup';
 import { createProjectToken, type TokenScope } from '../../src/domain/auth/tokens';
 import { createUser } from '../../src/domain/auth/users';
+import { addMember } from '../../src/domain/members';
 import { createApp } from '../../src/http/app';
 import type { AppEnv } from '../../src/http/env';
 import { LoginLimiter } from '../../src/http/rate-limit';
@@ -31,8 +32,11 @@ export interface TestApp {
       headers?: Record<string, string>;
     },
   ): Promise<Response>;
-  /** Creates a user with `role` and logs them in. */
-  userAs(role: UserRole, email?: string): Promise<{ cookie: string; id: string }>;
+  /**
+   * Creates a user with `role` and logs them in. A non-admin becomes a member, with that role, of
+   * `projects` (slugs; by default every project that exists now, as after migration 0014).
+   */
+  userAs(role: UserRole, email?: string, options?: { projects?: string[] }): Promise<{ cookie: string; id: string }>;
   tokenAs(projectSlug: string, scopes: TokenScope[]): Promise<{ token: string; id: string }>;
 }
 
@@ -82,8 +86,13 @@ export async function createTestApp(
     setup,
     close: () => deps.handle.close(),
     request,
-    async userAs(role, email = `${role}${++users}@example.com`) {
+    async userAs(role, email = `${role}${++users}@example.com`, options = {}) {
       const user = await createUser(deps, { email, password: PASSWORD, role });
+      if (role !== 'admin') {
+        const slugs =
+          options.projects ?? (await deps.db.selectFrom('projects').select('slug').execute()).map((p) => p.slug);
+        for (const slug of slugs) await addMember(deps, slug, { email, role });
+      }
       const res = await request('POST', '/api/v1/auth/login', { json: { email, password: PASSWORD } });
       const cookie = /pt_session=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1];
       if (!cookie) throw new Error(`login failed: ${res.status} ${await res.text()}`);

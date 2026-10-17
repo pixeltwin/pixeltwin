@@ -1,39 +1,49 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
+import { visibleProjects } from '../../domain/auth/access';
 import { createProjectToken, createTokenSchema, deleteProjectToken, listProjectTokens } from '../../domain/auth/tokens';
 import {
-  createProject,
-  deleteProject,
-  getProjectById,
-  getProjectBySlug,
-  listProjects,
-  updateProject,
-} from '../../domain/projects';
+  addMember,
+  addMemberSchema,
+  listMembers,
+  removeMember,
+  updateMember,
+  updateMemberSchema,
+} from '../../domain/members';
+import { createProject, deleteProject, getProjectById, getProjectBySlug, updateProject } from '../../domain/projects';
 import { createProjectSchema, updateProjectSchema } from '../../domain/schemas';
-import { allowProject, principalOf } from '../auth';
+import { accessFiltered } from '../access';
+import { principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
-import { CreatedTokenSchema, json, ProjectSchema, pageOf, problems, TokenSchema } from '../schemas';
+import { CreatedTokenSchema, json, MemberSchema, ProjectSchema, pageOf, problems, TokenSchema } from '../schemas';
 
 const slugParam = z.object({ slug: z.string() });
 const ProjectPageSchema = pageOf(ProjectSchema, 'ProjectPage');
 const TokenPageSchema = pageOf(TokenSchema, 'TokenPage');
+const MemberPageSchema = pageOf(MemberSchema, 'MemberPage');
+const memberParams = z.object({ slug: z.string(), userId: z.string() });
 
 export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): void {
   const list = defineRoute('project.read', {
     method: 'get',
     path: `${API}/projects`,
     tags: ['projects'],
-    summary: 'List projects (a token sees only its own)',
+    summary: 'List the projects you can see (a token sees only its own)',
+    description:
+      'Admins see every project; other users the projects they are members of and those visible to everyone.',
     responses: { 200: json(ProjectPageSchema, 'Projects'), ...problems(401, 403) },
   });
   app.openapi(list, async (c) => {
     const principal = principalOf(c);
     const items =
-      principal.kind === 'token' ? [await getProjectById(s.deps, principal.projectId)] : await listProjects(s.deps);
+      principal.kind === 'token'
+        ? [await getProjectById(s.deps, principal.projectId)]
+        : (await visibleProjects(s.deps, principal)).map((x) => x.project);
+    accessFiltered(c);
     return c.json({ items, nextCursor: null }, 200);
   });
 
-  const create = defineRoute('project.admin', {
+  const create = defineRoute('server.admin', {
     method: 'post',
     path: `${API}/projects`,
     tags: ['projects'],
@@ -51,11 +61,7 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
     request: { params: slugParam },
     responses: { 200: json(ProjectSchema, 'The project'), ...problems(401, 403, 404) },
   });
-  app.openapi(get, async (c) => {
-    const project = await getProjectBySlug(s.deps, c.req.valid('param').slug);
-    allowProject(c, project.id);
-    return c.json(project, 200);
-  });
+  app.openapi(get, async (c) => c.json(await getProjectBySlug(s.deps, c.req.valid('param').slug), 200));
 
   const update = defineRoute('project.admin', {
     method: 'patch',
@@ -68,11 +74,12 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
     },
     responses: { 200: json(ProjectSchema, 'The updated project'), ...problems(401, 403, 404, 422) },
   });
-  app.openapi(update, async (c) =>
-    c.json(await updateProject(s.deps, c.req.valid('param').slug, c.req.valid('json')), 200),
-  );
+  app.openapi(update, async (c) => {
+    const { slug } = c.req.valid('param');
+    return c.json(await updateProject(s.deps, slug, c.req.valid('json')), 200);
+  });
 
-  const remove = defineRoute('project.admin', {
+  const remove = defineRoute('server.admin', {
     method: 'delete',
     path: `${API}/projects/{slug}`,
     tags: ['projects'],
@@ -93,9 +100,10 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
     request: { params: slugParam },
     responses: { 200: json(TokenPageSchema, 'Tokens'), ...problems(401, 403, 404) },
   });
-  app.openapi(listTokens, async (c) =>
-    c.json({ items: await listProjectTokens(s.deps, c.req.valid('param').slug), nextCursor: null }, 200),
-  );
+  app.openapi(listTokens, async (c) => {
+    const { slug } = c.req.valid('param');
+    return c.json({ items: await listProjectTokens(s.deps, slug), nextCursor: null }, 200);
+  });
 
   const createToken = defineRoute('project.admin', {
     method: 'post',
@@ -109,7 +117,8 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
     responses: { 201: json(CreatedTokenSchema, 'The token, shown once'), ...problems(401, 403, 404, 422) },
   });
   app.openapi(createToken, async (c) => {
-    const { token, view } = await createProjectToken(s.deps, c.req.valid('param').slug, c.req.valid('json'));
+    const { slug } = c.req.valid('param');
+    const { token, view } = await createProjectToken(s.deps, slug, c.req.valid('json'));
     return c.json({ ...view, token }, 201);
   });
 
@@ -124,6 +133,68 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
   app.openapi(deleteToken, async (c) => {
     const { slug, id } = c.req.valid('param');
     await deleteProjectToken(s.deps, slug, id);
+    return c.body(null, 204);
+  });
+
+  const members = defineRoute('project.admin', {
+    method: 'get',
+    path: `${API}/projects/{slug}/members`,
+    tags: ['members'],
+    summary: "List a project's members (admins have access to every project and are not listed)",
+    request: { params: slugParam },
+    responses: { 200: json(MemberPageSchema, 'Members'), ...problems(401, 403, 404) },
+  });
+  app.openapi(members, async (c) => {
+    const { slug } = c.req.valid('param');
+    return c.json({ items: await listMembers(s.deps, slug), nextCursor: null }, 200);
+  });
+
+  const addOne = defineRoute('project.admin', {
+    method: 'post',
+    path: `${API}/projects/{slug}/members`,
+    tags: ['members'],
+    summary: 'Give an existing user access to the project',
+    description:
+      'Roles: `viewer` looks, `reviewer` also approves and rejects, `maintainer` also manages settings, tokens and ' +
+      "members. Without `role` the user's global role (viewer or reviewer) is used.",
+    request: {
+      params: slugParam,
+      body: { required: true, content: { 'application/json': { schema: addMemberSchema } } },
+    },
+    responses: { 201: json(MemberSchema, 'The new member'), ...problems(401, 403, 404, 409, 422) },
+  });
+  app.openapi(addOne, async (c) => {
+    const { slug } = c.req.valid('param');
+    return c.json(await addMember(s.deps, slug, c.req.valid('json')), 201);
+  });
+
+  const updateOne = defineRoute('project.admin', {
+    method: 'patch',
+    path: `${API}/projects/{slug}/members/{userId}`,
+    tags: ['members'],
+    summary: "Change a member's role (not your own: 409 own_membership)",
+    request: {
+      params: memberParams,
+      body: { required: true, content: { 'application/json': { schema: updateMemberSchema } } },
+    },
+    responses: { 200: json(MemberSchema, 'The member'), ...problems(401, 403, 404, 409, 422) },
+  });
+  app.openapi(updateOne, async (c) => {
+    const { slug, userId } = c.req.valid('param');
+    return c.json(await updateMember(s.deps, slug, userId, c.req.valid('json'), principalOf(c).id), 200);
+  });
+
+  const removeOne = defineRoute('project.admin', {
+    method: 'delete',
+    path: `${API}/projects/{slug}/members/{userId}`,
+    tags: ['members'],
+    summary: 'Remove a member (not yourself: 409 own_membership)',
+    request: { params: memberParams },
+    responses: { 204: { description: 'Removed' }, ...problems(401, 403, 404, 409) },
+  });
+  app.openapi(removeOne, async (c) => {
+    const { slug, userId } = c.req.valid('param');
+    await removeMember(s.deps, slug, userId, principalOf(c).id);
     return c.body(null, 204);
   });
 }

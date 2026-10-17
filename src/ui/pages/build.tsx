@@ -1,13 +1,12 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
 import type { Size } from '../../diff/types';
-import { hasPermission } from '../../domain/auth/policy';
-import { type BuildView, finalizeBuild, getBuild, getBuildRow } from '../../domain/builds';
+import { type BuildView, finalizeBuild, getBuild } from '../../domain/builds';
 import { type CheckView, firstPendingCheckId, listChecks, type VariantTag, variantTags } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
-import { AppError } from '../../errors';
+import { visibleBuild } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, BuildStatus, BuildTime, cardStatus, countsText, statusText, thumbnailSha, Variant } from '../components';
 import { noticeOf, type Ui, uiOf, userOf } from '../context';
@@ -230,6 +229,7 @@ function BuildPage(props: {
         { label: `#${build.number}` },
       ]}
       project={project.slug}
+      canManage={props.canAdmin}
       islands={['search', 'live', 'thumbs']}
     >
       {/* Running: every 5 s. Finalized: still watched (10 s), so reviews by others show up. */}
@@ -366,6 +366,7 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
   app.get('/ui/builds/:id', async (c) => {
     const ui = uiOf(c, s);
     const id = c.req.param('id');
+    const { access } = await visibleBuild(c, s.deps, id, 'project.read');
     const build = await getBuild(s.deps, id);
     const project = await getProjectById(s.deps, build.projectId);
     const filter = filterFromQuery({
@@ -407,8 +408,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         sizes={sizes}
         filter={filter}
         firstPending={firstPending}
-        canReview={hasPermission(userOf(c), 'check.review')}
-        canAdmin={hasPermission(userOf(c), 'project.admin')}
+        canReview={access.can('check.review')}
+        canAdmin={access.can('project.admin')}
         q={q}
         tags={tags}
         picked={picked}
@@ -420,11 +421,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
 
   app.post('/ui/builds/:id/finalize', async (c) => {
     const ui = uiOf(c, s);
-    if (!hasPermission(userOf(c), 'project.admin')) {
-      throw new AppError('forbidden', 403, 'Only admins can finalize a build here.');
-    }
     const id = c.req.param('id');
-    await getBuildRow(s.deps, id);
+    await visibleBuild(c, s.deps, id, 'project.admin');
     await finalizeBuild(s.deps, id);
     return c.redirect(ui.url(`/ui/builds/${id}?done=finalized`), 303);
   });
@@ -432,10 +430,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
   app.post('/ui/builds/:id/approve', async (c) => {
     const ui = uiOf(c, s);
     const user = userOf(c);
-    if (!hasPermission(user, 'check.review')) {
-      throw new AppError('forbidden', 403, 'Only admins and reviewers can approve.');
-    }
     const id = c.req.param('id');
+    await visibleBuild(c, s.deps, id, 'check.review');
     await approveBuild(s.deps, id, user.id);
     return c.redirect(ui.url(`/ui/builds/${id}?done=approved-all`), 303);
   });

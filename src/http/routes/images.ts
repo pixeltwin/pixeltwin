@@ -1,20 +1,27 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
+import { visibleProjects } from '../../domain/auth/access';
+import { hasPermission } from '../../domain/auth/policy';
 import { loadImage } from '../../domain/images';
 import { AppError } from '../../errors';
+import { accessFiltered } from '../access';
 import { principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
 import { problems } from '../schemas';
 
-/** Can this caller see the image? Users see every project; a token only images its project references. */
-async function visible(s: Services, sha: string, projectId: string | null): Promise<boolean> {
-  if (projectId === null) {
+/**
+ * Can this caller see the image? Admins see every image; a token or another user only images that
+ * a project they can see references (`projectIds`).
+ */
+async function visible(s: Services, sha: string, projectIds: string[] | null): Promise<boolean> {
+  if (projectIds === null) {
     return !!(await s.deps.db.selectFrom('images').select('sha').where('sha', '=', sha).executeTakeFirst());
   }
+  if (projectIds.length === 0) return false;
   const viaCheck = await s.deps.db
     .selectFrom('checks')
     .select('id')
-    .where('projectId', '=', projectId)
+    .where('projectId', 'in', projectIds)
     .where((eb) => eb.or([eb('imageSha', '=', sha), eb('diffImageSha', '=', sha)]))
     .limit(1)
     .executeTakeFirst();
@@ -22,7 +29,7 @@ async function visible(s: Services, sha: string, projectId: string | null): Prom
   const viaBaseline = await s.deps.db
     .selectFrom('baselines')
     .select('id')
-    .where('projectId', '=', projectId)
+    .where('projectId', 'in', projectIds)
     .where('imageSha', '=', sha)
     .limit(1)
     .executeTakeFirst();
@@ -49,7 +56,14 @@ export function registerImageRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     const principal = principalOf(c);
     const notFound = new AppError('image_not_found', 404, `Image ${sha} not found.`);
     if (!/^[0-9a-f]{64}$/.test(sha)) throw notFound;
-    if (!(await visible(s, sha, principal.kind === 'token' ? principal.projectId : null))) throw notFound;
+    const projectIds =
+      principal.kind === 'token'
+        ? [principal.projectId]
+        : hasPermission(principal, 'project.read')
+          ? null
+          : (await visibleProjects(s.deps, principal)).map((x) => x.project.id);
+    if (!(await visible(s, sha, projectIds))) throw notFound;
+    accessFiltered(c);
     const bytes = await loadImage(s.deps, sha);
     if (!bytes) throw notFound;
     return c.body(new Uint8Array(bytes).buffer, 200, {

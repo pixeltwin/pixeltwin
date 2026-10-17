@@ -82,10 +82,10 @@ describe('UI administration', () => {
     });
 
     test('non-admins cannot open admin pages', async () => {
+      await postForm(t, '/ui/projects', { name: 'Web', slug: 'web' }, admin);
       const reviewer = await t.userAs('reviewer');
       expect((await t.request('GET', '/ui/admin/users', { as: reviewer })).status).toBe(403);
       expect((await t.request('GET', '/ui/admin/users/new', { as: reviewer })).status).toBe(403);
-      await postForm(t, '/ui/projects', { name: 'Web', slug: 'web' }, admin);
       expect((await t.request('GET', '/ui/p/web/settings', { as: reviewer })).status).toBe(403);
       expect((await t.request('GET', '/ui/p/web/settings/tokens/new', { as: reviewer })).status).toBe(403);
       expect((await postForm(t, '/ui/p/web/settings/delete', {}, reviewer)).status).toBe(403);

@@ -10,10 +10,13 @@ export const UI_CSP =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'";
 
 const PUBLIC_PAGES = /^\/ui\/(login|setup|assets\/)/;
+/** Pages of one project, build or check: each must check the user's access to its project. */
+const PROJECT_PAGES = /^\/ui\/(p|builds|checks)\//;
 
 /**
  * Resolves the session cookie (the UI never accepts project tokens), refuses cross-site form
- * posts, sends logged-out visitors to the login page and adds security headers.
+ * posts, sends logged-out visitors to the login page and adds security headers. Fails closed: a
+ * project page that answers without checking the user's access to its project is a 500.
  */
 export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
   const allowedOrigin = new URL(s.config.publicUrl).origin;
@@ -24,6 +27,9 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
     c.set('principal', null);
     c.set('authVia', null);
     c.set('sessionToken', null);
+    c.set('permission', null);
+    c.set('projectChecked', false);
+    c.set('deps', s.deps);
     const cookie = getCookie(c, SESSION_COOKIE);
     const session = cookie ? await resolveSession(s.deps, cookie) : null;
     const user = session?.user ?? null;
@@ -43,6 +49,9 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
     }
 
     await next();
+    if (PROJECT_PAGES.test(c.req.path) && !c.get('projectChecked') && c.res.status < 400) {
+      throw new Error(`${c.req.method} ${c.req.path} answered without checking project access`);
+    }
     c.res.headers.set('content-security-policy', UI_CSP);
     c.res.headers.set('referrer-policy', 'same-origin');
     c.res.headers.set('x-frame-options', 'DENY');

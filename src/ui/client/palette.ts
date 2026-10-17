@@ -34,6 +34,7 @@ async function load(): Promise<Entry[]> {
   const base = basePath();
   const project = document.body.dataset.project;
   const admin = document.body.dataset.role === 'admin';
+  const manages = document.body.dataset.canManage !== undefined;
   const out: Entry[] = [];
 
   const review = document.querySelector<HTMLAnchorElement>('[data-palette-review]');
@@ -49,7 +50,7 @@ async function load(): Promise<Entry[]> {
   out.push({ label: 'All projects', hint: '', group: 'Action', href: `${base}/ui`, recency: ACTION });
   out.push({ label: 'API docs', hint: '', group: 'Action', href: `${base}/docs`, recency: ACTION });
   if (admin) out.push({ label: 'Users', hint: '', group: 'Action', href: `${base}/ui/admin/users`, recency: ACTION });
-  if (project && admin) {
+  if (project && manages) {
     out.push({
       label: 'New token',
       hint: project,

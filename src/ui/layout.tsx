@@ -23,6 +23,8 @@ export interface LayoutProps {
   variant?: 'focus';
   /** The project this page belongs to: the palette offers its branches and builds. */
   project?: string;
+  /** The user manages that project (project.admin): the palette offers New token. */
+  canManage?: boolean;
   children?: Child;
 }
 
@@ -100,7 +102,18 @@ function UserMenu({ ui }: { ui: Ui }) {
   );
 }
 
-export function Layout({ ui, title, crumbs, notice, error, islands, variant, project, children }: LayoutProps) {
+export function Layout({
+  ui,
+  title,
+  crumbs,
+  notice,
+  error,
+  islands,
+  variant,
+  project,
+  canManage,
+  children,
+}: LayoutProps) {
   // The doctype keeps browsers out of quirks mode; JSX cannot express it.
   return (
     <>
@@ -119,6 +132,7 @@ export function Layout({ ui, title, crumbs, notice, error, islands, variant, pro
           data-base={ui.url('')}
           data-islands={islands?.join(' ') || undefined}
           data-project={project}
+          data-can-manage={project && canManage ? '' : undefined}
           data-role={ui.user?.role}
           class={variant}
         >

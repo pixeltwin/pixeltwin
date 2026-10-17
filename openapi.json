@@ -35,7 +35,8 @@
               "admin",
               "reviewer",
               "viewer"
-            ]
+            ],
+            "description": "Global role. admin: every project and the server. reviewer, viewer: the role in projects visible to everyone and the default when added to a project; other projects need a membership"
           },
           "createdAt": {
             "type": "integer"
@@ -119,6 +120,30 @@
           "nextCursor"
         ]
       },
+      "Membership": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "reviewer",
+              "maintainer"
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "role"
+        ]
+      },
       "ProjectPage": {
         "type": "object",
         "properties": {
@@ -168,6 +193,10 @@
             "type": "boolean",
             "description": "A new screenshot (no baseline yet) is approved as soon as it arrives"
           },
+          "visibleToAll": {
+            "type": "boolean",
+            "description": "Every user on the server may open the project with their global role (viewer or reviewer); otherwise only admins and members"
+          },
           "createdAt": {
             "type": "integer"
           },
@@ -184,6 +213,7 @@
           "tolerancePercent",
           "retentionDays",
           "autoApproveNew",
+          "visibleToAll",
           "createdAt",
           "updatedAt"
         ]
@@ -272,6 +302,55 @@
               "token"
             ]
           }
+        ]
+      },
+      "MemberPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "reviewer",
+              "maintainer"
+            ]
+          },
+          "createdAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "userId",
+          "email",
+          "role",
+          "createdAt"
         ]
       },
       "Build": {
@@ -1695,7 +1774,8 @@
         "tags": [
           "users"
         ],
-        "summary": "Change a user's email or role",
+        "summary": "Change a user's email or global role",
+        "description": "Making a user an admin ends their memberships (admins have access to every project). The last admin cannot be demoted (409 last_admin).",
         "x-permission": "user.admin",
         "security": [
           {
@@ -1875,12 +1955,93 @@
         }
       }
     },
+    "/api/v1/users/{id}/projects": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "A user's project memberships (admins have none: they have access to every project)",
+        "x-permission": "user.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memberships, by project slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Membership"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
           "projects"
         ],
-        "summary": "List projects (a token sees only its own)",
+        "summary": "List the projects you can see (a token sees only its own)",
+        "description": "Admins see every project; other users the projects they are members of and those visible to everyone.",
         "x-permission": "project.read",
         "security": [
           {
@@ -1928,7 +2089,7 @@
           "projects"
         ],
         "summary": "Create a project",
-        "x-permission": "project.admin",
+        "x-permission": "server.admin",
         "security": [
           {
             "projectToken": []
@@ -1978,6 +2139,10 @@
                     "default": 5
                   },
                   "autoApproveNew": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "visibleToAll": {
                     "type": "boolean",
                     "default": false
                   }
@@ -2170,6 +2335,9 @@
                   },
                   "autoApproveNew": {
                     "type": "boolean"
+                  },
+                  "visibleToAll": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -2235,7 +2403,7 @@
           "projects"
         ],
         "summary": "Delete a project with its builds, baselines and tokens",
-        "x-permission": "project.admin",
+        "x-permission": "server.admin",
         "security": [
           {
             "projectToken": []
@@ -2529,6 +2697,391 @@
             }
           },
           "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List a project's members (admins have access to every project and are not listed)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Give an existing user access to the project",
+        "description": "Roles: `viewer` looks, `reviewer` also approves and rejects, `maintainer` also manages settings, tokens and members. Without `role` the user's global role (viewer or reviewer) is used.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "reviewer",
+                      "maintainer"
+                    ]
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/members/{userId}": {
+      "patch": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Change a member's role (not your own: 409 own_membership)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "reviewer",
+                      "maintainer"
+                    ]
+                  }
+                },
+                "required": [
+                  "role"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove a member (not yourself: 409 own_membership)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

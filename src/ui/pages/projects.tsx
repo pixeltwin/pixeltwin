@@ -1,14 +1,16 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
+import { visibleProjects } from '../../domain/auth/access';
 import { hasPermission } from '../../domain/auth/policy';
 import { listProjectTokens } from '../../domain/auth/tokens';
 import { type PromotionCandidate, promoteBranch, promotionCandidates } from '../../domain/baselines';
 import { type BranchSummary, listBranchSummaries } from '../../domain/branches';
 import { type BuildView, deleteBuilds, listBuilds } from '../../domain/builds';
 import { firstPendingCheckId } from '../../domain/checks';
-import { createProject, getProjectBySlug, listProjects } from '../../domain/projects';
+import { createProject } from '../../domain/projects';
 import { type PromotionDiff, promotionDiff } from '../../domain/promotion-diff';
 import { AppError } from '../../errors';
+import { visibleProject } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
 import {
   Ago,
@@ -159,7 +161,7 @@ function ProjectCardView({ ui, card }: { ui: Ui; card: ProjectCard }) {
 }
 
 function ProjectsPage({ ui, cards, notice }: { ui: Ui; cards: ProjectCard[]; notice?: string | undefined }) {
-  const isAdmin = ui.user?.role === 'admin';
+  const isAdmin = !!ui.user && hasPermission(ui.user, 'server.admin');
   return (
     <Layout ui={ui} title="Projects" notice={notice} islands={['live']}>
       <div class="page-head">
@@ -175,11 +177,11 @@ function ProjectsPage({ ui, cards, notice }: { ui: Ui; cards: ProjectCard[]; not
       </div>
       {cards.length === 0 ? (
         <div class="empty" data-live="projects" data-live-watch="">
-          <h2>{isAdmin ? 'Create your first project' : 'No projects yet'}</h2>
+          <h2>{isAdmin ? 'Create your first project' : 'No projects for you yet'}</h2>
           <p>
             {isAdmin
               ? 'A project holds the baselines, builds and tokens of one app or site.'
-              : 'Ask an admin to add a project.'}
+              : 'You see the projects you are a member of. Ask an admin to add you to one.'}
           </p>
           {isAdmin && <NewProjectButton ui={ui} />}
         </div>
@@ -300,6 +302,7 @@ function BranchesPage(props: {
       crumbs={[{ label: project.name }]}
       notice={props.notice}
       project={project.slug}
+      canManage={props.canManage}
       islands={[
         ...(props.onboarding && props.canManage ? ['tokens'] : []),
         // Live always: running builds update every 5 s, new ones show up within 10 s.
@@ -467,6 +470,7 @@ function AllBuildsPage(props: {
       notice={props.notice}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'All builds' }]}
       project={project.slug}
+      canManage={props.canManage}
       islands={[
         ...(builds.some((b) => b.state === 'open') || !props.newer ? ['live'] : []),
         ...(props.canManage ? ['select'] : []),
@@ -688,16 +692,13 @@ function PromotePage(props: {
 }
 
 export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): void {
-  const requirePromote = (c: Parameters<typeof uiOf>[0]) => {
-    if (!hasPermission(userOf(c), 'check.write')) {
-      throw new AppError('forbidden', 403, 'Only admins can promote a branch.');
-    }
-  };
+  // Promoting needs check.write: admins and the project's maintainers.
+  const promotable = (c: Parameters<typeof uiOf>[0]) =>
+    visibleProject(c, s.deps, c.req.param('slug') ?? '', 'check.write');
 
   app.get('/ui/p/:slug/promote', async (c) => {
     const ui = uiOf(c, s);
-    requirePromote(c);
-    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const { project } = await promotable(c);
     const branch = (c.req.query('branch') ?? '').trim();
     const candidates = await promotionCandidates(s.deps, project.slug, branch);
     const diffs = new Map(
@@ -718,8 +719,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
 
   // The diff image of one screen on the promote page (main now vs the branch, changes in red).
   app.get('/ui/p/:slug/promote/diff.png', async (c) => {
-    requirePromote(c);
-    const project = await getProjectBySlug(s.deps, c.req.param('slug'));
+    const { project } = await promotable(c);
     const branch = (c.req.query('branch') ?? '').trim();
     const key = c.req.query('key') ?? '';
     const candidate = (await promotionCandidates(s.deps, project.slug, branch)).find((x) => x.snapshotKey === key);
@@ -734,7 +734,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
 
   app.post('/ui/p/:slug/promote', async (c) => {
     const ui = uiOf(c, s);
-    requirePromote(c);
+    await promotable(c);
     const form = await c.req.parseBody({ all: true });
     const slug = c.req.param('slug');
     const branch = field(form, 'branch') ?? '';
@@ -747,14 +747,17 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
   });
 
   const requireCreate = (ui: Ui) => {
-    if (!ui.user || !hasPermission(ui.user, 'project.admin')) {
+    if (!ui.user || !hasPermission(ui.user, 'server.admin')) {
       throw new AppError('forbidden', 403, 'Only admins can create projects.');
     }
   };
 
   app.get('/ui', async (c) => {
     const ui = uiOf(c, s);
-    const cards = await projectCards(s, await listProjects(s.deps));
+    const cards = await projectCards(
+      s,
+      (await visibleProjects(s.deps, userOf(c))).map((x) => x.project),
+    );
     return c.html(<ProjectsPage ui={ui} cards={cards} notice={noticeOf(c)} />);
   });
 
@@ -782,14 +785,14 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
   app.get('/ui/p/:slug', async (c) => {
     const ui = uiOf(c, s);
     const slug = c.req.param('slug');
+    const { project, access } = await visibleProject(c, s.deps, slug, 'project.read');
     // The build list moved to its own tab; keep old filtered links working.
     const query = new URL(c.req.url).search;
     if (c.req.query('branch') !== undefined || c.req.query('cursor') !== undefined) {
       return c.redirect(ui.url(`/ui/p/${slug}/builds${query}`), 302);
     }
-    const project = await getProjectBySlug(s.deps, slug);
     const summaries = await listBranchSummaries(s.deps, slug);
-    const canManage = hasPermission(userOf(c), 'project.admin');
+    const canManage = access.can('project.admin');
 
     // Each lane whose latest build has checks waiting links to the first one; "Review N →" in the
     // header opens the most recent of those builds.
@@ -802,9 +805,9 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
       if (first) laneReviews.set(x.branch, ui.url(`/ui/checks/${first}?filter=pending`));
     }
     const newest = waiting[0] && laneReviews.get(waiting[0].branch);
-    // Admins (who may promote) see on each other lane how many screens it would change on main.
+    // Those who may promote see on each other lane how many screens it would change on main.
     const lanePromotions = new Map<string, number>();
-    if (hasPermission(userOf(c), 'check.write')) {
+    if (access.can('check.write')) {
       for (const x of summaries) {
         if (x.branch === project.mainBranch) continue;
         lanePromotions.set(x.branch, (await promotionCandidates(s.deps, slug, x.branch)).length);
@@ -833,11 +836,8 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
 
   app.post('/ui/p/:slug/builds/delete', async (c) => {
     const ui = uiOf(c, s);
-    if (!hasPermission(userOf(c), 'project.admin')) {
-      throw new AppError('forbidden', 403, 'Only admins can delete builds.');
-    }
     const slug = c.req.param('slug');
-    const project = await getProjectBySlug(s.deps, slug);
+    const { project } = await visibleProject(c, s.deps, slug, 'project.admin');
     const form = await c.req.parseBody({ all: true });
     const picked = ([] as unknown[]).concat(form.build ?? []).filter((v): v is string => typeof v === 'string');
     const deleted = await deleteBuilds(s.deps, project.id, picked);
@@ -849,7 +849,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
     const slug = c.req.param('slug');
     const branch = c.req.query('branch') || undefined;
     const cursor = c.req.query('cursor') || undefined;
-    const project = await getProjectBySlug(s.deps, slug);
+    const { project, access } = await visibleProject(c, s.deps, slug, 'project.read');
     const [page, summaries] = await Promise.all([
       listBuilds(s.deps, slug, { branch, cursor, limit: 50 }),
       listBranchSummaries(s.deps, slug),
@@ -867,7 +867,7 @@ export function registerProjectPages(app: OpenAPIHono<AppEnv>, s: Services): voi
         branch={branch}
         newer={cursor ? ui.url(`/ui/p/${slug}/builds${query({})}`) : undefined}
         older={page.nextCursor ? ui.url(`/ui/p/${slug}/builds${query({ cursor: page.nextCursor })}`) : undefined}
-        canManage={hasPermission(userOf(c), 'project.admin')}
+        canManage={access.can('project.admin')}
         notice={noticeOf(c)}
       />,
     );

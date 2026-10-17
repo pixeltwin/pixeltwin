@@ -1,5 +1,13 @@
 import { z } from '@hono/zod-openapi';
-import { AREA_KINDS, BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
+import {
+  AREA_KINDS,
+  BUILD_STATES,
+  CHECK_RESULTS,
+  CHECK_REVIEWS,
+  PROJECT_ROLES,
+  REVIEW_ACTIONS,
+  USER_ROLES,
+} from '../db/schema';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
 // Response schemas. They document the API in openapi.json and type-check every handler's output.
@@ -17,8 +25,26 @@ export const ProblemSchema = z
   .openapi('Problem');
 
 export const UserSchema = z
-  .object({ id: z.string(), email: z.string(), role: z.enum(USER_ROLES), createdAt: z.number().int() })
+  .object({
+    id: z.string(),
+    email: z.string(),
+    role: z.enum(USER_ROLES).openapi({
+      description:
+        'Global role. admin: every project and the server. reviewer, viewer: the role in projects visible to ' +
+        'everyone and the default when added to a project; other projects need a membership',
+    }),
+    createdAt: z.number().int(),
+  })
   .openapi('User');
+
+export const MemberSchema = z
+  .object({ userId: z.string(), email: z.string(), role: z.enum(PROJECT_ROLES), createdAt: z.number().int() })
+  .openapi('Member');
+
+/** One of a user's memberships. */
+export const MembershipSchema = z
+  .object({ slug: z.string(), name: z.string(), role: z.enum(PROJECT_ROLES) })
+  .openapi('Membership');
 
 export const ProjectSchema = z
   .object({
@@ -32,6 +58,10 @@ export const ProjectSchema = z
     autoApproveNew: z
       .boolean()
       .openapi({ description: 'A new screenshot (no baseline yet) is approved as soon as it arrives' }),
+    visibleToAll: z.boolean().openapi({
+      description:
+        'Every user on the server may open the project with their global role (viewer or reviewer); otherwise only admins and members',
+    }),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
   })
