@@ -1311,14 +1311,14 @@ function ActionBar(props: {
               type="submit"
               class="approve"
               data-key="a"
-              data-key-label={check.withinTolerance ? 'Approve as new baseline' : 'Approve'}
+              data-key-label="Approve"
               title={
                 check.withinTolerance
                   ? 'Take this screenshot as the baseline, so the drift within the tolerance does not add up (A)'
                   : undefined
               }
             >
-              {check.withinTolerance ? 'Approve as new baseline' : 'Approve'} <kbd>A</kbd>
+              Approve <kbd>A</kbd>
             </button>
           </form>
         </div>

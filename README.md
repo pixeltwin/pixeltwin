@@ -196,7 +196,7 @@ recorded in its review history as approved by auto-approve, and only changes wai
 
 A check whose pixels differ by no more than the tolerance passes, but it is not hidden: its card
 gets an amber "within tolerance 0.12% ≤ 0.5%" tag, the build page has a "Within tolerance" chip,
-and the check page shows the diff and offers Approve as new baseline (so small drift does not add
+and the check page shows the diff and offers Approve, which takes the screenshot as the new baseline (so small drift does not add
 up) or Reject. The API marks it with `"withinTolerance": true` (and
 `GET /api/v1/builds/{id}/checks?withinTolerance=true`). Settings (or `"reviewWithinTolerance": true`
 on the project, or in the SDK's check options) make such checks wait for review instead.

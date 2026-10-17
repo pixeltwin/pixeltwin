@@ -96,7 +96,7 @@ describe('UI: checks within the tolerance', () => {
     expect(buildId).toBeTruthy();
   });
 
-  test('the check page says it passed within tolerance and offers Approve as new baseline and Reject', async () => {
+  test('the check page says it passed within tolerance and offers Approve (its tooltip says it takes the new baseline) and Reject', async () => {
     const { home } = await seedBuild();
     const body = await html(await t.request('GET', `/ui/checks/${home.id}?filter=tolerance`, { as: reviewer }));
     expect(body).toContain('<span class="pill tone-green">passed</span>');
@@ -105,12 +105,15 @@ describe('UI: checks within the tolerance', () => {
     // The diff and the change are there although it passed.
     expect(body).toContain('data-mode-button="diff"');
     expect(body).toContain('<span class="region-name">Change 1</span>');
-    expect(body).toContain('Approve as new baseline <kbd>A</kbd>');
+    expect(body).toContain(
+      'Take this screenshot as the baseline, so the drift within the tolerance does not add up (A)',
+    );
+    expect(body).toContain('Approve <kbd>A</kbd>');
     expect(body).toContain('data-reject-menu');
     expect(body).toContain('data-tolerance=""');
 
     const readOnly = await html(await t.request('GET', `/ui/checks/${home.id}`, { as: viewer }));
-    expect(readOnly).not.toContain('Approve as new baseline');
+    expect(readOnly).not.toContain('Take this screenshot as the baseline');
     expect(readOnly).not.toContain('Approve to take this screenshot');
   });
 

@@ -73,7 +73,7 @@ test('on the check page a reviewer takes one as the new baseline and rejects the
   await page.keyboard.press('4');
   await expect(page.locator('#stage')).toHaveAttribute('data-mode', 'diff');
   await expect(page.locator('.changes .region-name').first()).toHaveText('Change 1');
-  await expect(page.getByRole('button', { name: /Approve as new baseline/ })).toBeVisible();
+  await expect(page.locator('.action-bar button.approve')).toBeVisible();
 
   await page.keyboard.press('a');
   await expect(page.locator('.toast').last()).toContainText('Approved cart');
