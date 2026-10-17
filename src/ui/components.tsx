@@ -168,14 +168,14 @@ export function durationText(ms: number): string {
 export function BuildTime({ timing }: { timing: BuildView['timing'] }) {
   if (timing.checks === 0) return null;
   const total = timing.screenshotMs + timing.uploadMs + timing.compareMs;
-  const retakes = `${timing.retakes} retake${timing.retakes === 1 ? '' : 's'}`;
-  const checks = `${timing.checks} check${timing.checks === 1 ? '' : 's'}`;
+  const retakes = timing.retakes > 0 ? `, ${timing.retakes} retake${timing.retakes === 1 ? '' : 's'}` : '';
+  const each = durationText(Math.round(total / timing.checks));
   return (
     <span
       class="build-time"
-      title={`screenshots ${durationText(timing.screenshotMs)} · upload ${durationText(timing.uploadMs)} · compare ${durationText(timing.compareMs)} · ${retakes} · over ${checks}`}
+      title={`Time the tests spent on visual checks, added up over all CI jobs and workers (so it can be longer than the run): taking screenshots ${durationText(timing.screenshotMs)}, uploading ${durationText(timing.uploadMs)}, comparing ${durationText(timing.compareMs)}${retakes}. ${timing.checks} check${timing.checks === 1 ? '' : 's'}, ${each} each.`}
     >
-      {`pixeltwin ${durationText(total)}`}
+      {`Visual checks took ${durationText(total)}`}
     </span>
   );
 }

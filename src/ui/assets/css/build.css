@@ -455,3 +455,9 @@
   font-weight: 600;
   line-height: 16px;
 }
+/* How long the tests spent on visual checks: the breakdown is in its tooltip. */
+.build-time {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}

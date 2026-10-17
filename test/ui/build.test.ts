@@ -121,7 +121,7 @@ describe('UI build page', () => {
     await addTimings(t.deps, buildId, { checks: 3, screenshotMs: 38_000, uploadMs: 41_000, retakes: 6 });
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
     expect(page).toMatch(
-      /<span class="build-time" title="screenshots 38 s · upload 41 s · compare [^"]+ · 6 retakes · over 3 checks">pixeltwin 1m 19s<\/span>/,
+      /<span class="build-time" title="Time the tests spent on visual checks, added up over all CI jobs and workers \(so it can be longer than the run\): taking screenshots 38 s, uploading 41 s, comparing [^"]+, 6 retakes\. 3 checks, [^"]+ each\.">Visual checks took 1m 19s<\/span>/,
     );
   });
 
