@@ -40,7 +40,18 @@ describe('documentation routes', () => {
     const text = await (await t.request('GET', '/llms.txt')).text();
     expect(text).toContain(`${PUBLIC_URL}/api/v1/projects/<slug>/builds`);
     expect(text).toContain(`${PUBLIC_URL}/openapi.json`);
-    for (const word of ['unchanged', 'changed', 'pending', 'passed', 'diff.summary', 'diff.regions']) {
+    for (const word of [
+      'unchanged',
+      'changed',
+      'pending',
+      'passed',
+      'diff.summary',
+      'diff.regions',
+      'groupId',
+      '/groups/<groupId>/approve',
+      'flaky',
+      'noisy-screens',
+    ]) {
       expect(text).toContain(word);
     }
   });

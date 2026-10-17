@@ -46,11 +46,25 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 
 5. Act on \`verdict\`. Only \`passed\` is success. Changes wait for a human (or a token with the
    \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject. /reset undoes either.
+   The same change on several screens is reviewed once: checks of a build with exactly the same
+   changes share a \`groupId\` (\`diff.regions[].fingerprint\` names each change, wherever it is on
+   the screen). GET ${api}/builds/<buildId>/groups lists the groups; POST
+   ${api}/builds/<buildId>/groups/<groupId>/approve (or /reject) reviews every check of the group
+   that waits, one review event each, skips reviewed and outdated ones and answers with the
+   build's new \`verdict\`. /reset with {"checkIds":[…]} (the \`changed\` list) undoes exactly that.
+   Prefer one group call over one call per check. A check with the group's change and one more is
+   not in the group: review it on its own.
    A screen part that always changes (a clock, an ad) can be skipped for good: POST
    ${api}/checks/<checkId>/areas {"kind":"ignore","x":…,"y":…,"width":…,"height":…} applies
    to every later check of that snapshot; kind "compare" compares only inside such areas.
    A snapshot has one kind of area (409 area_kind_conflict otherwise). PATCH
    ${api}/checks/<checkId>/areas/<areaId> {"x":…,"y":…,"width":…,"height":…} moves one.
+
+   Before approving or rejecting a change, check whether its screen is flaky: GET
+   ${api}/checks/<checkId>/history returns its last 20 checks on the branch and \`flaky\`
+   ({score, flips, checks, lastSeen, unstableArea}, null when it is steady). A flaky screen's
+   change is likely noise, not a regression: suggest an ignore area over \`unstableArea\` instead
+   of approving it again. GET ${api}/projects/<slug>/noisy-screens lists every flaky screen.
 
 6. After merging a branch, promote it so main does not ask to review the same screens again:
    GET ${api}/projects/<slug>/branches/<branch>/promote lists the screens that differ from main;
