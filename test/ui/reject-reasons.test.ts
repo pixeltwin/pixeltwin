@@ -78,7 +78,11 @@ describe('UI reject reasons', () => {
     expect(body).toContain('<details class="reject-menu up" data-reject-menu="true">');
     expect(body).toMatch(/<summary class="button reject"[^>]*data-key="r"/);
     expect(body).toContain(`<form class="reject-popover" method="post" action="/ui/checks/${ids.home}/reject"`);
-    const chips = [...body.matchAll(/<input type="radio" name="reasonCode" value="([a-z_]+)"\/><span>[^<]+<\/span><kbd>(\d)<\/kbd>/g)];
+    const chips = [
+      ...body.matchAll(
+        /<input type="radio" name="reasonCode" value="([a-z_]+)"\/><span>[^<]+<\/span><kbd>(\d)<\/kbd>/g,
+      ),
+    ];
     expect(chips.map((m) => [m[1], m[2]])).toEqual([
       ['not_loaded', '1'],
       ['late_asset', '2'],
