@@ -1,5 +1,5 @@
 import { makePng, WHITE } from '../test/helpers/png';
-import { Api, expect, open, test } from './fixtures';
+import { Api, expect, open, REVIEWER, test } from './fixtures';
 
 interface CheckJson {
   id: string;
@@ -30,6 +30,8 @@ const SCREENS = ['home', 'cart', 'account'];
 async function seedGroup(admin: Api) {
   const slug = `grp-${Math.random().toString(36).slice(2, 10)}`;
   await admin.call('POST', '/projects', { slug, name: `Groups ${slug.slice(4)}` });
+  // New projects are members only: the reviewer the tests log in as is added.
+  await admin.call('POST', `/projects/${slug}/members`, { email: REVIEWER, role: 'reviewer' });
   const { token } = await admin.call<{ token: string }>('POST', `/projects/${slug}/tokens`, {
     name: 'e2e',
     scopes: ['read', 'write', 'review'],
