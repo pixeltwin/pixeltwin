@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { PixeltwinClient } from './client.js';
 import { PixeltwinError, PixeltwinGateError } from './errors.js';
 import { formatMs } from './timing.js';
-import type { Build, Check } from './types.js';
+import type { Build, Check, ScreenRejections } from './types.js';
 
 type Env = Record<string, string | undefined>;
 
@@ -441,6 +441,45 @@ function variantText(check: Check): string {
   return values.length ? ` (${values.join(', ')})` : '';
 }
 
+/** Rejections as captured too early that make a screen worth a tip at the end of the run. */
+export const TIP_AFTER = 2;
+/** Tips printed at most; the rest are counted. */
+const MAX_TIPS = 3;
+
+function tipFor(screen: ScreenRejections): string {
+  const notLoaded = screen.byCategory.not_loaded ?? 0;
+  const late = screen.byCategory.late_asset ?? 0;
+  const values = Object.keys(screen.variant)
+    .sort()
+    .map((k) => screen.variant[k]);
+  const name = `'${screen.name}'${values.length ? ` (${values.join(', ')})` : ''}`;
+  const why =
+    notLoaded >= late
+      ? `as not fully loaded${late ? ` (and ${late}× for a late image, banner or font)` : ''}`
+      : `for an image, banner or font that loaded late${notLoaded ? ` (and ${notLoaded}× as not fully loaded)` : ''}`;
+  const times = notLoaded >= late ? notLoaded : late;
+  return `pixeltwin: tip: ${name} was rejected ${times}× ${why} — wait for it before the screenshot`;
+}
+
+/**
+ * One line per screen of the build that people keep rejecting as captured too early (not_loaded,
+ * late_asset), from one request (GET /builds/{id}/rejections). Never fails the run: an older
+ * server, a token without read or a network error give no tips.
+ */
+export async function rejectionTips(client: PixeltwinClient, build: Build): Promise<string[]> {
+  if (build.counts.total === 0) return [];
+  let screens: ScreenRejections[];
+  try {
+    screens = (await client.buildRejections(build.id)).screens;
+  } catch {
+    return [];
+  }
+  const early = screens.filter((sc) => sc.tooEarly >= TIP_AFTER).sort((a, b) => b.tooEarly - a.tooEarly);
+  const lines = early.slice(0, MAX_TIPS).map(tipFor);
+  if (early.length > MAX_TIPS) lines.push(`pixeltwin: tip: … and ${plural(early.length - MAX_TIPS, 'more screen')}`);
+  return lines;
+}
+
 /** Lines describing a build: verdict, counts, what waits for review or failed, and the link. */
 export async function summaryLines(client: PixeltwinClient, build: Build): Promise<string[]> {
   const { result, review } = build.counts;
@@ -468,6 +507,7 @@ export async function summaryLines(client: PixeltwinClient, build: Build): Promi
         plural(t.retakes, 'retake'),
     );
   }
+  lines.push(...(await rejectionTips(client, build)));
   lines.push(`pixeltwin: review at ${client.buildUrl(build.id)}`);
   return lines;
 }

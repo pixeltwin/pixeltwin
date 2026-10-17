@@ -98,4 +98,6 @@ approving a screen that was rejected before as captured too early says so. See t
 its own: the package keeps no dependencies.
 
 `@pixeltwin/client/run` exports the run lifecycle the integrations share (`resolveSettings`,
-`startRun`, `finishRun`, `summaryLines`), for wiring pixeltwin into another runner.
+`startRun`, `finishRun`, `summaryLines`, `rejectionTips`), for wiring pixeltwin into another runner.
+The summary ends with a tip for each screen of the build that was rejected at least twice as
+captured too early (`not_loaded`, `late_asset`), from one request.
