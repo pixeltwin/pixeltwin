@@ -299,6 +299,25 @@ describe('command line', () => {
     expect(await main(['healthcheck'], { DATA_DIR: dir, PORT: port }, out)).toBe(1);
   });
 
+  test('healthcheck --wait keeps trying until the server answers', async () => {
+    const unused = Bun.serve({ port: 0, fetch: () => new Response() });
+    const port = String(unused.port);
+    await unused.stop(true);
+    let late: ReturnType<typeof Bun.serve> | undefined;
+    const starting = setTimeout(() => {
+      late = Bun.serve({ port: Number(port), fetch: () => Response.json({ status: 'ok' }) });
+    }, 1200);
+    try {
+      const started = Date.now();
+      expect(await main(['healthcheck', `http://127.0.0.1:${port}`, '--wait', '10'], { DATA_DIR: dir }, out)).toBe(0);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(1000);
+      expect(await main(['healthcheck', '--wait', 'soon'], { DATA_DIR: dir }, out)).toBe(2);
+    } finally {
+      clearTimeout(starting);
+      await late?.stop(true);
+    }
+  });
+
   test('a port that is already taken is a one-line error, not a crash', async () => {
     const blocker = Bun.serve({ port: 0, fetch: () => new Response() });
     try {
