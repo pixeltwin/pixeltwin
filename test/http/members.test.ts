@@ -169,6 +169,8 @@ describe('project members (API)', () => {
     const urls = [
       `/api/v1/images/${check.imageSha}/thumb?w=160`,
       `/api/v1/images/${check.imageSha}/thumb?w=160&crop=0,0,100,100`,
+      `/api/v1/images/${check.imageSha}/thumb?w=960&fit=top`,
+      `/api/v1/images/${check.imageSha}/thumb?w=960&mode=diff&crop=0,0,100,100`,
     ];
     const status = async (as: Who | { token: string }, url: string) => (await t.request('GET', url, { as })).status;
     for (const url of urls) {

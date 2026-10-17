@@ -38,7 +38,11 @@ function paint(thumb: HTMLElement): void {
     if (!diff || shot.classList.contains('is-broken') || !stack.isConnected) return;
     const ratio = window.devicePixelRatio || 1;
     const width = Math.max(1, Math.round(shot.clientWidth * ratio));
-    const height = Math.max(1, Math.round(shot.clientHeight * ratio));
+    // A part of a full page covers its box (build.css): the mask keeps the diff's own shape and
+    // covers the box the same way.
+    const height = stack.classList.contains('part')
+      ? Math.max(1, Math.round((width * diff.naturalHeight) / Math.max(1, diff.naturalWidth)))
+      : Math.max(1, Math.round(shot.clientHeight * ratio));
     const canvas = document.createElement('canvas');
     canvas.className = 'thumb-mask';
     canvas.width = width;

@@ -17,8 +17,11 @@ export function imageKey(sha: string): string {
   return `images/${sha.slice(0, 2)}/${sha.slice(2, 4)}/${sha}.png`;
 }
 
-/** Storage key for a thumbnail of an image (thumb.ts): `thumbs/ab/cd/abcd…-640.png`, `-640-diff`. */
-export function thumbKey(sha: string, edge: number, mode: 'plain' | 'diff'): string {
+/**
+ * Storage key for a thumbnail of an image (thumb.ts): `thumbs/ab/cd/abcd…-640.png`, `-640-diff`,
+ * and of a full page's top: `-640-top`, `-640-top-diff`.
+ */
+export function thumbKey(sha: string, edge: number, mode: 'plain' | 'diff', top = false): string {
   if (!SHA256_HEX.test(sha)) throw new Error(`Invalid image sha: ${sha}`);
-  return `thumbs/${sha.slice(0, 2)}/${sha.slice(2, 4)}/${sha}-${edge}${mode === 'diff' ? '-diff' : ''}.png`;
+  return `thumbs/${sha.slice(0, 2)}/${sha.slice(2, 4)}/${sha}-${edge}${top ? '-top' : ''}${mode === 'diff' ? '-diff' : ''}.png`;
 }

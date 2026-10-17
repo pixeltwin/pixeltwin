@@ -1,10 +1,21 @@
 // Pages of the build page's grid. Pure, so `bun test` checks it without a server.
 
 /** Cards per page: the client fits a page to the window and asks with `?size=` (UI spec §4.2). */
-export const PAGE_SIZE = { min: 4, max: 60, default: 24 } as const;
+export const PAGE_SIZE = { min: 2, max: 60, default: 24 } as const;
 
 /** The cookie the build page keeps the fitted page size in, so the next visit renders it at once. */
 export const PAGE_SIZE_COOKIE = 'pt_page_size';
+
+/** How big the build page's cards are: large (fewer, sharper) by default, or compact (more). */
+export const DENSITIES = ['large', 'compact'] as const;
+export type Density = (typeof DENSITIES)[number];
+/** The viewer's density, kept like the page size so the server renders the cards at once. */
+export const DENSITY_COOKIE = 'pt_density';
+
+/** The density a cookie names; large by default. */
+export function densityOf(value: string | undefined): Density {
+  return DENSITIES.find((d) => d === value) ?? 'large';
+}
 
 /** A check, or the checks of one change group shown as one card: one slot of a page either way. */
 export interface Slot {

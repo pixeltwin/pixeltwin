@@ -19,10 +19,10 @@ describe('build page paging', () => {
     ]);
   });
 
-  test('the page size comes from ?size=, else the cookie, clamped to 4–60', () => {
+  test('the page size comes from ?size=, else the cookie, clamped to 2–60', () => {
     expect(pageSizeOf(undefined)).toBe(24);
     expect(pageSizeOf('15')).toBe(15);
-    expect(pageSizeOf('1')).toBe(4);
+    expect(pageSizeOf('1')).toBe(2);
     expect(pageSizeOf('1000')).toBe(60);
     expect(pageSizeOf('abc', '18')).toBe(18);
     expect(pageSizeOf(undefined, '-3')).toBe(24);

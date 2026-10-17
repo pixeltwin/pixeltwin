@@ -225,7 +225,7 @@ describe('UI build page', () => {
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     // The new screenshot, and the diff for the island that paints the changed pixels over it.
     expect(page).toContain(
-      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}/thumb?w=640&amp;mode=diff"><span class="thumb-stack"><canvas class="thumb-box" width="100" height="100"></canvas><img src="/api/v1/images/${changed.imageSha}/thumb?w=640"`,
+      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}/thumb?w=960&amp;mode=diff"><span class="thumb-stack"><canvas class="thumb-box" width="100" height="100"></canvas><img src="/api/v1/images/${changed.imageSha}/thumb?w=960"`,
     );
     expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
     // A check waiting for review says "unresolved".
@@ -272,7 +272,108 @@ describe('UI build page', () => {
     expect(page).toContain('loading="lazy" decoding="async" width="100" height="100"');
     expect(page).toContain(`href="/ui/checks/${changed.id}?filter=pending"`);
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(all).toContain(`src="/api/v1/images/${same.imageSha}/thumb?w=640"`);
+    expect(all).toContain(`src="/api/v1/images/${same.imageSha}/thumb?w=960"`);
+  });
+
+  describe('card size', () => {
+    const get = async (buildId: string, cookie = '') =>
+      html(
+        await t.request('GET', `/ui/builds/${buildId}?filter=all`, {
+          as: cookie ? null : viewer,
+          headers: cookie ? { cookie: `pt_session=${viewer.cookie}; ${cookie}` } : {},
+        }),
+      );
+
+    test('large cards by default, compact ones with the cookie; the switch says which is on', async () => {
+      const { buildId, same } = await seedBuild();
+      const large = await get(buildId);
+      expect(large).toContain('data-density="large"');
+      expect(large).toContain(`src="/api/v1/images/${same.imageSha}/thumb?w=960"`);
+      expect(large).toContain('value="large" aria-pressed="true"');
+      expect(large).toContain('value="compact" aria-pressed="false"');
+      const compact = await get(buildId, 'pt_density=compact');
+      expect(compact).toContain('data-density="compact"');
+      expect(compact).toContain(`src="/api/v1/images/${same.imageSha}/thumb?w=640"`);
+      expect(compact).toContain('value="compact" aria-pressed="true"');
+      // Anything else is large.
+      expect(await get(buildId, 'pt_density=huge')).toContain('data-density="large"');
+    });
+
+    test('the switch works without JavaScript: it keeps the choice for a year and comes back', async () => {
+      const { buildId } = await seedBuild();
+      const next = `/ui/builds/${buildId}?filter=all&page=2`;
+      const res = await postForm(t, '/ui/density', { density: 'compact', next }, viewer);
+      expect(res.status).toBe(303);
+      expect(location(res)).toBe(next);
+      const cookie = res.headers.get('set-cookie') ?? '';
+      expect(cookie).toContain('pt_density=compact');
+      expect(cookie).toContain('Max-Age=31536000');
+      expect(cookie).toContain('Path=/');
+      const odd = await postForm(t, '/ui/density', { density: 'tiny', next: 'https://evil.example/' }, viewer);
+      expect(odd.headers.get('set-cookie')).toContain('pt_density=large');
+      expect(location(odd)).toBe('/ui');
+    });
+
+    test('a big screenshot comes in a thumbnail per edge, picked by the card width', async () => {
+      const page = makePng(1280, 800);
+      const buildId = await openBuild(t.deps, 'web');
+      const { check } = await submit(t.deps, buildId, page, { name: 'wide' });
+      const small = (await submit(t.deps, buildId, white, { name: 'small' })).check;
+      const url = (w: number) => `/api/v1/images/${check.imageSha}/thumb?w=${w}`;
+      const srcset = `srcset="${url(320)} 320w, ${url(640)} 640w, ${url(960)} 960w"`;
+      const large = await get(buildId);
+      expect(large).toContain(`<img src="${url(960)}" ${srcset} sizes="(max-width: 840px) 100vw,`);
+      expect(large).toContain('width="960" height="600"');
+      const compact = await get(buildId, 'pt_density=compact');
+      expect(compact).toContain(`<img src="${url(640)}" ${srcset} sizes="(max-width: 640px) 50vw, 300px"`);
+      // A small one is its own thumbnail: one source.
+      expect(large).toContain(
+        `<img src="/api/v1/images/${small.imageSha}/thumb?w=960" alt="small" loading="lazy" decoding="async" width="100" height="100"`,
+      );
+    });
+
+    test('a full page shows its top, sharp, and says it is a full page', async () => {
+      const tall = makePng(1000, 4000);
+      const buildId = await openBuild(t.deps, 'web');
+      const { check } = await submit(t.deps, buildId, tall, { name: 'long' });
+      const body = await get(buildId);
+      const at = body.indexOf(`id="${check.id}"`);
+      const card = body.slice(at, body.indexOf('</a>', at));
+      expect(card).toContain('<span class="thumb-stack part"><canvas class="thumb-box" width="960" height="600">');
+      expect(card).toContain(`src="/api/v1/images/${check.imageSha}/thumb?w=960&amp;fit=top"`);
+      expect(card).toContain(`/api/v1/images/${check.imageSha}/thumb?w=320&amp;fit=top 320w`);
+      expect(card).toContain('Full page ↓');
+    });
+
+    test('a full page changed lower down shows the band around its first change, and its mask too', async () => {
+      const tall = makePng(1000, 4000);
+      const changedLow = makePng(1000, 4000, WHITE, [{ x: 100, y: 3000, width: 50, height: 50, color: BLACK }]);
+      const changedEnd = makePng(1000, 4000, WHITE, [{ x: 600, y: 3970, width: 300, height: 30, color: BLACK }]);
+      await seedBaseline(t.deps, project, tall, { name: 'low' });
+      await seedBaseline(t.deps, project, tall, { name: 'end' });
+      // A build each: two changes of white to black would be one group card.
+      const lowBuild = await openBuild(t.deps, 'web');
+      const low = (await submit(t.deps, lowBuild, changedLow, { name: 'low' })).check;
+      const endBuild = await openBuild(t.deps, 'web');
+      const end = (await submit(t.deps, endBuild, changedEnd, { name: 'end' })).check;
+      const bodies = { [low.id]: await get(lowBuild), [end.id]: await get(endBuild) };
+      const cardOf = (id: string) => {
+        const body = bodies[id] ?? '';
+        const at = body.indexOf(`id="${id}"`);
+        return body.slice(at, body.indexOf('</a>', at));
+      };
+      // 625 px high (16:10), around y 3000–3050: from 2713.
+      const band = '0%2C2713%2C1000%2C625';
+      expect(cardOf(low.id)).toContain(
+        `data-diff="/api/v1/images/${low.diffImageSha}/thumb?w=960&amp;mode=diff&amp;crop=${band}"`,
+      );
+      expect(cardOf(low.id)).toContain(`<span class="thumb-stack part at-change">`);
+      expect(cardOf(low.id)).toContain(`src="/api/v1/images/${low.imageSha}/thumb?w=960&amp;crop=${band}"`);
+      expect(cardOf(low.id)).toContain('Change 76% down ↓');
+      // At the page's end: the band ends with it, and the card shows its bottom.
+      expect(cardOf(end.id)).toContain(`<span class="thumb-stack part at-end">`);
+      expect(cardOf(end.id)).toContain('crop=0%2C3375%2C1000%2C625');
+    });
   });
 
   test('Start review opens the newest waiting check; it is gone when nothing waits', async () => {
@@ -400,7 +501,7 @@ describe('UI build page', () => {
           }),
         );
       expect(cards(await get(''), ids)).toHaveLength(24);
-      expect(cards(await get('&size=1'), ids)).toHaveLength(4);
+      expect(cards(await get('&size=1'), ids)).toHaveLength(2);
       expect(cards(await get('&size=500'), ids)).toHaveLength(30);
       expect(cards(await get('', 'pt_page_size=9'), ids)).toHaveLength(9);
       expect(cards(await get('&size=6', 'pt_page_size=9'), ids)).toHaveLength(6);

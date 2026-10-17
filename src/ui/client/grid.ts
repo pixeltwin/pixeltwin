@@ -4,17 +4,18 @@
 // on to the next or previous page at the edges. The server renders every page, so without
 // JavaScript the pager's links and the search form do the same.
 import { basePath, fetchPage } from './api.ts';
-import { fitRows, THUMB } from './fit.ts';
+import { type Density, fitRows, THUMB } from './fit.ts';
 import { onKey } from './keys.ts';
 import { adopt, focusedCard, focusTarget, serverMarkup } from './swap.ts';
 
-/** Phones scroll: a fixed page of two columns. */
+/** Phones scroll: a fixed page of two columns (of one, large). */
 const PHONE = window.matchMedia('(max-width: 640px)');
-const PHONE_SIZE = 12;
-const SIZE = { min: 4, max: 60 };
+const PHONE_SIZE = { compact: 12, large: 8 };
+const SIZE = { min: 2, max: 60 };
 /** The pager's room when a page has none (one page): sizes stay the same either way. */
 const PAGER_ROOM = 42;
 const COOKIE = 'pt_page_size';
+const DENSITY_COOKIE = 'pt_density';
 /** How long a page fetched ahead is used before it is fetched again. */
 const FRESH_MS = 20_000;
 
@@ -47,15 +48,17 @@ function pageUrl(page: number, size = state().size): string {
   return url.href;
 }
 
+const density = (): Density => (grid()?.dataset.density === 'large' ? 'large' : 'compact');
+
 function columns(): number {
   const g = grid();
   if (!g) return 1;
   return Math.max(1, getComputedStyle(g).gridTemplateColumns.split(' ').filter(Boolean).length);
 }
 
-function remember(size: number): void {
+function remember(size: number | Density, name = COOKIE): void {
   // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is missing in older Safari and Firefox.
-  document.cookie = `${COOKIE}=${size}; path=${basePath() || '/'}; max-age=31536000; samesite=lax`;
+  document.cookie = `${name}=${size}; path=${basePath() || '/'}; max-age=31536000; samesite=lax`;
 }
 
 function fetchAhead(url: string): Promise<Document> {
@@ -67,7 +70,7 @@ function fetchAhead(url: string): Promise<Document> {
   return doc;
 }
 
-/** The next page's markup and thumbnails, fetched while the browser is idle. */
+/** The next page's markup and its first thumbnails (the size this window picks), fetched while idle. */
 function prefetch(): void {
   const { page, pages } = state();
   if (page >= pages) return;
@@ -75,7 +78,12 @@ function prefetch(): void {
   idle(() => {
     fetchAhead(pageUrl(page + 1))
       .then((doc) => {
-        for (const img of doc.querySelectorAll('[data-grid] img')) new Image().src = (img as HTMLImageElement).src;
+        for (const img of [...doc.querySelectorAll<HTMLImageElement>('[data-grid] img')].slice(0, 12)) {
+          const next = new Image();
+          next.sizes = img.sizes;
+          next.srcset = img.srcset;
+          next.src = img.src;
+        }
         for (const image of doc.querySelectorAll('[data-grid] .crop-pane image'))
           new Image().src = new URL(image.getAttribute('href') ?? '', location.href).href;
       })
@@ -84,7 +92,7 @@ function prefetch(): void {
 }
 
 /** Measures the room the grid has: the window under the grid's top, less the pager and margin. */
-function room(): { height: number; gap: number; body: number } | null {
+function room(): { height: number; gap: number; body: number; width: number } | null {
   const g = grid();
   if (!g) return null;
   const style = getComputedStyle(g);
@@ -98,11 +106,12 @@ function room(): { height: number; gap: number; body: number } | null {
   const top = g.getBoundingClientRect().top + window.scrollY;
   // A card's height without its thumbnail: rows stretch to their tallest card, so take the most.
   let body = 0;
+  const width = cards()[0]?.getBoundingClientRect().width ?? 0;
   for (const card of cards()) {
     const thumb = card.querySelector<HTMLElement>('.thumb');
     if (thumb) body = Math.max(body, card.getBoundingClientRect().height - thumb.getBoundingClientRect().height);
   }
-  return { height: window.innerHeight - top - pagerRoom - bottom, gap, body };
+  return { height: window.innerHeight - top - pagerRoom - bottom, gap, body, width };
 }
 
 function setThumbHeight(px: number | null): void {
@@ -118,7 +127,7 @@ function fitThumbs(): void {
   }
   const measured = room();
   if (!measured) return;
-  const fit = fitRows({ ...measured, rows });
+  const fit = fitRows({ ...measured, rows }, density());
   setThumbHeight(fit.thumb);
   for (let i = 0, thumb = fit.thumb; i < 3; i++) {
     const over = document.documentElement.scrollHeight - window.innerHeight;
@@ -133,23 +142,26 @@ function fittedSize(): number {
   if (PHONE.matches) {
     rows = null;
     setThumbHeight(null);
-    return PHONE_SIZE;
+    return PHONE_SIZE[density()];
   }
   const measured = room();
   if (!measured) return state().size;
-  const fit = fitRows(measured);
+  const fit = fitRows(measured, density());
   const cols = columns();
   rows = Math.max(1, Math.min(fit.rows, Math.floor(SIZE.max / cols)));
   return Math.min(SIZE.max, Math.max(SIZE.min, cols * rows));
 }
 
-/** Fits the page to the window; a new size keeps the first (or focused) card on the page shown. */
-function refit(): void {
+/**
+ * Fits the page to the window; a new size keeps the first (or focused) card on the page shown.
+ * `again`: the page comes from the server even at the same size (its cards' thumbnails changed).
+ */
+function refit(again = false): void {
   if (!grid()) return;
   const size = fittedSize();
   remember(size);
   const current = state();
-  if (size === current.size) {
+  if (size === current.size && !again) {
     fitThumbs();
     return;
   }
@@ -259,6 +271,25 @@ function move(delta: number, byRow: boolean): void {
   }
 }
 
+/** Large or compact cards: the grid takes the new columns at once, then the page that fits them. */
+function initDensity(): void {
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    const button = event.submitter;
+    if (!(form instanceof HTMLFormElement) || !form.classList.contains('density-switch')) return;
+    if (!(button instanceof HTMLButtonElement)) return;
+    event.preventDefault();
+    const next: Density = button.value === 'compact' ? 'compact' : 'large';
+    for (const b of form.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.value === next));
+    remember(next, DENSITY_COOKIE);
+    const g = grid();
+    if (!g || density() === next) return;
+    g.dataset.density = next;
+    ahead.clear();
+    refit(true);
+  });
+}
+
 function initSearch(): void {
   const input = document.querySelector<HTMLInputElement>('[data-check-search]');
   const form = input?.form;
@@ -323,6 +354,7 @@ export function init(): void {
   onKey({ key: 'arrowdown', label: 'Card below', run: () => move(1, true) });
   onKey({ key: 'arrowup', label: 'Card above', run: () => move(-1, true) });
   initSearch();
+  initDensity();
 
   let resizing: ReturnType<typeof setTimeout> | undefined;
   window.addEventListener('resize', () => {
