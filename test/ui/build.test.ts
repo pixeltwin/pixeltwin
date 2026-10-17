@@ -221,13 +221,13 @@ describe('UI build page', () => {
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     // The new screenshot, and the diff for the island that paints the changed pixels over it.
     expect(page).toContain(
-      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}/thumb?w=640&amp;mode=diff"><span class="thumb-stack"><img src="/api/v1/images/${changed.imageSha}/thumb?w=640"`,
+      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}/thumb?w=640&amp;mode=diff"><span class="thumb-stack"><canvas class="thumb-box" width="100" height="100"></canvas><img src="/api/v1/images/${changed.imageSha}/thumb?w=640"`,
     );
     expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
     // A check waiting for review says "unresolved".
     expect(page).toContain('<span class="card-state">unresolved</span>');
     expect(page).not.toContain('>to review</span>');
-    expect(page).toContain('data-islands="search live thumbs"');
+    expect(page).toContain('data-islands="live thumbs grid"');
   });
 
   test('a rejected change shows no diff percentage on its card', async () => {
@@ -265,7 +265,7 @@ describe('UI build page', () => {
     const { buildId, changed, same } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     // The thumbnail's own size, so the card keeps its box while the image loads.
-    expect(page).toContain('decoding="async" width="100" height="100"');
+    expect(page).toContain('loading="lazy" decoding="async" width="100" height="100"');
     expect(page).toContain(`href="/ui/checks/${changed.id}?filter=pending"`);
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
     expect(all).toContain(`src="/api/v1/images/${same.imageSha}/thumb?w=640"`);
@@ -304,14 +304,14 @@ describe('UI build page', () => {
     const { finalizeBuild } = await import('../../src/domain/builds');
     await finalizeBuild(t.deps, buildId);
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="search live thumbs"');
+    expect(page).toContain('data-islands="live thumbs grid"');
     expect(page).toContain('data-live="build-head" data-live-watch=""');
   });
 
   test('an open build updates itself while it runs', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="search live thumbs"');
+    expect(page).toContain('data-islands="live thumbs grid"');
     expect(page).toContain('data-live="build-head" data-live-open=""');
     expect(page).toContain('data-live="chips"');
     expect(page).toContain('data-live="checks"');
@@ -411,7 +411,7 @@ describe('UI build page', () => {
         await t.request('GET', `/ui/builds/${buildId}?filter=all&size=8&focus=${target}`, { as: viewer }),
       );
       expect(body).toContain('data-page="3"');
-      expect(body).toContain(`data-grid="true" data-focus="${target}"`);
+      expect(body).toContain(`data-grid="true" data-page="3" data-size="8" data-offset="16" data-focus="${target}"`);
       const check = await html(await t.request('GET', `/ui/checks/${target}?filter=all`, { as: viewer }));
       expect(check).toContain(`href="/ui/builds/${buildId}?filter=all&amp;focus=${target}"`);
     });

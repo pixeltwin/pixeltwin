@@ -11,9 +11,20 @@ const version = new URL(import.meta.url).search;
 
 document.documentElement.classList.add('js');
 
-// Skeletons: an image shimmers until it has loaded (CSS); mark it then, also when it arrives later in
-// swapped markup (load does not bubble, so listen in the capture phase), and the ones already here.
-const loaded = (img: HTMLImageElement) => img.classList.add('is-loaded');
+// Skeletons: an image shimmers until it has loaded and is decoded (CSS), so a big PNG appears whole
+// instead of painting top to bottom; mark it then, also when it arrives later in swapped markup
+// (load does not bubble, so listen in the capture phase), and the ones already here. One that
+// fails is marked broken: its box says so instead of shimmering forever.
+const broken = (img: HTMLImageElement) => img.classList.add('is-loaded', 'is-broken');
+const loaded = (img: HTMLImageElement) => {
+  if (img.classList.contains('is-loaded')) return;
+  if (img.complete && img.naturalWidth === 0) return broken(img);
+  img.decode().then(
+    () => img.classList.add('is-loaded'),
+    // Swapped out meanwhile, or the browser would not decode ahead: show it as it is.
+    () => (img.naturalWidth ? img.classList.add('is-loaded') : broken(img)),
+  );
+};
 document.addEventListener(
   'load',
   (event) => {
@@ -24,7 +35,7 @@ document.addEventListener(
 document.addEventListener(
   'error',
   (event) => {
-    if (event.target instanceof HTMLImageElement) loaded(event.target);
+    if (event.target instanceof HTMLImageElement) broken(event.target);
   },
   true,
 );

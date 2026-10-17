@@ -562,7 +562,8 @@ td select {
 }
 
 /* Skeletons: a screenshot shimmers in its reserved box (width and height attributes) until it has
-   loaded; boot marks loaded images with .is-loaded. Reduced motion keeps the box still. */
+   loaded; boot marks loaded images with .is-loaded. Reduced motion keeps the box still. The build
+   page's thumbnails have their own (build.css). */
 @keyframes skeleton {
   from {
     background-position: 100% 0;
@@ -571,7 +572,6 @@ td select {
     background-position: -100% 0;
   }
 }
-.thumb-stack img:not(.is-loaded),
 .shot img:not(.is-loaded),
 .frame img:not(.is-loaded),
 .baseline-img:not(.is-loaded) {

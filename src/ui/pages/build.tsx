@@ -48,9 +48,30 @@ import {
 /** The longer side of a card's thumbnail: sharp at twice the card's size (thumb.ts). */
 const THUMB_EDGE = 640;
 
+/** A part of image `sha` (a group card's crop), scaled down to fit THUMB_EDGE. */
+function cropThumbUrl(ui: Ui, sha: string, box: Rect): string {
+  return ui.url(`/api/v1/images/${sha}/thumb?w=${THUMB_EDGE}&crop=${box.x},${box.y},${box.width},${box.height}`);
+}
+
 /** A card's image: the thumbnail of `sha` (`diff`: one that keeps a diff's red changes). */
 function thumbUrl(ui: Ui, sha: string, mode: 'plain' | 'diff' = 'plain'): string {
   return ui.url(`/api/v1/images/${sha}/thumb?w=${THUMB_EDGE}${mode === 'diff' ? '&mode=diff' : ''}`);
+}
+
+/**
+ * A card's image over its skeleton. An image box has no size until its file arrives; an empty
+ * canvas of the thumbnail's width and height does, so it holds the image's exact box (no layout
+ * shift) and shimmers there until the image is loaded and decoded (boot.ts), then the image fades
+ * in whole instead of painting top to bottom. The change mask (thumbs island) lies on the same box.
+ */
+function ThumbStack(props: { src: string; alt: string; box: Size | undefined }) {
+  const { src, alt, box } = props;
+  return (
+    <span class="thumb-stack">
+      {box && <canvas class="thumb-box" width={box.width} height={box.height} />}
+      <img src={src} alt={alt} loading="lazy" decoding="async" width={box?.width} height={box?.height} />
+    </span>
+  );
 }
 
 /**
@@ -87,9 +108,7 @@ function CheckCard(props: {
         href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
       >
         <div class="thumb" data-diff={diffSrc ?? undefined}>
-          <span class="thumb-stack">
-            <img src={thumbUrl(ui, sha)} alt={check.name} decoding="async" width={box?.width} height={box?.height} />
-          </span>
+          <ThumbStack src={thumbUrl(ui, sha)} alt={check.name} box={box} />
         </div>
         <div class="check-card-body">
           <span class="check-name" title={check.name}>
@@ -169,15 +188,11 @@ function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined }) 
   const regions = isDiff(check.diff) ? check.diff.regions : [];
   if (!size || !check.baseline || regions.length === 0) {
     return (
-      <span class="thumb-stack">
-        <img
-          src={thumbUrl(ui, check.imageSha)}
-          alt={check.name}
-          decoding="async"
-          width={size ? thumbSize(size, THUMB_EDGE).width : undefined}
-          height={size ? thumbSize(size, THUMB_EDGE).height : undefined}
-        />
-      </span>
+      <ThumbStack
+        src={thumbUrl(ui, check.imageSha)}
+        alt={check.name}
+        box={size ? thumbSize(size, THUMB_EDGE) : undefined}
+      />
     );
   }
   const box = cropBox(regions, size);
@@ -190,7 +205,8 @@ function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined }) 
         role="img"
         aria-label={`${label}: ${check.name}`}
       >
-        <image href={ui.url(`/api/v1/images/${sha}`)} x="0" y="0" width={size.width} height={size.height} />
+        {/* Only the crop, scaled down on the server: the full screenshot can be megabytes. */}
+        <image href={cropThumbUrl(ui, sha, box)} x={box.x} y={box.y} width={box.width} height={box.height} />
         {marks &&
           regions.map((r) => (
             <rect
@@ -583,7 +599,7 @@ function BuildPage(props: {
         { label: `#${build.number}` },
       ]}
       project={project.slug}
-      islands={['search', 'live', 'thumbs']}
+      islands={['live', 'thumbs', 'grid']}
     >
       {/* Running: every 5 s. Finalized: still watched (10 s), so reviews by others show up. */}
       <div
@@ -651,22 +667,32 @@ function BuildPage(props: {
           )}
         </div>
       </div>
+      {/* Filters and tags share a row with the search: the cards get the height. */}
       <div class="build-tools">
-        <nav class="chips" aria-label="Filter checks" data-live="chips">
-          {CHECK_FILTERS.map((f) => {
-            const count = countFor(f, build.counts);
-            if (count === 0 && f.key !== 'all' && f.key !== filter.key) return null;
-            return (
-              <a
-                href={ui.url(`/ui/builds/${build.id}?filter=${f.key}${search}`)}
-                aria-current={f.key === filter.key ? 'page' : undefined}
-              >
-                {f.label} <span class="count">{count}</span>
-              </a>
-            );
-          })}
-        </nav>
-        {/* Newest first; the search island narrows the grid as you type, the form searches without it. */}
+        <div class="build-filters">
+          <nav class="chips" aria-label="Filter checks" data-live="chips">
+            {CHECK_FILTERS.map((f) => {
+              const count = countFor(f, build.counts);
+              if (count === 0 && f.key !== 'all' && f.key !== filter.key) return null;
+              return (
+                <a
+                  href={ui.url(`/ui/builds/${build.id}?filter=${f.key}${search}`)}
+                  aria-current={f.key === filter.key ? 'page' : undefined}
+                >
+                  {f.label} <span class="count">{count}</span>
+                </a>
+              );
+            })}
+          </nav>
+          <TagFilter
+            ui={ui}
+            build={build}
+            base={`filter=${filter.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+            tags={props.tags}
+            picked={picked}
+          />
+        </div>
+        {/* Newest first; the grid island searches as you type, the form searches without it. */}
         <form class="check-search" method="get" action={ui.url(`/ui/builds/${build.id}`)}>
           <input type="hidden" name="filter" value={filter.key} />
           {picked.map((t) => (
@@ -683,13 +709,6 @@ function BuildPage(props: {
           />
         </form>
       </div>
-      <TagFilter
-        ui={ui}
-        build={build}
-        base={`filter=${filter.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
-        tags={props.tags}
-        picked={picked}
-      />
       <div data-live="checks">
         {/* Shown when a search finds nothing. */}
         <div class="empty" data-search-empty hidden={!(narrowed && grid.total === 0)}>
@@ -697,7 +716,14 @@ function BuildPage(props: {
         </div>
         {grid.total === 0 && !narrowed && <EmptyChecks ui={ui} build={build} filter={filter} />}
         {grid.total > 0 && (
-          <div class="check-grid" data-grid data-focus={props.focus}>
+          <div
+            class="check-grid"
+            data-grid
+            data-page={grid.page}
+            data-size={grid.size}
+            data-offset={grid.offset}
+            data-focus={props.focus}
+          >
             {grid.slots.map((slot) => {
               const members = membersOf(slot);
               const first = members[0];

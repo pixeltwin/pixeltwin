@@ -44,6 +44,8 @@ const KEY_NAMES: Record<string, string> = {
   escape: 'Esc',
   arrowleft: '←',
   arrowright: '→',
+  arrowup: '↑',
+  arrowdown: '↓',
   'shift+arrowleft': 'Shift ←',
   'shift+arrowright': 'Shift →',
 };
