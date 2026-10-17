@@ -278,7 +278,7 @@ export interface SnapshotAreasTable {
   createdAt: number;
 }
 
-export const WEBHOOK_EVENTS = ['build.finalized', 'build.verdict_changed', 'check.reviewed'] as const;
+export const WEBHOOK_EVENTS = ['build.finalized', 'build.verdict_changed', 'check.reviewed', 'member.added'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 export const WEBHOOK_FORMATS = ['json', 'slack'] as const;
 export type WebhookFormat = (typeof WEBHOOK_FORMATS)[number];

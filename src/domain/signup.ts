@@ -9,7 +9,7 @@ import type { Deps } from './deps';
 import { getProjectBySlug } from './projects';
 import { parseInput } from './schemas';
 
-type DbDeps = Pick<Deps, 'db'>;
+type DbDeps = Pick<Deps, 'db' | 'events'>;
 
 export const SIGNUP_MODES = ['off', 'approval'] as const;
 export type SignupMode = (typeof SIGNUP_MODES)[number];
@@ -253,6 +253,17 @@ export async function approveAccessRequest(
       .where('id', '=', id)
       .execute();
   });
+  if (role !== 'admin') {
+    for (const [projectId, projectRole] of new Map(resolved.map((x) => [x.id, x.role]))) {
+      await deps.events?.memberAdded?.({
+        projectId,
+        userId: request.userId,
+        role: projectRole,
+        via: 'access_request',
+        by: actorId,
+      });
+    }
+  }
   return getAccessRequest(deps, id);
 }
 

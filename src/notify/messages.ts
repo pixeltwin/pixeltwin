@@ -1,4 +1,4 @@
-import type { ActorKind, CheckResult, CheckReview, Project } from '../db/schema';
+import type { ActorKind, CheckResult, CheckReview, Project, ProjectRole } from '../db/schema';
 import type { BuildView } from '../domain/builds';
 import type { Verdict } from '../domain/verdict';
 import type { StatusUpdate } from './http';
@@ -212,6 +212,14 @@ export interface WebhookPayload {
     /** `kind`: `user` (a person) or `token` (a project token: an agent or CI). */
     actor: { id: string; kind: ActorKind; name: string };
   };
+  /** `member.added`: who joined, with which role, how, and who added (invited, approved) them. */
+  member?: {
+    id: string;
+    email: string;
+    role: ProjectRole;
+    via: 'member' | 'invite' | 'access_request';
+    addedBy: { id: string; email: string } | null;
+  };
 }
 
 export function buildPayload(build: BuildView, publicUrl: string): BuildPayload {
@@ -259,6 +267,15 @@ const VERDICT_WORDS: Record<Verdict, string> = {
 export function slackMessage(payload: WebhookPayload): { text: string; blocks: unknown[] } {
   const project = slack(payload.project.name);
   const build = payload.build;
+  if (payload.event === 'member.added' && payload.member) {
+    const { member } = payload;
+    const how = { member: 'was added', invite: 'joined by invite', access_request: 'was approved' }[member.via];
+    const by = member.addedBy
+      ? ` (${member.via === 'invite' ? 'invited by' : 'by'} ${slack(member.addedBy.email)})`
+      : '';
+    const text = `pixeltwin · ${project}: ${slack(member.email)} ${how} as ${member.role}${by}`;
+    return { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] };
+  }
   if (!build) {
     const text = `pixeltwin test message for project ${project}: this webhook works.`;
     return { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] };

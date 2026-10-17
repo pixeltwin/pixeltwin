@@ -2189,7 +2189,8 @@
               "enum": [
                 "build.finalized",
                 "build.verdict_changed",
-                "check.reviewed"
+                "check.reviewed",
+                "member.added"
               ]
             }
           },
@@ -8415,7 +8416,8 @@
                       "enum": [
                         "build.finalized",
                         "build.verdict_changed",
-                        "check.reviewed"
+                        "check.reviewed",
+                        "member.added"
                       ]
                     },
                     "minItems": 1
@@ -8627,7 +8629,8 @@
                       "enum": [
                         "build.finalized",
                         "build.verdict_changed",
-                        "check.reviewed"
+                        "check.reviewed",
+                        "member.added"
                       ]
                     },
                     "minItems": 1

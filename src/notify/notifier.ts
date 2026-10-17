@@ -3,7 +3,7 @@ import type { Project, WebhookEvent } from '../db/schema';
 import { actorName } from '../domain/actors';
 import { type BuildView, getBuild } from '../domain/builds';
 import { getCheck } from '../domain/checks';
-import type { Deps, DomainEvents } from '../domain/deps';
+import type { Deps, DomainEvents, MemberAdded } from '../domain/deps';
 import { loadIntegration, reportsToCodeHost, secretsOf } from '../domain/integrations';
 import { getProjectById } from '../domain/projects';
 import { AUTO_APPROVER } from '../domain/reviews';
@@ -237,6 +237,28 @@ export class Notifier implements DomainEvents {
           action: event.action,
           reason: event.reason,
           actor: { id: event.actor, kind: event.actorKind, name },
+        },
+      }));
+    });
+  }
+
+  async memberAdded(event: MemberAdded): Promise<void> {
+    await this.#safely('member.added', async () => {
+      if (!(await this.#subscribers(event.projectId, 'member.added')).length) return;
+      const ids = [event.userId, ...(event.by ? [event.by] : [])];
+      const users = await this.#db.selectFrom('users').select(['id', 'email']).where('id', 'in', ids).execute();
+      const email = (id: string) => users.find((u) => u.id === id)?.email;
+      const member = email(event.userId);
+      if (!member) return;
+      const by = event.by ? email(event.by) : undefined;
+      const project = await getProjectById({ db: this.#db }, event.projectId);
+      await this.#queueWebhooks(project, 'member.added', () => ({
+        member: {
+          id: event.userId,
+          email: member,
+          role: event.role,
+          via: event.via,
+          addedBy: event.by && by ? { id: event.by, email: by } : null,
         },
       }));
     });

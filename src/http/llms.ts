@@ -102,7 +102,7 @@ integration posts the commit status pixeltwin/<slug> (pending while screenshots 
 success when passed, failure when rejected or an error) and one comment per build on the pull
 request. Approving updates them, so CI need not run again. Admins and the project's
 maintainers set it up with PATCH ${api}/projects/<slug>/integration and add webhooks (build.finalized,
-build.verdict_changed, check.reviewed; signed X-Pixeltwin-Signature: sha256=<HMAC>) with
+build.verdict_changed, check.reviewed, member.added; signed X-Pixeltwin-Signature: sha256=<HMAC>) with
 POST ${api}/projects/<slug>/webhooks.
 
 ## Agent reviews (an agent that changed the UI)

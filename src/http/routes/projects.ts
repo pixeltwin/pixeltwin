@@ -193,7 +193,7 @@ export function registerProjectRoutes(app: OpenAPIHono<AppEnv>, s: Services): vo
   });
   app.openapi(addOne, async (c) => {
     const { slug } = c.req.valid('param');
-    return c.json(await addMember(s.deps, slug, c.req.valid('json')), 201);
+    return c.json(await addMember(s.deps, slug, c.req.valid('json'), { by: principalOf(c).id }), 201);
   });
 
   const updateOne = defineRoute('project.admin', {

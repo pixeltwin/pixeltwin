@@ -4,12 +4,12 @@ import { AppError } from '../errors';
 import { consumeLink, createLink, findLink, type LinkRow } from './auth/links';
 import { hashPassword } from './auth/password';
 import { emailSchema, insertUser, passwordSchema } from './auth/users';
-import type { Deps } from './deps';
+import type { Deps, MemberAdded } from './deps';
 import { addMember, type MemberView } from './members';
 import { getProjectBySlug } from './projects';
 import { parseInput } from './schemas';
 
-type DbDeps = Pick<Deps, 'db'>;
+type DbDeps = Pick<Deps, 'db' | 'events'>;
 
 /** A maintainer (or admin) invites into one project, with a project role (viewer by default). */
 export const projectInviteSchema = z.strictObject({
@@ -112,7 +112,9 @@ export async function inviteToProject(
 ): Promise<InviteResult> {
   const { email, role } = parseInput(projectInviteSchema, input);
   const project = await getProjectBySlug(deps, slug);
-  if (await hasAccount(deps, email)) return { kind: 'member', member: await addMember(deps, slug, { email, role }) };
+  if (await hasAccount(deps, email)) {
+    return { kind: 'member', member: await addMember(deps, slug, { email, role }, { by: actorId, via: 'invite' }) };
+  }
   const { id, token } = await createLink(deps.db, {
     purpose: 'invite',
     email,
@@ -131,7 +133,12 @@ export async function inviteToServer(deps: DbDeps, input: unknown, actorId: stri
     if (!project) throw new AppError('email_taken', 409, `${email} already has an account.`);
     return {
       kind: 'member',
-      member: await addMember(deps, project.slug, { email, ...(projectRole ? { role: projectRole } : {}) }),
+      member: await addMember(
+        deps,
+        project.slug,
+        { email, ...(projectRole ? { role: projectRole } : {}) },
+        { by: actorId, via: 'invite' },
+      ),
     };
   }
   const { id, token } = await createLink(deps.db, {
@@ -194,7 +201,8 @@ export async function acceptInvite(deps: DbDeps, token: string, input: unknown):
   const link = await findLink(deps.db, token, 'invite');
   // Hash before the transaction: argon2id takes a while and must not hold a write lock.
   const passwordHash = await hashPassword(password);
-  return deps.db.transaction().execute(async (tx) => {
+  const added: MemberAdded[] = [];
+  const user = await deps.db.transaction().execute(async (tx) => {
     if (!(await consumeLink(tx, link.id))) throw new AppError('link_used', 410, 'This link was already used.');
     const invites: LinkRow[] = await tx
       .selectFrom('authLinks')
@@ -215,18 +223,23 @@ export async function acceptInvite(deps: DbDeps, token: string, input: unknown):
       throw err;
     });
     if (role !== 'admin') {
-      const memberships = new Map<string, ProjectRole>();
-      for (const i of all) if (i.projectId && i.projectRole) memberships.set(i.projectId, i.projectRole);
-      for (const [projectId, projectRole] of memberships) {
+      const memberships = new Map<string, { role: ProjectRole; by: string | null }>();
+      for (const i of all) {
+        if (i.projectId && i.projectRole) memberships.set(i.projectId, { role: i.projectRole, by: i.createdBy });
+      }
+      for (const [projectId, { role: projectRole, by }] of memberships) {
         await tx
           .insertInto('projectMembers')
           .values({ projectId, userId: user.id, role: projectRole, createdAt: Date.now() })
           .execute();
+        added.push({ projectId, userId: user.id, role: projectRole, via: 'invite', by });
       }
     }
     for (const i of invites) await consumeLink(tx, i.id);
     return tx.selectFrom('users').selectAll().where('id', '=', user.id).executeTakeFirstOrThrow();
   });
+  for (const event of added) await deps.events?.memberAdded?.(event);
+  return user;
 }
 
 /** What the public invite or reset page shows about its link. */

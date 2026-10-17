@@ -624,7 +624,7 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
     const email = field(form, 'email') ?? '';
     const role = field(form, 'role') || undefined;
     try {
-      await addMember(s.deps, project.slug, { email, ...(role ? { role } : {}) });
+      await addMember(s.deps, project.slug, { email, ...(role ? { role } : {}) }, { by: userOf(c).id });
       return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=member-added#members-title`), 303);
     } catch (err) {
       return membersPage(c, err, { email, ...(role ? { role } : {}) });

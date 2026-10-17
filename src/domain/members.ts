@@ -4,11 +4,11 @@ import { isUniqueViolation } from '../db/database';
 import { PROJECT_ROLES, type ProjectRole, type UserRole } from '../db/schema';
 import { AppError } from '../errors';
 import { emailSchema } from './auth/users';
-import type { Deps } from './deps';
+import type { Deps, MemberAdded } from './deps';
 import { getProjectBySlug } from './projects';
 import { parseInput } from './schemas';
 
-type DbDeps = Pick<Deps, 'db'>;
+type DbDeps = Pick<Deps, 'db' | 'events'>;
 
 export const projectRoleSchema = z.enum(PROJECT_ROLES);
 
@@ -60,8 +60,16 @@ export async function listMembers(deps: DbDeps, slug: string): Promise<MemberVie
     .execute();
 }
 
-/** Gives an existing user access to the project. Admins already have access to every project. */
-export async function addMember(deps: DbDeps, slug: string, input: unknown): Promise<MemberView> {
+/**
+ * Gives an existing user access to the project. Admins already have access to every project.
+ * `by` (who adds them) and `via` go to the `member.added` webhook.
+ */
+export async function addMember(
+  deps: DbDeps,
+  slug: string,
+  input: unknown,
+  added: { by?: string | null; via?: MemberAdded['via'] } = {},
+): Promise<MemberView> {
   const { email, role } = parseInput(addMemberSchema, input);
   const project = await getProjectBySlug(deps, slug);
   const user = await deps.db
@@ -88,6 +96,13 @@ export async function addMember(deps: DbDeps, slug: string, input: unknown): Pro
     }
     throw err;
   }
+  await deps.events?.memberAdded?.({
+    projectId: project.id,
+    userId: user.id,
+    role: member.role,
+    via: added.via ?? 'member',
+    by: added.by ?? null,
+  });
   return member;
 }
 

@@ -1,5 +1,5 @@
 import type { Db } from '../db/database';
-import type { ActorKind } from '../db/schema';
+import type { ActorKind, ProjectRole } from '../db/schema';
 import type { DiffRunner } from '../diff/types';
 import type { Storage } from '../storage/storage';
 import type { SecretBox } from './secrets';
@@ -31,6 +31,20 @@ export interface DomainEvents {
     actorName: string | null;
     reason: string | null;
   }): Promise<void>;
+  /**
+   * A user became a member of a project: added by a maintainer or admin (`member`), by accepting
+   * an invite (`invite`; `by` is who invited) or by an admin approving their sign-up (`access_request`).
+   */
+  memberAdded?(event: MemberAdded): Promise<void>;
+}
+
+export interface MemberAdded {
+  projectId: string;
+  userId: string;
+  role: ProjectRole;
+  via: 'member' | 'invite' | 'access_request';
+  /** The user who added or invited them, or approved the request; null when unknown. */
+  by: string | null;
 }
 
 /** Everything domain functions need. Built once in main.ts; built per test in test/helpers. */

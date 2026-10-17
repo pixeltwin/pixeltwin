@@ -234,7 +234,7 @@ secret (GitHub's `X-Hub-Signature-256`, GitLab's `X-Gitlab-Token`).
 ### Webhooks
 
 **Settings → Webhooks** (or `POST /api/v1/projects/{slug}/webhooks`) sends `build.finalized`,
-`build.verdict_changed` and `check.reviewed` to a URL. Each delivery is a JSON `POST` with
+`build.verdict_changed`, `check.reviewed` and `member.added` to a URL. Each delivery is a JSON `POST` with
 `X-Pixeltwin-Event`, `X-Pixeltwin-Delivery` (the same id on every retry) and
 `X-Pixeltwin-Signature: sha256=<HMAC-SHA256 of the body with the webhook's secret>`:
 
@@ -253,7 +253,12 @@ secret (GitHub's `X-Hub-Signature-256`, GitLab's `X-Gitlab-Token`).
 
 `check.reviewed` adds `check` (`id`, `name`, `variant`, `result`, `review`, `url`) and `review`
 (`action`: approved, rejected or reset; `reason`; `actor`: `id`, `kind` (`user` or `token`) and
-`name`). Format *Slack* posts a
+`name`). `member.added` (someone joined the project) has no build; it adds `member` (`id`,
+`email`, `role`, `via`: `member` when a maintainer or admin added them, `invite` when they accepted
+an invite, `access_request` when an admin approved their sign-up; `addedBy`: `id` and `email` of
+who added, invited or approved them). Webhooks belong to a project, so new access requests (not yet
+in any project) are not sent as a webhook: admins see them under Users and, with SMTP, by mail.
+Format *Slack* posts a
 Slack-compatible `{ text, blocks }` instead, for an incoming webhook URL. Sending happens in the
 background and never slows or fails the request that caused it; a failed delivery (network,
 timeout, 5xx, 429) is retried with backoff for about five hours, a 4xx is not. Deliveries wait in

@@ -44,6 +44,7 @@ const EVENT_HELP: Record<(typeof WEBHOOK_EVENTS)[number], string> = {
   'build.finalized': 'a build was finalized, with its verdict',
   'build.verdict_changed': "a finalized build's verdict changed (a review, an area, a promotion)",
   'check.reviewed': 'a person or token approved, rejected or undid a review',
+  'member.added': 'someone became a member of the project (added, an invite accepted, a sign-up approved)',
 };
 
 const FORMAT_LABELS: Record<(typeof WEBHOOK_FORMATS)[number], string> = {
