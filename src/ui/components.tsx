@@ -1,6 +1,7 @@
 import type { Child } from 'hono/jsx';
 import type { BuildView } from '../domain/builds';
 import type { CheckView } from '../domain/checks';
+import type { FlakySignal, HistoryEntry } from '../domain/flaky';
 import { AUTO_APPROVER } from '../domain/reviews';
 import type { BuildCounts, Verdict } from '../domain/verdict';
 import type { AppError } from '../errors';
@@ -202,9 +203,12 @@ export function Tabs({ label, items }: { label: string; items: Tab[] }) {
   );
 }
 
-export type ProjectSection = 'branches' | 'builds' | 'settings';
+export type ProjectSection = 'branches' | 'builds' | 'noisy' | 'settings';
 
-/** Branches · All builds · Settings (UI spec §4.1); Settings only for those who may manage the project. */
+/**
+ * Branches · All builds · Noisy screens · Settings (UI spec §4.1); Settings only for those who may
+ * manage the project.
+ */
 export function ProjectTabs({
   ui,
   slug,
@@ -219,6 +223,7 @@ export function ProjectTabs({
   const items: Tab[] = [
     { label: 'Branches', href: ui.url(`/ui/p/${slug}`), current: current === 'branches' },
     { label: 'All builds', href: ui.url(`/ui/p/${slug}/builds`), current: current === 'builds' },
+    { label: 'Noisy screens', href: ui.url(`/ui/p/${slug}/noisy`), current: current === 'noisy' },
   ];
   if (canManage) {
     items.push({ label: 'Settings', href: ui.url(`/ui/p/${slug}/settings`), current: current === 'settings' });
@@ -378,5 +383,58 @@ export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'revi
       <Pill tone={toneOf(check.result)}>{RESULT_LABELS[check.result]}</Pill>
       {check.review !== 'none' && <Pill tone={toneOf(check.review)}>{REVIEW_LABELS[check.review]}</Pill>}
     </span>
+  );
+}
+
+/** `4 flips in the last 20 runs, last 2h ago`: what makes a screen flaky, in words. */
+export function flakyText(flaky: FlakySignal, now = Date.now()): string {
+  return `${flaky.flips} flips in its last ${flaky.checks} runs on this branch, last ${ago(flaky.lastSeen, now)}`;
+}
+
+/** The flaky badge: the screen keeps changing back and forth; why is in the tooltip. */
+export function FlakyBadge({ flaky }: { flaky: FlakySignal | null | undefined }) {
+  if (!flaky) return null;
+  return (
+    <span class="flaky-badge" title={`Flaky: ${flakyText(flaky)}`}>
+      flaky
+    </span>
+  );
+}
+
+const STATUS_TONES: Record<string, Tone> = {
+  passed: 'green',
+  resolved: 'green',
+  unresolved: 'amber',
+  rejected: 'red',
+  error: 'red',
+  outdated: 'grey',
+};
+
+/**
+ * A screen's last results on its branch as squares, newest first (like a lane's builds), each in
+ * the colour of the check's status and linking to it; the shown check is outlined.
+ */
+export function HistoryStrip(props: { ui: Ui; history: HistoryEntry[]; current?: string | undefined }) {
+  const { ui, history } = props;
+  if (history.length === 0) return null;
+  return (
+    <ol class="history screen-history-strip" aria-label="Last results of this screen, newest first">
+      {[...history].reverse().map((h) => {
+        const status = cardStatus(h);
+        const label = `#${h.buildNumber} ${statusText(h)}`;
+        return (
+          <li>
+            <a
+              class={`square tone-${STATUS_TONES[status] ?? 'grey'}`}
+              href={ui.url(`/ui/checks/${h.checkId}`)}
+              title={label}
+              aria-current={h.checkId === props.current ? 'true' : undefined}
+            >
+              <span class="visually-hidden">{label}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

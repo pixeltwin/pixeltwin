@@ -287,3 +287,171 @@
   margin-left: var(--space-1);
   font-size: var(--text-xs);
 }
+
+/* A change group: one card for the same change on several screens, drawn as a small stack. */
+.group-card-wrap {
+  padding: 0 6px 6px 0;
+  border-radius: var(--radius-md);
+}
+.group-card-wrap:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.group-card-wrap > .group-card {
+  box-shadow:
+    3px 3px 0 -1px var(--surface),
+    3px 3px 0 0 var(--card-border, var(--border)),
+    6px 6px 0 -1px var(--surface),
+    6px 6px 0 0 var(--card-border, var(--border));
+}
+.group-card-wrap > .group-card:hover {
+  box-shadow:
+    3px 3px 0 -1px var(--surface),
+    3px 3px 0 0 var(--card-strong, var(--border-strong)),
+    6px 6px 0 -1px var(--surface),
+    6px 6px 0 0 var(--card-strong, var(--border-strong));
+}
+.group-card .thumb {
+  color: inherit;
+}
+.group-card .thumb:hover {
+  text-decoration: none;
+}
+/* The shared change before and after, one above the other. */
+.group-crop {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--space-1);
+  width: 100%;
+  height: 100%;
+}
+.crop-pane {
+  position: relative;
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface);
+}
+.crop {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.crop-change {
+  fill: none;
+  stroke: var(--diff);
+  stroke-width: 1.5;
+}
+.crop-label {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 0.55);
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 15px;
+}
+.group-names {
+  overflow: hidden;
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-members summary {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.group-members ul {
+  display: grid;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.group-members li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+  min-width: 0;
+  padding: 2px 0;
+  font-size: var(--text-xs);
+}
+.member-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+}
+.member-check:hover {
+  border-color: var(--border-strong);
+  text-decoration: none;
+}
+.member-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-state {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--grey-dot);
+  color: transparent;
+  font-size: 0;
+}
+.member-state.state-unresolved {
+  background: var(--amber-dot);
+}
+.member-state.state-resolved,
+.member-state.state-passed {
+  background: var(--green-dot);
+}
+.member-state.state-rejected,
+.member-state.state-error {
+  background: var(--red-dot);
+}
+/* Approve all and Reject all: always the same row, so the card keeps its height once decided. */
+.group-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-height: 46px;
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--card-border, var(--border));
+  background: var(--card-bg, none);
+  font-size: var(--text-xs);
+}
+.check-card.group-card > .check-card-body {
+  flex: 1;
+  align-content: start;
+}
+.group-action {
+  margin: 0;
+}
+
+/* A screen that keeps changing back and forth. */
+.flaky-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px dashed var(--amber-dot);
+  border-radius: var(--radius-full);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}

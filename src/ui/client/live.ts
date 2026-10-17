@@ -3,8 +3,16 @@
 // every 5 s; a page where new builds or reviews may appear (`data-live-watch`) polls every 10 s.
 // Both slow down to 30 s when nothing changes for a while (rank.ts pollDelay).
 import { ApiError, api, fetchPage } from './api.ts';
+import { onKey } from './keys.ts';
 import { pollDelay } from './rank.ts';
 import { toast } from './toast.ts';
+
+/** What a form posts in place: its `data-inplace-body` (JSON), else its checkIds inputs, else nothing. */
+function bodyOf(form: HTMLFormElement): Record<string, unknown> {
+  if (form.dataset.inplaceBody) return JSON.parse(form.dataset.inplaceBody) as Record<string, unknown>;
+  const ids = [...form.querySelectorAll<HTMLInputElement>('input[name="checkIds"]')].map((input) => input.value);
+  return ids.length > 0 ? { checkIds: ids } : {};
+}
 
 export function init(): void {
   let unchanged = 0;
@@ -50,18 +58,48 @@ export function init(): void {
   document.addEventListener('submit', (event) => {
     const form = event.target instanceof HTMLFormElement ? event.target : null;
     const path = form?.dataset.inplace;
-    if (!form || !path) return;
+    // A button that asks first (data-confirm) submits again once confirmed.
+    if (!form || !path || event.defaultPrevented) return;
     event.preventDefault();
     void submitInPlace(form, path);
   });
+
+  /** Undoes the last review made in place on this page (U, or Undo on its toast). */
+  let lastUndo: (() => Promise<void>) | null = null;
 
   async function submitInPlace(form: HTMLFormElement, path: string): Promise<void> {
     const button = form.querySelector('button');
     if (button?.disabled) return;
     if (button) button.disabled = true;
     try {
-      await api('POST', path, {});
-      toast(form.dataset.inplaceDone ?? 'Done', { tone: 'success' });
+      const result = await api<{ changed?: string[] }>('POST', path, bodyOf(form));
+      const undoPath = form.dataset.inplaceUndo;
+      const card = form.closest<HTMLElement>('[id]');
+      // A group review undoes exactly the checks it changed, not those reviewed one by one.
+      const undo = undoPath
+        ? async () => {
+            if (lastUndo === undo) lastUndo = null;
+            try {
+              await api('POST', undoPath, result.changed ? { checkIds: result.changed } : {});
+              toast('Review undone', { timeout: 2000 });
+            } catch (err) {
+              if (err instanceof ApiError && err.code === 'review_not_resettable') {
+                toast("Can't undo: a newer baseline or a later build builds on this approval.", { tone: 'danger' });
+              } else if (!(err instanceof ApiError && err.status === 401)) {
+                toast(`Couldn't undo: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
+              }
+              return;
+            }
+            unchanged = 0;
+            if (card?.id) await refreshCard(card.id, card);
+          }
+        : null;
+      lastUndo = undo;
+      const tone = form.dataset.inplaceTone === 'danger' ? 'danger' : 'success';
+      toast(
+        form.dataset.inplaceDone ?? 'Done',
+        undo ? { tone, action: { label: 'Undo (U)', run: () => void undo() } } : { tone },
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       if (!(err instanceof ApiError && err.status === 409)) {
@@ -80,6 +118,17 @@ export function init(): void {
    * copy of the page. Swapping the whole grid would let the browser re-anchor the scroll.
    */
   async function refreshAround(form: HTMLFormElement): Promise<void> {
+    const card = form.closest<HTMLElement>('[id]');
+    if (card) await refreshCard(card.id, card, form);
+    else await refreshCard(null, null, form);
+  }
+
+  /**
+   * Swaps the header, the chips and the card with id `id` from a fresh copy of the page. A card
+   * that had the focus keeps it (A, R and U go on working on it); a card filtered out now stays
+   * until the next visit, without its form.
+   */
+  async function refreshCard(id: string | null, known: HTMLElement | null, form?: HTMLFormElement): Promise<void> {
     let doc: Document;
     try {
       doc = await fetchPage(location.href);
@@ -87,7 +136,7 @@ export function init(): void {
       schedule();
       return;
     }
-    const card = form.closest<HTMLElement>('[id]');
+    const card = id ? (document.getElementById(id) ?? known) : null;
     const swaps = ['[data-live="build-head"]', '[data-live="chips"]', '[data-live="tags"]'];
     for (const selector of swaps) {
       const current = document.querySelector(selector);
@@ -96,12 +145,38 @@ export function init(): void {
         current.replaceWith(document.importNode(fresh, true));
     }
     if (card) {
-      const fresh = doc.getElementById(card.id);
-      if (fresh) card.replaceWith(document.importNode(fresh, true));
-      // Filtered out now (approved under New or Unresolved): it stays until the next visit.
-      else form.remove();
+      const focused = card.contains(document.activeElement);
+      let fresh = doc.getElementById(card.id);
+      // Filtered out now (approved under Unresolved): the card stays until the next visit, showing
+      // what it is now, as the unfiltered page has it.
+      const url = new URL(location.href);
+      if (!fresh && url.searchParams.has('filter') && url.searchParams.get('filter') !== 'all') {
+        url.searchParams.set('filter', 'all');
+        fresh = await fetchPage(url.href)
+          .then((all) => all.getElementById(card.id))
+          .catch(() => null);
+      }
+      if (fresh) {
+        const copy = document.importNode(fresh, true) as HTMLElement;
+        card.replaceWith(copy);
+        if (focused) copy.focus({ preventScroll: true });
+      } else form?.remove();
     }
     schedule();
+  }
+
+  // A group card with the focus (Tab, or a click on it): A and R review the whole group, U undoes
+  // the last review made on this page.
+  if (document.querySelector('[data-live="checks"], [data-inplace-undo]')) {
+    onKey({ key: 'u', label: 'Undo the last review', run: () => void lastUndo?.() });
+  }
+  if (document.querySelector('[data-live="checks"]')) {
+    const groupForm = (action: string) =>
+      document.activeElement
+        ?.closest('[data-group-card]')
+        ?.querySelector<HTMLFormElement>(`form[data-group-action="${action}"]`);
+    onKey({ key: 'a', label: 'Approve the focused group', run: () => groupForm('approve')?.requestSubmit() });
+    onKey({ key: 'r', label: 'Reject the focused group', run: () => groupForm('reject')?.requestSubmit() });
   }
 
   document.addEventListener('visibilitychange', () => {

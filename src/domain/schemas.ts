@@ -92,10 +92,13 @@ export const reviewInputSchema = z.strictObject({
   comment: z.string().trim().max(1000).optional(),
 });
 
+const groupCheckIds = z.array(z.string().min(1).max(64)).max(1000).optional();
+
+/** Reviewing a change group: only these of its checks (those a filtered page shows), else all. */
+export const groupReviewSchema = reviewInputSchema.extend({ checkIds: groupCheckIds });
+
 /** Undoing a group's reviews: only these checks (what a group review changed), else all of them. */
-export const groupResetSchema = z.strictObject({
-  checkIds: z.array(z.string().min(1).max(64)).max(1000).optional(),
-});
+export const groupResetSchema = z.strictObject({ checkIds: groupCheckIds });
 
 export const pageInputSchema = z.strictObject({
   cursor: z.string().min(1).optional(),

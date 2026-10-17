@@ -997,3 +997,118 @@ a.baseline-thumb:hover {
 .areas.is-off .area-item {
   opacity: 0.55;
 }
+
+/* A change group: the same change on other screens of the build, and Approve all. */
+.group-note {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--radius-md);
+  background: var(--amber-bg);
+}
+.group-note p {
+  margin: 0;
+}
+.group-others summary {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.group-others ul {
+  display: grid;
+  gap: 2px;
+  max-height: 180px;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.group-others a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.group-approve {
+  margin: 0;
+}
+
+/* The screen's last results and, when it is flaky, the area that keeps changing. */
+.screen-section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.screen-section h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.screen-section h3 .muted {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.screen-history-strip {
+  flex-wrap: wrap;
+}
+.screen-history-strip .square[aria-current="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.screen-section .hint {
+  margin: var(--space-2) 0;
+}
+.unstable > summary {
+  list-style: none;
+}
+.unstable > summary::-webkit-details-marker {
+  display: none;
+}
+.unstable > summary[aria-disabled="true"] {
+  opacity: 0.55;
+}
+.unstable-preview {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.unstable-preview p {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.unstable-shot {
+  position: relative;
+  display: block;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--stage-bg);
+}
+.unstable-shot > .unstable-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.unstable-shot > .unstable-mark {
+  position: absolute;
+  inset: var(--space-2);
+  width: calc(100% - var(--space-2) * 2);
+  height: calc(100% - var(--space-2) * 2);
+}
+/* On the stage the area shows while the reviewer points at its Ignore (or has it unfolded). */
+.unstable-layer {
+  display: none;
+}
+.stage.show-unstable .unstable-layer {
+  display: block;
+}

@@ -1,7 +1,7 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import { getBuildRow } from '../../domain/builds';
 import { listGroups, resetGroup, reviewGroup } from '../../domain/groups';
-import { groupResetSchema, reviewInputSchema } from '../../domain/schemas';
+import { groupResetSchema, groupReviewSchema } from '../../domain/schemas';
 import { allowProject, principalOf } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
@@ -42,12 +42,13 @@ export function registerGroupRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
           ? 'Approve every check of a change group that waits for review'
           : 'Reject every check of a change group that waits for review',
       description:
+        'Optional `checkIds` limits it to those members (what a filtered page shows). ' +
         'One transaction; each check gets its own review event, as with a single review. Checks already reviewed ' +
         'and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. ' +
         'The response has the build’s new verdict.',
       request: {
         params: groupParam,
-        body: { required: false, content: { 'application/json': { schema: reviewInputSchema } } },
+        body: { required: false, content: { 'application/json': { schema: groupReviewSchema } } },
       },
       responses: { 200: json(GroupReviewSchema, 'What changed'), ...problems(401, 403, 404, 422) },
     });

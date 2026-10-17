@@ -258,6 +258,24 @@ export function mountViewer(root: HTMLElement): () => void {
     });
   }
 
+  // Ignore the area that keeps changing (a flaky screen): pointing at it, or unfolding it, shows
+  // the area on the screenshots too.
+  const unstable = root.querySelector<HTMLDetailsElement>('details[data-unstable-trigger]');
+  if (unstable) {
+    let pointing = false;
+    const show = () => stage.classList.toggle('show-unstable', pointing || unstable.open);
+    const point = (on: boolean) => () => {
+      pointing = on;
+      show();
+    };
+    listen(unstable, 'pointerenter', point(true));
+    listen(unstable, 'pointerleave', point(false));
+    listen(unstable, 'focusin', point(true));
+    listen(unstable, 'focusout', point(false));
+    listen(unstable, 'toggle', show);
+    show();
+  }
+
   // Wheel and pinch zoom, drag to pan, drag the divider, double-click for Fit / 100 %.
   for (const viewport of stage.querySelectorAll<HTMLElement>('.viewport')) {
     const pointers = new Map<number, { x: number; y: number }>();

@@ -36,6 +36,8 @@ let unmountAreas: () => void = () => {};
 let busy = false;
 let initialPending = 0;
 let lastReviewed: string | null = null;
+/** The last group review of this session (Approve all on a check of a change group), for U. */
+let lastGroup: { undo: string; ids: string[]; from: string } | null = null;
 /** Reviews made in this session: the server markup of prefetched pages predates them. */
 const states = new Map<string, string>();
 const session = { approved: 0, rejected: 0, skipped: 0 };
@@ -225,11 +227,79 @@ async function review(action: Action): Promise<void> {
     session[action === 'approve' ? 'approved' : 'rejected']++;
     forget(id);
     lastReviewed = id;
+    lastGroup = null;
     toast(`${action === 'approve' ? 'Approved' : 'Rejected'} ${name}`, {
       tone: action === 'approve' ? 'success' : 'danger',
       action: { label: 'Undo (U)', run: () => void undo(id) },
     });
     await advance();
+  } finally {
+    busy = false;
+  }
+}
+
+/**
+ * Approve all on a check of a change group: every check of the group that waits is approved at
+ * once, then the review moves on to the next check still waiting.
+ */
+async function reviewGroup(form: HTMLFormElement): Promise<void> {
+  const path = form.dataset.groupReview;
+  const undoPath = form.dataset.groupUndo;
+  if (busy || !path || !undoPath) return;
+  busy = true;
+  const from = currentId();
+  try {
+    let changed: string[];
+    try {
+      ({ changed } = await api<{ changed: string[] }>('POST', path, {}));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast(`Couldn't approve the group: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
+      return;
+    }
+    for (const id of changed) {
+      states.set(id, 'approved');
+      forget(id);
+    }
+    session.approved += changed.length;
+    lastGroup = { undo: undoPath, ids: changed, from };
+    lastReviewed = null;
+    const group = lastGroup;
+    toast(`Approved the same change on ${changed.length} screen${changed.length === 1 ? '' : 's'}`, {
+      tone: 'success',
+      action: { label: 'Undo (U)', run: () => void undoGroup(group) },
+    });
+    busy = false;
+    await advance();
+  } finally {
+    busy = false;
+  }
+}
+
+/** Undoes a group review of this session: exactly the checks it approved, then shows where it began. */
+async function undoGroup(group: { undo: string; ids: string[]; from: string }): Promise<void> {
+  if (busy) return;
+  busy = true;
+  try {
+    try {
+      await api('POST', group.undo, { checkIds: group.ids });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'review_not_resettable') {
+        toast("Can't undo: a newer baseline or a later build builds on one of these approvals.", { tone: 'danger' });
+      } else if (!(err instanceof ApiError && err.status === 401)) {
+        toast(`Couldn't undo: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
+      }
+      return;
+    }
+    for (const id of group.ids) {
+      if (states.get(id) === 'approved') session.approved--;
+      states.set(id, 'pending');
+      forget(id);
+    }
+    if (lastGroup === group) lastGroup = null;
+    toast('Review undone', { timeout: 2000 });
+    busy = false;
+    await show(group.from);
   } finally {
     busy = false;
   }
@@ -297,6 +367,9 @@ function onSubmit(event: SubmitEvent): void {
   } else if (form.matches('[data-reset-form]')) {
     event.preventDefault();
     void undo(currentId());
+  } else if (form.matches('[data-group-review]')) {
+    event.preventDefault();
+    void reviewGroup(form);
   }
 }
 
@@ -338,7 +411,7 @@ export function init(): void {
   paint();
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
-  onKey({ key: 'u', label: 'Undo the last review', run: () => void undo() });
+  onKey({ key: 'u', label: 'Undo the last review', run: () => void (lastGroup ? undoGroup(lastGroup) : undo()) });
   // ← and → do what K and J do: the header's previous and next links (UI spec §5.1).
   onKey({
     key: 'arrowleft',

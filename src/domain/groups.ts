@@ -4,7 +4,7 @@ import { AppError } from '../errors';
 import { getBuild, getBuildRow } from './builds';
 import type { Deps } from './deps';
 import { resetIn, tryApprove, tryReject } from './reviews';
-import { groupResetSchema, parseInput, reviewInputSchema } from './schemas';
+import { groupResetSchema, groupReviewSchema, parseInput } from './schemas';
 import type { Verdict } from './verdict';
 
 // Change groups: checks of one build with exactly the same changes (the same change key, see
@@ -146,10 +146,21 @@ async function resultOf(deps: DbDeps, buildId: string, groupId: string, changed:
   };
 }
 
+/** The group's checks named in `checkIds` (all when absent); 422 for one that is not in it. */
+function pick(group: ChangeGroup, checkIds: string[] | undefined): Set<string> {
+  const members = new Set(group.checks.map((c) => c.id));
+  const stranger = checkIds?.find((id) => !members.has(id));
+  if (stranger) {
+    throw new AppError('check_not_in_group', 422, `Check ${stranger} is not in change group ${group.id}.`);
+  }
+  return checkIds ? new Set(checkIds) : members;
+}
+
 /**
- * Approves or rejects every check of the group that waits for review, in one transaction, each
- * with its own review event (as a single review writes). Checks already reviewed are left as they
- * are, and so are outdated ones (a newer build of the branch approved their screen): `skipped`.
+ * Approves or rejects every check of the group that waits for review (of those in `checkIds`,
+ * when given), in one transaction, each with its own review event (as a single review writes).
+ * Checks already reviewed are left as they are, and so are outdated ones (a newer build of the
+ * branch approved their screen): `skipped`.
  */
 export async function reviewGroup(
   deps: DbDeps,
@@ -159,8 +170,8 @@ export async function reviewGroup(
   actor: string,
   input: unknown = {},
 ): Promise<GroupReviewResult> {
-  const { comment } = parseInput(reviewInputSchema, input);
-  await getGroup(deps, buildId, groupId);
+  const { comment, checkIds } = parseInput(groupReviewSchema, input);
+  const wanted = pick(await getGroup(deps, buildId, groupId), checkIds);
   const changed = await deps.db.transaction().execute(async (tx) => {
     const pending = await tx
       .selectFrom('checks')
@@ -172,6 +183,7 @@ export async function reviewGroup(
       .execute();
     const reviewed: string[] = [];
     for (const { id } of pending) {
+      if (!wanted.has(id)) continue;
       const outcome =
         action === 'approve'
           ? (await tryApprove(tx, id, actor, comment ?? null)).approved
@@ -197,12 +209,7 @@ export async function resetGroup(
 ): Promise<GroupReviewResult> {
   const { checkIds } = parseInput(groupResetSchema, input);
   const group = await getGroup(deps, buildId, groupId);
-  const members = new Set(group.checks.map((c) => c.id));
-  const stranger = checkIds?.find((id) => !members.has(id));
-  if (stranger) {
-    throw new AppError('check_not_in_group', 422, `Check ${stranger} is not in change group ${groupId}.`);
-  }
-  const wanted = checkIds ? new Set(checkIds) : members;
+  const wanted = pick(group, checkIds);
   const targets = group.checks
     .filter((c) => wanted.has(c.id) && (c.review === 'approved' || c.review === 'rejected'))
     .map((c) => c.id);

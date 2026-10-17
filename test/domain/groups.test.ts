@@ -107,6 +107,22 @@ describe('change groups', () => {
     expect((await reviewGroup(deps, buildId, groupId, 'approve', 'usr_2')).changed).toEqual([]);
   });
 
+  test('a group review can be limited to some of its checks (what a filtered page shows)', async () => {
+    const [group] = await listGroups(deps, buildId);
+    const chromium = Object.entries(ids)
+      .filter(([key]) => key.endsWith('/chromium'))
+      .map(([, id]) => id);
+    const result = await reviewGroup(deps, buildId, group?.id as string, 'approve', 'usr_1', { checkIds: chromium });
+    expect(result.changed.sort()).toEqual([...chromium].sort());
+    expect(result.group.counts).toEqual({ pending: 3, approved: 4, rejected: 0, outdated: 0 });
+    const stranger = await appError(
+      reviewGroup(deps, buildId, group?.id as string, 'reject', 'usr_1', {
+        checkIds: [ids['pricing/firefox'] as string],
+      }),
+    );
+    expect(stranger).toMatchObject({ status: 422, code: 'check_not_in_group' });
+  });
+
   test('undo takes back exactly what the group review changed, all or nothing', async () => {
     const [group] = await listGroups(deps, buildId);
     const groupId = group?.id as string;

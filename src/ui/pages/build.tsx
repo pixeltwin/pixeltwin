@@ -1,16 +1,28 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
-import type { Size } from '../../diff/types';
+import type { DiffData, Rect, Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, finalizeBuild, getBuild, getBuildRow } from '../../domain/builds';
 import { type CheckView, firstPendingCheckId, listChecks, type VariantTag, variantTags } from '../../domain/checks';
+import { type FlakySignal, screenHistories } from '../../domain/flaky';
+import { type ChangeGroup, listGroups, reviewGroup } from '../../domain/groups';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, BuildStatus, BuildTime, cardStatus, countsText, statusText, thumbnailSha, Variant } from '../components';
-import { noticeOf, type Ui, uiOf, userOf } from '../context';
+import {
+  Ago,
+  BuildStatus,
+  BuildTime,
+  cardStatus,
+  countsText,
+  FlakyBadge,
+  statusText,
+  thumbnailSha,
+  Variant,
+} from '../components';
+import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
 
@@ -18,7 +30,14 @@ import { Layout } from '../layout';
  * One check: a link to it, and for reviewers an Approve button on a new screenshot waiting for
  * review (nothing to compare it with, so the thumbnail is enough). The form sits beside the link.
  */
-function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: CheckFilter; canReview: boolean }) {
+function CheckCard(props: {
+  ui: Ui;
+  check: CheckView;
+  size?: Size | undefined;
+  filter: CheckFilter;
+  canReview: boolean;
+  flaky?: FlakySignal | undefined;
+}) {
   const { ui, check, size, filter } = props;
   // A changed check shows its new screenshot; the thumbs island paints the diff's changes over it.
   const diffSrc =
@@ -58,6 +77,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
             {check.result === 'changed' && check.review !== 'rejected' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}
+            <FlakyBadge flaky={props.flaky} />
           </span>
         </div>
       </a>
@@ -68,6 +88,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
           action={ui.url(`/ui/checks/${check.id}/approve`)}
           data-inplace={`/checks/${check.id}/approve`}
           data-inplace-done={`Approved ${check.name}`}
+          data-inplace-undo={`/checks/${check.id}/reset`}
         >
           <input type="hidden" name="filter" value={filter.key} />
           <input type="hidden" name="back" value="build" />
@@ -78,6 +99,237 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
       )}
     </div>
   );
+}
+
+const isDiff = (diff: CheckView['diff']): diff is DiffData => diff !== null && 'regions' in diff;
+
+/** Room left around the shared change in a group's thumbnail. */
+const CROP_PAD = 8;
+/** Width to height of each half of a group's thumbnail; the crop grows to it around the change. */
+const CROP_ASPECT = 3;
+
+/** The changes' bounding box with some room, grown to CROP_ASPECT, inside the screenshot. */
+function cropBox(regions: Rect[], size: Size): Rect {
+  let x = Math.max(0, Math.min(...regions.map((r) => r.x)) - CROP_PAD);
+  let y = Math.max(0, Math.min(...regions.map((r) => r.y)) - CROP_PAD);
+  let width = Math.min(size.width, Math.max(...regions.map((r) => r.x + r.width)) + CROP_PAD) - x;
+  let height = Math.min(size.height, Math.max(...regions.map((r) => r.y + r.height)) + CROP_PAD) - y;
+  const clamp = (v: number, max: number) => Math.max(0, Math.min(v, max));
+  if (width / height > CROP_ASPECT) {
+    const grown = Math.min(size.height, Math.ceil(width / CROP_ASPECT));
+    y = clamp(Math.round(y - (grown - height) / 2), size.height - grown);
+    height = grown;
+  } else {
+    const grown = Math.min(size.width, Math.ceil(height * CROP_ASPECT));
+    x = clamp(Math.round(x - (grown - width) / 2), size.width - grown);
+    width = grown;
+  }
+  return { x, y, width, height };
+}
+
+/**
+ * A group's thumbnail: the shared change before and after, cropped from the first check's
+ * baseline and screenshot (SVG viewBoxes: no image is made, and the CSP allows no inline styles).
+ */
+function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined }) {
+  const { ui, check, size } = props;
+  const regions = isDiff(check.diff) ? check.diff.regions : [];
+  if (!size || !check.baseline || regions.length === 0) {
+    return (
+      <span class="thumb-stack">
+        <img src={ui.url(`/api/v1/images/${check.imageSha}`)} alt={check.name} loading="lazy" />
+      </span>
+    );
+  }
+  const box = cropBox(regions, size);
+  const shot = (sha: string, label: string, marks: boolean) => (
+    <span class="crop-pane">
+      <svg
+        class="crop"
+        viewBox={`${box.x} ${box.y} ${box.width} ${box.height}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={`${label}: ${check.name}`}
+      >
+        <image href={ui.url(`/api/v1/images/${sha}`)} x="0" y="0" width={size.width} height={size.height} />
+        {marks &&
+          regions.map((r) => (
+            <rect
+              class="crop-change"
+              x={r.x}
+              y={r.y}
+              width={r.width}
+              height={r.height}
+              vector-effect="non-scaling-stroke"
+            />
+          ))}
+      </svg>
+      <span class="crop-label">{label}</span>
+    </span>
+  );
+  return (
+    <span class="group-crop">
+      {shot(check.baseline.imageSha, 'Before', false)}
+      {shot(check.imageSha, 'After', true)}
+    </span>
+  );
+}
+
+/** A group card's status, as a check card's: unresolved while one of its checks waits. */
+function groupStatus(members: CheckView[]): string {
+  const statuses = members.map(cardStatus);
+  for (const status of ['unresolved', 'error', 'rejected']) if (statuses.includes(status)) return status;
+  return statuses.every((s) => s === 'outdated') ? 'outdated' : 'resolved';
+}
+
+/** `home, cart, account +4`: the screens of a group by name, each once. */
+function namesOf(members: CheckView[]): string {
+  const names = [...new Set(members.map((m) => m.name))];
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ');
+}
+
+/**
+ * The checks of a change group this page shows, as one stacked card: the shared change before and
+ * after, the screens (unfold to list them) and, for reviewers, Approve all and Reject all, in
+ * place. Focused (Tab or a click), A and R review the whole group and U undoes it (live island).
+ */
+function GroupCard(props: {
+  ui: Ui;
+  build: BuildView;
+  group: ChangeGroup | undefined;
+  members: CheckView[];
+  sizes: Map<string, Size>;
+  filter: CheckFilter;
+  canReview: boolean;
+  flaky: Map<string, FlakySignal>;
+}) {
+  const { ui, build, members, filter } = props;
+  const first = members[0] as CheckView;
+  const groupId = first.groupId as string;
+  const status = groupStatus(members);
+  const pending = members.filter((m) => m.review === 'pending').length;
+  const size = props.group?.size ?? members.length;
+  const byName = new Map<string, CheckView[]>();
+  for (const m of members) byName.set(m.name, [...(byName.get(m.name) ?? []), m]);
+  const title =
+    byName.size === 1 ? `Same change in ${members.length} variants` : `Same change on ${members.length} screens`;
+  const api = `/builds/${build.id}/groups/${groupId}`;
+  const action = (kind: 'approve' | 'reject') => (
+    <form
+      class="group-action"
+      method="post"
+      action={ui.url(`/ui/builds/${build.id}/groups/${groupId}/${kind}`)}
+      data-inplace={`${api}/${kind}`}
+      data-inplace-done={`${kind === 'approve' ? 'Approved' : 'Rejected'} the same change on ${pending} screens`}
+      data-inplace-undo={`${api}/reset`}
+      data-inplace-tone={kind === 'reject' ? 'danger' : undefined}
+      data-group-action={kind}
+    >
+      <input type="hidden" name="filter" value={filter.key} />
+      <input type="hidden" name="back" value="build" />
+      {members.map((m) => (
+        <input type="hidden" name="checkIds" value={m.id} />
+      ))}
+      <button
+        type="submit"
+        class={`small ${kind}`}
+        title={
+          kind === 'approve'
+            ? `Approve the ${pending} screens of this group that wait for review (A when the card is focused)`
+            : `Reject the ${pending} screens of this group that wait for review (R when the card is focused)`
+        }
+      >
+        {kind === 'approve' ? `Approve all ${pending}` : 'Reject all'}
+      </button>
+    </form>
+  );
+  return (
+    <article
+      class={props.canReview ? 'check-card-wrap group-card-wrap reviewable' : 'check-card-wrap group-card-wrap'}
+      id={`group-${groupId}`}
+      tabindex={0}
+      data-group-card={groupId}
+      aria-label={`${title}: ${namesOf(members)}`}
+      data-search={members
+        .flatMap((m) => [m.name, ...Object.values(m.variant)])
+        .join(' ')
+        .toLowerCase()}
+    >
+      <div class={`check-card group-card card-${status}`}>
+        <a class="thumb" href={ui.url(`/ui/checks/${first.id}?filter=${filter.key}`)} title="Open the first screen">
+          <GroupCrop ui={ui} check={first} size={props.sizes.get(first.imageSha)} />
+        </a>
+        <div class="check-card-body">
+          <span class="check-name" title={size > members.length ? `${size} screens in this build` : undefined}>
+            {title}
+          </span>
+          <span class="group-names muted" title={members.map((m) => m.name).join(', ')}>
+            {namesOf(members)}
+          </span>
+          <span class="card-status">
+            <span class="card-state">{status}</span>
+            {pending > 0 && pending < members.length && (
+              <span class="diff-pct">{`${pending} of ${members.length} wait`}</span>
+            )}
+          </span>
+          <details class="group-members">
+            <summary>
+              Screens <span class="count">{byName.size}</span>
+            </summary>
+            {/* A line per screen, with a link per variant in the colour of its status. */}
+            <ul>
+              {[...byName].map(([name, checks]) => (
+                <li>
+                  <span class="member-name">{name}</span>
+                  {checks.map((m) => (
+                    <a
+                      class="member-check"
+                      href={ui.url(`/ui/checks/${m.id}?filter=${filter.key}`)}
+                      title={`${m.name} ${Object.values(m.variant).join(' ')}: ${statusText(m)}`}
+                    >
+                      <span class={`member-state state-${cardStatus(m)}`}>{cardStatus(m)}</span>
+                      {Object.values(m.variant).join(' ').replaceAll('_', ' ') || 'no variant'}
+                      <FlakyBadge flaky={props.flaky.get(m.snapshotKey)} />
+                    </a>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
+        {props.canReview && (
+          <div class="group-actions">
+            {pending > 0 ? (
+              <>
+                {action('reject')}
+                {action('approve')}
+              </>
+            ) : (
+              <span class="muted">{status === 'resolved' ? 'All approved' : 'Nothing waits'}</span>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+type GridItem = { kind: 'check'; check: CheckView } | { kind: 'group'; members: CheckView[] };
+
+/**
+ * The grid in the page's order (newest first): checks of one change group that this page shows
+ * (two or more, after filters and tags) become one card where the newest of them is.
+ */
+function gridItems(checks: CheckView[]): GridItem[] {
+  const listed = new Map<string, CheckView[]>();
+  for (const c of checks) if (c.groupId) listed.set(c.groupId, [...(listed.get(c.groupId) ?? []), c]);
+  const items: GridItem[] = [];
+  for (const check of checks) {
+    const members = check.groupId ? listed.get(check.groupId) : undefined;
+    if (!members || members.length < 2) items.push({ kind: 'check', check });
+    else if (members[0] === check) items.push({ kind: 'group', members });
+  }
+  return items;
 }
 
 /** A tag picked in `?tag=key:value` (repeatable). */
@@ -197,6 +449,8 @@ function BuildPage(props: {
   project: Project;
   build: BuildView;
   checks: CheckView[];
+  groups: Map<string, ChangeGroup>;
+  flaky: Map<string, FlakySignal>;
   sizes: Map<string, Size>;
   filter: CheckFilter;
   firstPending: string | null;
@@ -340,15 +594,31 @@ function BuildPage(props: {
         {checks.length === 0 && !narrowed && <EmptyChecks ui={ui} build={build} filter={filter} />}
         {checks.length > 0 && (
           <div class="check-grid">
-            {checks.map((check) => (
-              <CheckCard
-                ui={ui}
-                check={check}
-                size={props.sizes.get(check.result === 'changed' ? check.imageSha : thumbnailSha(check))}
-                filter={filter}
-                canReview={props.canReview}
-              />
-            ))}
+            {gridItems(checks).map((item) =>
+              item.kind === 'group' ? (
+                <GroupCard
+                  ui={ui}
+                  build={build}
+                  group={props.groups.get(item.members[0]?.groupId ?? '')}
+                  members={item.members}
+                  sizes={props.sizes}
+                  filter={filter}
+                  canReview={props.canReview}
+                  flaky={props.flaky}
+                />
+              ) : (
+                <CheckCard
+                  ui={ui}
+                  check={item.check}
+                  size={props.sizes.get(
+                    item.check.result === 'changed' ? item.check.imageSha : thumbnailSha(item.check),
+                  )}
+                  filter={filter}
+                  canReview={props.canReview}
+                  flaky={props.flaky.get(item.check.snapshotKey)}
+                />
+              ),
+            )}
           </div>
         )}
       </div>
@@ -376,7 +646,7 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const cursor = c.req.query('cursor') || undefined;
     const q = (c.req.query('q') ?? '').trim().slice(0, 200);
     const picked = tagsFromQuery(c.req.queries('tag'));
-    const [page, firstPending, tags] = await Promise.all([
+    const [page, firstPending, tags, groups] = await Promise.all([
       listChecks(s.deps, id, {
         result: filter.result,
         review: filter.review,
@@ -389,7 +659,15 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       }),
       firstPendingCheckId(s.deps, id),
       variantTags(s.deps, id),
+      listGroups(s.deps, id),
     ]);
+    const histories = await screenHistories(
+      s.deps,
+      build.projectId,
+      page.items.map((c) => c.snapshotKey),
+      build.branch,
+    );
+    const flaky = new Map(histories.flatMap((h) => (h.flaky ? [[h.snapshotKey, h.flaky] as const] : [])));
     const sizes = await imageSizes(
       s.deps,
       page.items.flatMap((c) => [thumbnailSha(c), c.imageSha]),
@@ -404,6 +682,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         project={project}
         build={build}
         checks={page.items}
+        groups={new Map(groups.map((g) => [g.id, g]))}
+        flaky={flaky}
         sizes={sizes}
         filter={filter}
         firstPending={firstPending}
@@ -428,6 +708,33 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     await finalizeBuild(s.deps, id);
     return c.redirect(ui.url(`/ui/builds/${id}?done=finalized`), 303);
   });
+
+  // Approve all and Reject all on a group card, without JavaScript (with it, they post in place).
+  for (const action of ['approve', 'reject'] as const) {
+    app.post(`/ui/builds/:id/groups/:groupId/${action}`, async (c) => {
+      const ui = uiOf(c, s);
+      const user = userOf(c);
+      if (!hasPermission(user, 'check.review')) {
+        throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
+      }
+      const id = c.req.param('id');
+      const groupId = c.req.param('groupId');
+      const form = await c.req.parseBody({ all: true });
+      const checkIds = ([] as unknown[]).concat(form.checkIds ?? []).filter((v): v is string => typeof v === 'string');
+      await reviewGroup(s.deps, id, groupId, action, user.id, checkIds.length > 0 ? { checkIds } : {});
+      const filter = filterFromQuery({ filter: field(form, 'filter') });
+      const done = action === 'approve' ? 'approved' : 'rejected';
+      // From the check page: on to the next check waiting for review.
+      if (field(form, 'back') === 'check') {
+        const next = await firstPendingCheckId(s.deps, id);
+        return c.redirect(
+          ui.url(next ? `/ui/checks/${next}?filter=${filter.key}&done=${done}` : `/ui/builds/${id}?done=${done}`),
+          303,
+        );
+      }
+      return c.redirect(ui.url(`/ui/builds/${id}?filter=${filter.key}&done=${done}#group-${groupId}`), 303);
+    });
+  }
 
   app.post('/ui/builds/:id/approve', async (c) => {
     const ui = uiOf(c, s);

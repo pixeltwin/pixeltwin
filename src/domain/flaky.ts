@@ -73,29 +73,36 @@ export function covered(rect: Rect, areas: Rect[]): boolean {
  * check before was a change nobody approved and it is unchanged again (the change went away by
  * itself). Each check flips at most once. The unstable area joins the changes of the flipping
  * checks that overlap a change of another flipping check (a change seen once is left out unless
- * nothing recurs). Ignore areas that already cover it mean the screen is taken care of: null.
+ * nothing recurs). The history is read with today's ignore areas: a change they cover is no change
+ * any more, so ignoring the area that keeps changing takes care of the screen at once.
  */
 export function flakySignal(history: HistoryEntry[], ignoreAreas: Rect[] = []): FlakySignal | null {
+  const shown = history.map((h) => {
+    const regions = h.result === 'changed' ? h.regions.filter((r) => !covered(r, ignoreAreas)) : [];
+    // A change without regions (a check from before they were kept) stays a change.
+    const changed = h.result === 'changed' && (h.regions.length === 0 || regions.length > 0);
+    return { ...h, regions, changed, quiet: !changed && (h.result === 'unchanged' || h.result === 'changed') };
+  });
   let flips = 0;
   let lastSeen = 0;
   const involved = new Set<number>();
   const seen = new Set<string>();
-  for (let i = 1; i < history.length; i++) {
-    const now = history[i] as HistoryEntry;
-    const before = history[i - 1] as HistoryEntry;
-    if (i >= 2) seen.add((history[i - 2] as HistoryEntry).imageSha);
-    const visible = now.result === 'changed' || before.result === 'changed';
+  for (let i = 1; i < shown.length; i++) {
+    const now = shown[i] as (typeof shown)[number];
+    const before = shown[i - 1] as (typeof shown)[number];
+    if (i >= 2) seen.add((shown[i - 2] as (typeof shown)[number]).imageSha);
+    const visible = now.changed || before.changed;
     const returned = now.imageSha !== before.imageSha && seen.has(now.imageSha);
-    const wentAway = before.result === 'changed' && before.review !== 'approved' && now.result === 'unchanged';
+    const wentAway = before.changed && before.review !== 'approved' && now.quiet;
     if (!visible || !(returned || wentAway)) continue;
     flips += 1;
     lastSeen = Math.max(lastSeen, now.createdAt);
-    if (now.result === 'changed') involved.add(i);
-    if (before.result === 'changed') involved.add(i - 1);
+    if (now.changed) involved.add(i);
+    if (before.changed) involved.add(i - 1);
   }
   if (flips < MIN_FLIPS) return null;
 
-  const changes = [...involved].flatMap((i) => (history[i]?.regions ?? []).map((region) => ({ i, region })));
+  const changes = [...involved].flatMap((i) => (shown[i]?.regions ?? []).map((region) => ({ i, region })));
   const recurring = changes.filter(
     ({ i, region }) => new Set(changes.filter((c) => c.i !== i && overlaps(c.region, region)).map((c) => c.i)).size > 0,
   );
