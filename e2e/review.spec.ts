@@ -51,7 +51,7 @@ test('a small window still shows the filmstrip, with the stage shrinking instead
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
-test('toasts appear top right, all the same size, in the colour of what happened, never over the buttons', async ({
+test('one toast at a time, above the action bar on the check page, in the colour of what happened, never over a button', async ({
   reviewerPage: page,
   seeded,
 }) => {
@@ -59,23 +59,32 @@ test('toasts appear top right, all the same size, in the colour of what happened
   await page.keyboard.press('a');
   const approved = page.locator('.toast').last();
   await expect(approved).toHaveClass(/tone-success/);
+  // Measured once its entry animation has settled.
+  await page.waitForTimeout(300);
   const toast = await approved.boundingBox();
-  const button = await page.getByRole('button', { name: /Approve/ }).boundingBox();
-  if (!toast || !button) throw new Error('toast or button not on screen');
-  const apart =
-    toast.x + toast.width <= button.x ||
-    button.x + button.width <= toast.x ||
-    toast.y + toast.height <= button.y ||
-    button.y + button.height <= toast.y;
-  expect(apart).toBe(true);
-  expect(toast.y).toBeLessThan(200);
-  const viewport = page.viewportSize();
-  expect(viewport && toast.x + toast.width).toBeGreaterThan((viewport?.width ?? 0) - 40);
+  const bar = await page.locator('.action-bar').boundingBox();
+  if (!toast || !bar) throw new Error('toast or action bar not on screen');
+  expect(toast.y + toast.height).toBeLessThanOrEqual(bar.y);
+  const viewport = page.viewportSize()?.width ?? 0;
+  expect(Math.abs(toast.x + toast.width / 2 - viewport / 2)).toBeLessThan(2);
+  for (const button of await page.locator('button:visible, a.button:visible').all()) {
+    // The toast's own Undo and close buttons are on it, of course.
+    if (await button.evaluate((el) => el.closest('.toast') !== null)) continue;
+    const b = await button.boundingBox();
+    if (!b) continue;
+    const apart =
+      toast.x + toast.width <= b.x ||
+      b.x + b.width <= toast.x ||
+      toast.y + toast.height <= b.y ||
+      b.y + b.height <= toast.y;
+    expect(apart, (await button.getAttribute('class')) ?? '').toBe(true);
+  }
 
   await page.keyboard.press('r');
   const rejected = page.locator('.toast.tone-danger');
   await expect(rejected).toHaveCount(1);
-  // Measured once its entry animation has settled.
+  // The new toast replaced the first one, at the same size.
+  await expect(page.locator('.toast')).toHaveCount(1);
   await expect
     .poll(async () => {
       const other = await rejected.boundingBox();

@@ -1,5 +1,5 @@
 /* Overlays: toasts, dialogs, the shortcut sheet. Shadows appear only here (UI spec §2). */
-/* Toasts sit top right, below the top bar, clear of the review's action bar at the bottom.
+/* Toasts sit top right, below the top bar; on the check page, above its action bar (below).
    Every toast has the same size, whatever its text. */
 .toasts {
   position: fixed;
@@ -10,6 +10,15 @@
   gap: var(--space-2);
   justify-items: end;
   pointer-events: none;
+}
+/* On the check page: centred just above the review's action bar (the top right has its navigation). */
+.toasts.above-actions {
+  top: auto;
+  right: auto;
+  bottom: var(--toasts-bottom, var(--space-4));
+  left: 50%;
+  transform: translateX(-50%);
+  justify-items: center;
 }
 .toast {
   display: flex;
