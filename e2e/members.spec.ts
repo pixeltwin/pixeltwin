@@ -50,3 +50,34 @@ test('a user outside a project does not see it until added', async ({ browser, b
   await expect(page.locator('h1')).toHaveText(seeded.name);
   await context.close();
 });
+
+test('the email field searches users to add; arrows and Enter pick one', async ({ adminPage: page, admin, seeded }) => {
+  const tag = seeded.slug.slice(4);
+  for (const name of ['ann', 'anja']) {
+    await admin.call('POST', '/users', { email: `${name}-${tag}@e2e.test`, password: PASSWORD, role: 'viewer' });
+  }
+  await open(page, `/ui/p/${seeded.slug}/settings`);
+  const members = page.locator('section[aria-labelledby="members-title"]');
+  const field = members.getByRole('combobox', { name: 'Email' });
+  await field.fill(`an`);
+  await field.pressSequentially(`n-${tag}`.slice(0, 1));
+  const list = page.getByRole('listbox', { name: 'Users to add' });
+  await expect(list.getByRole('option')).toHaveText([`ann-${tag}@e2e.testviewer`]);
+  await field.fill(`-${tag}@`);
+  await expect(list.getByRole('option')).toHaveCount(2);
+  await field.press('ArrowDown');
+  await field.press('ArrowDown');
+  await expect(field).toHaveAttribute('aria-activedescendant', 'member-candidates-1');
+  await field.press('Enter');
+  await expect(list).toBeHidden();
+  await expect(field).toHaveValue(`ann-${tag}@e2e.test`);
+  await members.getByRole('button', { name: 'Add member' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Member added.');
+  await expect(members.locator('tr', { hasText: `ann-${tag}@e2e.test` })).toBeVisible();
+
+  // A member is no longer offered; no match says so; Escape closes the list.
+  await field.fill(`ann-${tag}`);
+  await expect(list).toContainText('No users match');
+  await field.press('Escape');
+  await expect(list).toBeHidden();
+});

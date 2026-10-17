@@ -77,15 +77,21 @@ function MembersSection(props: {
           <label class="visually-hidden" for="member-email">
             Email
           </label>
-          <input
-            id="member-email"
-            name="email"
-            type="email"
-            required
-            autocomplete="off"
-            placeholder="Email of an existing user"
-            value={props.values?.email ?? ''}
-          />
+          {/* With JavaScript (the members island) this searches the users who could be added. */}
+          <div class="combobox">
+            <input
+              id="member-email"
+              name="email"
+              type="email"
+              required
+              autocomplete="off"
+              placeholder="Email of an existing user"
+              value={props.values?.email ?? ''}
+              data-member-search={project.slug}
+              aria-controls="member-candidates"
+            />
+            <ul id="member-candidates" class="combobox-list" aria-label="Users to add" hidden />
+          </div>
           <label class="visually-hidden" for="member-role">
             Role
           </label>
@@ -208,7 +214,7 @@ function SettingsPage(props: {
       notice={props.notice}
       error={props.error}
       canManage
-      islands={['tokens']}
+      islands={['tokens', 'members']}
       project={project.slug}
       crumbs={[{ label: project.name, href: ui.url(`/ui/p/${project.slug}`) }, { label: 'Settings' }]}
     >

@@ -103,7 +103,7 @@ describe('UI administration', () => {
       const page = await get('/ui/p/web/settings');
       expect(page).toContain('aria-current="page">Settings</a>');
       expect(page).toContain('Pixels whose colour differs by less than this count as equal');
-      expect(page).toContain('data-islands="tokens"');
+      expect(page).toContain('data-islands="tokens members"');
     });
 
     test('settings save, and invalid values are shown next to their field', async () => {
