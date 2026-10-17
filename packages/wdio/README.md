@@ -37,7 +37,7 @@ option or the same environment variable (`retakes`, `failOnChange`, `allowOfflin
 |---|---|
 | `variant` | extra variant keys for every check, or `(auto, capabilities) => variant` to rename or replace the automatic ones |
 | `ignore` | rectangles (screenshot pixels) never compared on any viewport screenshot, or `({ capabilities, width, height }) => rects`: a status bar, a browser toolbar |
-| `onResult` | `async ({ name, check, url, images }) => …` after every check: `images()` loads its expected, actual and diff PNGs, e.g. for Allure or your own report |
+| `onResult` | `async ({ name, check, url, timing, images }) => …` after every check: `timing` says how long it took (screenshot, upload, compare, retakes), `images()` loads its expected, actual and diff PNGs, e.g. for Allure or your own report |
 
 How it runs: the launcher's `onPrepare` opens the build and hands its id to the workers;
 `onComplete` finalizes it, prints the verdict, the counts and what waits for review, and with the

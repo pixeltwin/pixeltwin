@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Project } from '../../src/db/schema';
-import { finalizeBuild } from '../../src/domain/builds';
+import { addTimings, finalizeBuild } from '../../src/domain/builds';
 import { createProject } from '../../src/domain/projects';
 import { approveCheck, rejectCheck } from '../../src/domain/reviews';
 import { createTestApp, type TestApp } from '../helpers/app';
@@ -112,6 +112,17 @@ describe('UI build page', () => {
     expect(cardAfter(changed.id)).toContain('<span class="card-state">resolved</span>');
     expect(cardAfter(fresh.id)).toContain('class="check-card card-rejected"');
     expect(cardAfter(fresh.id)).toContain('<span class="card-state">rejected</span>');
+  });
+
+  test('the header says how long pixeltwin took, once the SDK reported it', async () => {
+    const { buildId } = await seedBuild();
+    const before = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
+    expect(before).not.toContain('class="build-time"');
+    await addTimings(t.deps, buildId, { checks: 3, screenshotMs: 38_000, uploadMs: 41_000, retakes: 6 });
+    const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
+    expect(page).toMatch(
+      /<span class="build-time" title="screenshots 38 s · upload 41 s · compare [^"]+ · 6 retakes · over 3 checks">pixeltwin 1m 19s<\/span>/,
+    );
   });
 
   describe('a parallel build', () => {

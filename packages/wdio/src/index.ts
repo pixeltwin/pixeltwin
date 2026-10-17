@@ -5,6 +5,8 @@ import {
   type Build,
   type Check,
   type CheckInput,
+  CheckTimer,
+  type CheckTiming,
   cssBoxToPixels,
   failsOnChange,
   PixeltwinCheckError,
@@ -13,6 +15,8 @@ import {
   pngSize,
   postWithRetakes,
   type Rect,
+  TimingTotals,
+  timingLine,
   toPixelRect,
   type Variant,
 } from '@pixeltwin/client';
@@ -63,11 +67,12 @@ export interface CheckImages {
   diff: Uint8Array | null;
 }
 
-/** What `onResult` gets for every check: the check, its review link, and its images on demand. */
+/** What `onResult` gets for every check: the check, its review link, how long it took, and its images on demand. */
 export interface CheckResultInfo {
   name: string;
   check: Check;
   url: string;
+  timing: CheckTiming;
   images(): Promise<CheckImages>;
 }
 
@@ -223,6 +228,7 @@ export class PixeltwinService {
   #restoreEnv: (() => void) | null = null;
   #client: PixeltwinClient | null = null;
   #browser: BrowserLike | null = null;
+  readonly #timings = new TimingTotals();
 
   constructor(options: PixeltwinServiceOptions = {}) {
     this.#options = options;
@@ -271,6 +277,17 @@ export class PixeltwinService {
     );
   }
 
+  /** Worker: sends how long this worker's checks took to the build (its summary adds them up). */
+  async after(): Promise<void> {
+    const buildId = process.env.PIXELTWIN_BUILD_ID;
+    if (!this.#client || !buildId) return;
+    try {
+      await this.#timings.flush(this.#client, buildId);
+    } catch (err) {
+      console.warn(`pixeltwin: could not send the timings: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /**
    * Screenshots the viewport (`element` null) or an element and posts the check, retaking it while
    * it comes back `changed` (`retakes`); then `onResult`, and with `failOnChange` a throw.
@@ -291,12 +308,13 @@ export class PixeltwinService {
 
     const retakes = options.retakes ?? settings.retakes;
     let variant: Variant | undefined;
+    const timer = new CheckTimer();
     const check = await postWithRetakes(
       async () => {
-        const input = await this.#shoot(target, element, name, options);
+        const input = await timer.shoot(() => this.#shoot(target, element, name, options));
         // A retake is the same screen: keep the first screenshot's variant even if the window moved.
         variant ??= input.variant;
-        return client.postCheck(buildId, { ...input, variant });
+        return timer.post(() => client.postCheck(buildId, { ...input, variant }));
       },
       {
         retakes,
@@ -308,7 +326,10 @@ export class PixeltwinService {
       },
     );
     const url = client.checkUrl(check);
-    await this.#options.onResult?.({ name, check, url, images: () => imagesOf(client, check) });
+    const timing = timer.result();
+    this.#timings.add(timing);
+    console.info(timingLine(name, check, timing));
+    await this.#options.onResult?.({ name, check, url, timing, images: () => imagesOf(client, check) });
     if ((options.failOnChange ?? settings.failOnChange) && failsOnChange(check)) {
       throw new PixeltwinCheckError(check, url);
     }

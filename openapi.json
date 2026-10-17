@@ -332,6 +332,34 @@
             "type": "integer",
             "description": "Parts of a parallel build that have finalized it"
           },
+          "timing": {
+            "type": "object",
+            "properties": {
+              "checks": {
+                "type": "integer"
+              },
+              "screenshotMs": {
+                "type": "integer"
+              },
+              "uploadMs": {
+                "type": "integer"
+              },
+              "retakes": {
+                "type": "integer"
+              },
+              "compareMs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "checks",
+              "screenshotMs",
+              "uploadMs",
+              "retakes",
+              "compareMs"
+            ],
+            "description": "How long pixeltwin took, in ms: what the SDK measured for `checks` checks (screenshots, uploads, retakes) and the server time of every check (compareMs)"
+          },
           "verdict": {
             "type": "string",
             "enum": [
@@ -425,6 +453,7 @@
           "finalizedAt",
           "parallelTotal",
           "partsFinished",
+          "timing",
           "verdict",
           "counts"
         ]
@@ -642,6 +671,13 @@
               "null"
             ]
           },
+          "compareMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Server time this check took, in ms: baseline, compare and store"
+          },
           "supersededBy": {
             "type": [
               "string",
@@ -704,6 +740,7 @@
           "reviewedBy",
           "reviewedAt",
           "reviewComment",
+          "compareMs",
           "supersededBy",
           "createdAt",
           "updatedAt",
@@ -2978,6 +3015,123 @@
         "responses": {
           "200": {
             "description": "The build: finalized, or still open while parts of a parallel build run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Build"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/timings": {
+      "post": {
+        "tags": [
+          "builds"
+        ],
+        "summary": "Add what an SDK worker measured (screenshots, uploads, retakes) to the build's timing",
+        "description": "Additive: each worker of a run sends its own totals once, also after the build is finalized.",
+        "x-permission": "check.write",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "checks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000,
+                    "default": 0
+                  },
+                  "screenshotMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000000,
+                    "default": 0
+                  },
+                  "uploadMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000000,
+                    "default": 0
+                  },
+                  "retakes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000,
+                    "default": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The build with its timing",
             "content": {
               "application/json": {
                 "schema": {

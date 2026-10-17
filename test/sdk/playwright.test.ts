@@ -62,6 +62,10 @@ describe('Playwright Test through @pixeltwin/playwright', () => {
     const one = await client.getBuild(first.buildId);
     expect(one.state).toBe('finalized');
     expect(one.counts.result.new).toBe(9);
+    // Every worker sent how long its checks took, and the summary says it.
+    expect(one.timing.checks).toBe(9);
+    expect(first.output).toMatch(/pixeltwin: .+ over 9 checks \(.+ each\): screenshots/);
+    expect(first.output).toMatch(/pixeltwin: "[^"]+" new in [\d.]+ s \(screenshot/);
     const checks = await checksOf(first.buildId);
     expect(checks.map(key).sort()).toEqual(
       ['412x839', '640x480', '800x600'].flatMap((v) => [`full page ${v}`, `header ${v}`, `home ${v}`]).sort(),

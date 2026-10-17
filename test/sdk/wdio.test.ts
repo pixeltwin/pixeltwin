@@ -273,6 +273,32 @@ describe('PixeltwinService', () => {
       await run.launcher.onComplete();
     });
 
+    test('each check logs how long it took; the worker sends its totals to the build when it ends', async () => {
+      const token = await server.newProject('wdio-time');
+      const results: CheckResultInfo[] = [];
+      const run = services({ project: 'wdio-time', token, onResult: (r: CheckResultInfo) => void results.push(r) });
+      await run.launcher.onPrepare({});
+      const fake = fakeBrowser(RED);
+      run.worker.before({}, [], fake.browser);
+      const logs: string[] = [];
+      const info = console.info;
+      console.info = (line: string) => void logs.push(line);
+      try {
+        await fake.check('home');
+      } finally {
+        console.info = info;
+      }
+      expect(logs.join('\n')).toMatch(
+        /pixeltwin: "home" new in [\d.]+ s \(screenshot [\d.]+ s, upload [\d.]+ s, compare [\d.]+ s\)/,
+      );
+      expect(results[0]?.timing.totalMs).toBeGreaterThanOrEqual(0);
+      await run.worker.after();
+      const own = new PixeltwinClient({ url: server.url, token });
+      const build = await own.getBuild(process.env.PIXELTWIN_BUILD_ID ?? '');
+      expect(build.timing.checks).toBe(1);
+      await run.launcher.onComplete();
+    });
+
     test('failOnChange passes a new screenshot the project approved automatically', async () => {
       const token = await server.newProject('wdio-auto');
       const patched = await fetch(`${server.url}/api/v1/projects/wdio-auto`, {

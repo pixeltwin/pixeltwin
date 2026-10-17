@@ -54,6 +54,11 @@ export interface BuildsTable {
   finalizedAt: number | null;
   /** A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build. */
   parallelTotal: number | null;
+  /** What the SDK measured in its workers, added up (POST /builds/{id}/timings). */
+  timingChecks: Generated<number>;
+  timingScreenshotMs: Generated<number>;
+  timingUploadMs: Generated<number>;
+  timingRetakes: Generated<number>;
 }
 
 /** A finished part of a parallel build. */
@@ -84,6 +89,8 @@ export interface ChecksTable {
   reviewComment: string | null;
   /** The check whose approval in a newer build of this branch made this one `outdated`. */
   supersededBy: string | null;
+  /** Server time this check took: baseline, compare and store (null before timings were kept). */
+  compareMs: number | null;
   createdAt: number;
   updatedAt: number;
 }

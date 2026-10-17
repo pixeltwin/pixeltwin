@@ -9,7 +9,7 @@ import { getProjectById } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, BuildStatus, cardStatus, countsText, statusText, thumbnailSha, Variant } from '../components';
+import { Ago, BuildStatus, BuildTime, cardStatus, countsText, statusText, thumbnailSha, Variant } from '../components';
 import { noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
@@ -251,6 +251,7 @@ function BuildPage(props: {
             {build.externalId && <span>{build.externalId}</span>}
             <Ago at={build.createdAt} />
             <span>{countsText(build.counts)}</span>
+            <BuildTime timing={build.timing} />
             {open && build.parallelTotal !== null && (
               <span title="A parallel build: each CI job finalizes its part; the last one closes the build">
                 {`${build.partsFinished} of ${build.parallelTotal} parts finished`}

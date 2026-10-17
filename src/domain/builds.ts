@@ -7,16 +7,37 @@ import type { Deps } from './deps';
 import { type Page, toPage } from './pagination';
 import { getProjectBySlug } from './projects';
 import { AUTO_APPROVER } from './reviews';
-import { createBuildSchema, finalizeBuildSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
+import {
+  createBuildSchema,
+  finalizeBuildSchema,
+  type PageInput,
+  pageInputSchema,
+  parseInput,
+  timingsSchema,
+} from './schemas';
 import { type BuildCounts, deriveVerdict, emptyCounts, type Verdict } from './verdict';
 
 type DbDeps = Pick<Deps, 'db'>;
 
-export interface BuildView extends Build {
+/** How long pixeltwin took in the build's run, in milliseconds. */
+export interface BuildTiming {
+  /** Checks the SDK timed (with their retakes) and what it measured for them. */
+  checks: number;
+  screenshotMs: number;
+  uploadMs: number;
+  retakes: number;
+  /** Server time of every check in the build: baseline, compare and store. */
+  compareMs: number;
+}
+
+type TimingColumns = 'timingChecks' | 'timingScreenshotMs' | 'timingUploadMs' | 'timingRetakes';
+
+export interface BuildView extends Omit<Build, TimingColumns> {
   verdict: Verdict;
   counts: BuildCounts;
   /** Parts of a parallel build that have finalized it so far (0 for an ordinary build). */
   partsFinished: number;
+  timing: BuildTiming;
 }
 
 export async function getBuildRow(deps: DbDeps, id: string): Promise<Build> {
@@ -67,20 +88,46 @@ async function countParts(deps: DbDeps, builds: Build[]): Promise<Map<string, nu
   return parts;
 }
 
-function toView(build: Build, counts: BuildCounts, partsFinished: number): BuildView {
-  return { ...build, verdict: deriveVerdict(counts), counts, partsFinished };
+/** Server time of the builds' checks, added up per build. */
+async function sumCompareMs(deps: DbDeps, buildIds: string[]): Promise<Map<string, number>> {
+  const sums = new Map<string, number>();
+  if (buildIds.length === 0) return sums;
+  const rows = await deps.db
+    .selectFrom('checks')
+    .select(['buildId', (eb) => eb.fn.sum<number>('compareMs').as('ms')])
+    .where('buildId', 'in', buildIds)
+    .groupBy('buildId')
+    .execute();
+  for (const row of rows) sums.set(row.buildId, Number(row.ms ?? 0));
+  return sums;
+}
+
+function toView(build: Build, counts: BuildCounts, partsFinished: number, compareMs: number): BuildView {
+  const { timingChecks, timingScreenshotMs, timingUploadMs, timingRetakes, ...row } = build;
+  return {
+    ...row,
+    verdict: deriveVerdict(counts),
+    counts,
+    partsFinished,
+    timing: {
+      checks: Number(timingChecks),
+      screenshotMs: Number(timingScreenshotMs),
+      uploadMs: Number(timingUploadMs),
+      retakes: Number(timingRetakes),
+      compareMs,
+    },
+  };
 }
 
 /** Adds verdict and counts to build rows, counting all their checks in one query. */
 export async function viewsOf(deps: DbDeps, builds: Build[]): Promise<BuildView[]> {
-  const [counts, parts] = await Promise.all([
-    countChecks(
-      deps,
-      builds.map((b) => b.id),
-    ),
+  const ids = builds.map((b) => b.id);
+  const [counts, parts, compare] = await Promise.all([
+    countChecks(deps, ids),
     countParts(deps, builds),
+    sumCompareMs(deps, ids),
   ]);
-  return builds.map((b) => toView(b, counts.get(b.id) ?? emptyCounts(), parts.get(b.id) ?? 0));
+  return builds.map((b) => toView(b, counts.get(b.id) ?? emptyCounts(), parts.get(b.id) ?? 0, compare.get(b.id) ?? 0));
 }
 
 export async function getBuild(deps: DbDeps, id: string): Promise<BuildView> {
@@ -160,6 +207,10 @@ export async function createBuild(
         createdAt: Date.now(),
         finalizedAt: null,
         parallelTotal: data.parallelTotal ?? null,
+        timingChecks: 0,
+        timingScreenshotMs: 0,
+        timingUploadMs: 0,
+        timingRetakes: 0,
       };
       await tx.insertInto('builds').values(row).execute();
       return row;
@@ -172,7 +223,7 @@ export async function createBuild(
     }
     throw err;
   }
-  return { build: toView(build, emptyCounts(), 0), created: true };
+  return { build: toView(build, emptyCounts(), 0, 0), created: true };
 }
 
 /** Newest first. */
@@ -218,6 +269,26 @@ export async function finalizeBuild(deps: DbDeps, id: string, input: unknown = {
     .set({ state: 'finalized', finalizedAt: Date.now() })
     .where('id', '=', id)
     .where('state', '=', 'open')
+    .execute();
+  return getBuild(deps, id);
+}
+
+/**
+ * Adds what one SDK worker measured to the build's timing totals. Also on a finalized build: the
+ * workers of a run report as they end, which can be after the build is finalized.
+ */
+export async function addTimings(deps: DbDeps, id: string, input: unknown): Promise<BuildView> {
+  const t = parseInput(timingsSchema, input);
+  await getBuildRow(deps, id);
+  await deps.db
+    .updateTable('builds')
+    .set((eb) => ({
+      timingChecks: eb('timingChecks', '+', t.checks),
+      timingScreenshotMs: eb('timingScreenshotMs', '+', t.screenshotMs),
+      timingUploadMs: eb('timingUploadMs', '+', t.uploadMs),
+      timingRetakes: eb('timingRetakes', '+', t.retakes),
+    }))
+    .where('id', '=', id)
     .execute();
   return getBuild(deps, id);
 }

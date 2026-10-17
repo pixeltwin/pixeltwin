@@ -35,11 +35,16 @@ if (done.verdict !== 'passed') process.exitCode = 1;  // empty | error | rejecte
 | `promote(project, branch, snapshotKeys?)` | copies them to main, all or some; needs the `write` scope |
 | `buildUrl(id)`, `checkUrl(check)` | links into the web UI |
 | `fetchImage(check.links.image \| .baseline \| .diff)` | a check's image as PNG bytes, with the client's token |
+| `addTimings(buildId, { checks, screenshotMs, uploadMs, retakes })` | adds what one worker measured to the build's `timing` (it also sums each check's server `compareMs`) |
 
 `postWithRetakes(post, { retakes, intervalMs, deadline? })` posts a screenshot and, while it comes
 back `changed`, waits and posts a fresh one (`post` must take a new screenshot each time; the same
 name and variant replace the check, so the build keeps one). `PixeltwinCheckError` is what the
 integrations throw with `failOnChange`: it carries the `check` and its review `url`.
+
+**Timing.** The integrations time every check (`CheckTimer`: screenshot, upload, the server's
+`compareMs`, retakes), log one line per check, and send each worker's totals (`TimingTotals`) to the
+build; the run's summary then says how long pixeltwin took and where.
 
 **Errors.** The server's problem responses become `PixeltwinError` with `status`, `code` (branch
 on it: `build_finalized`, `invalid_image`, `validation_failed`, …), `detail`, `errors` (field errors)

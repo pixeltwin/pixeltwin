@@ -135,6 +135,33 @@ export function countsText(counts: BuildCounts): string {
   return parts.join(' · ');
 }
 
+/** `0.04 s`, `1.4 s`, `38 s`, `2m 51s`, `1h 2m` (as the SDK prints it). */
+export function durationText(ms: number): string {
+  if (ms < 100) return `${(ms / 1000).toFixed(2)} s`;
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)} s`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** How long pixeltwin took in the build's run, once the SDK reported it; the parts in the tooltip. */
+export function BuildTime({ timing }: { timing: BuildView['timing'] }) {
+  if (timing.checks === 0) return null;
+  const total = timing.screenshotMs + timing.uploadMs + timing.compareMs;
+  const retakes = `${timing.retakes} retake${timing.retakes === 1 ? '' : 's'}`;
+  const checks = `${timing.checks} check${timing.checks === 1 ? '' : 's'}`;
+  return (
+    <span
+      class="build-time"
+      title={`screenshots ${durationText(timing.screenshotMs)} · upload ${durationText(timing.uploadMs)} · compare ${durationText(timing.compareMs)} · ${retakes} · over ${checks}`}
+    >
+      {`pixeltwin ${durationText(total)}`}
+    </span>
+  );
+}
+
 /**
  * What a build cost its reviewers: checks that passed automatically (unchanged, or new and approved
  * by the project setting) against those that needed a person (changed or new: decided or waiting).

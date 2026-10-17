@@ -46,6 +46,11 @@ export interface Build {
   parallelTotal: number | null;
   /** Parts of a parallel build that have finalized it so far. */
   partsFinished: number;
+  /**
+   * How long pixeltwin took, in ms: what the SDK measured for `checks` checks (screenshots, uploads,
+   * retakes) and the server time of every check (`compareMs`).
+   */
+  timing: { checks: number; screenshotMs: number; uploadMs: number; retakes: number; compareMs: number };
   /** Only `passed` is success. */
   verdict: Verdict;
   counts: BuildCounts;
@@ -86,6 +91,8 @@ export interface Check {
   reviewedBy: string | null;
   reviewedAt: number | null;
   reviewComment: string | null;
+  /** Server time this check took, in ms: baseline, compare and store. */
+  compareMs: number | null;
   createdAt: number;
   updatedAt: number;
   /** Paths from the server root: API images and the review page. */

@@ -4,6 +4,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { PixeltwinClient } from './client.js';
 import { PixeltwinError, PixeltwinGateError } from './errors.js';
+import { formatMs } from './timing.js';
 import type { Build, Check } from './types.js';
 
 type Env = Record<string, string | undefined>;
@@ -389,6 +390,15 @@ export async function summaryLines(client: PixeltwinClient, build: Build): Promi
   }
   const more = result.error + review.pending + review.rejected - Math.min(listed.length, 20);
   if (more > 0) lines.push(`pixeltwin:   … and ${more} more`);
+  const t = build.timing;
+  if (t && t.checks > 0) {
+    const total = t.screenshotMs + t.uploadMs + t.compareMs;
+    lines.push(
+      `pixeltwin: ${formatMs(total)} over ${plural(t.checks, 'check')} (${formatMs(total / t.checks)} each): ` +
+        `screenshots ${formatMs(t.screenshotMs)}, upload ${formatMs(t.uploadMs)}, compare ${formatMs(t.compareMs)}; ` +
+        plural(t.retakes, 'retake'),
+    );
+  }
   lines.push(`pixeltwin: review at ${client.buildUrl(build.id)}`);
   return lines;
 }

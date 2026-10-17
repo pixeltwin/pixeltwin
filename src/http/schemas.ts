@@ -74,6 +74,19 @@ export const BuildSchema = z
       .nullable()
       .openapi({ description: 'A parallel build: how many parts (CI jobs) finalize it; null for an ordinary build' }),
     partsFinished: z.number().int().openapi({ description: 'Parts of a parallel build that have finalized it' }),
+    timing: z
+      .object({
+        checks: z.number().int(),
+        screenshotMs: z.number().int(),
+        uploadMs: z.number().int(),
+        retakes: z.number().int(),
+        compareMs: z.number().int(),
+      })
+      .openapi({
+        description:
+          'How long pixeltwin took, in ms: what the SDK measured for `checks` checks (screenshots, uploads, retakes) ' +
+          'and the server time of every check (compareMs)',
+      }),
     verdict: z.enum(['empty', 'error', 'rejected', 'pending', 'outdated', 'passed']),
     counts: z.object({
       total: z.number().int(),
@@ -178,6 +191,11 @@ export const CheckSchema = z
     reviewedBy: z.string().nullable(),
     reviewedAt: z.number().int().nullable(),
     reviewComment: z.string().nullable(),
+    compareMs: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'Server time this check took, in ms: baseline, compare and store' }),
     supersededBy: z.string().nullable().openapi({
       description:
         'Set when review is "outdated": the check of a newer build of this branch whose approval decided this screen.',

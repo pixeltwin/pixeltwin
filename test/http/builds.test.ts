@@ -107,4 +107,23 @@ describe('build routes', () => {
     });
     expect(empty.status).toBe(200);
   });
+
+  test('POST /builds/{id}/timings adds what an SDK worker measured; the build sums it up', async () => {
+    const { token } = await t.tokenAs('web', ['read', 'write']);
+    const as = { token };
+    const build = (await (await t.request('POST', '/api/v1/projects/web/builds', { as, json: {} })).json()) as {
+      id: string;
+      timing: unknown;
+    };
+    expect(build.timing).toEqual({ checks: 0, screenshotMs: 0, uploadMs: 0, retakes: 0, compareMs: 0 });
+    const res = await t.request('POST', `/api/v1/builds/${build.id}/timings`, {
+      as,
+      json: { checks: 2, screenshotMs: 700, uploadMs: 300, retakes: 1 },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { timing: unknown }).timing).toMatchObject({ checks: 2, screenshotMs: 700 });
+    const { token: reader } = await t.tokenAs('web', ['read']);
+    const refused = await t.request('POST', `/api/v1/builds/${build.id}/timings`, { as: { token: reader }, json: {} });
+    expect(refused.status).toBe(403);
+  });
 });

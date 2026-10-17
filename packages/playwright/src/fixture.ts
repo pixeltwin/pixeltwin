@@ -1,6 +1,8 @@
 import {
   type Check,
   type CheckInput,
+  CheckTimer,
+  type CheckTiming,
   type CssToPixels,
   cssBoxToPixels,
   failsOnChange,
@@ -9,6 +11,8 @@ import {
   pngSize,
   postWithRetakes,
   type Rect,
+  type TimingTotals,
+  timingLine,
   toPixelRect,
   type Variant,
 } from '@pixeltwin/client';
@@ -55,6 +59,8 @@ export interface CheckResultInfo {
   check: Check;
   url: string;
   testInfo: TestInfo;
+  /** How long the check took: screenshots, upload, the server's compare, retakes. */
+  timing: CheckTiming;
   images(): Promise<CheckImages>;
 }
 
@@ -64,6 +70,8 @@ export interface PixeltwinBehaviour {
   /** Attach expected, actual and diff to the test when a check is not unchanged. Default true. */
   attachImages: boolean;
   onResult?: ((result: CheckResultInfo) => void | Promise<void>) | undefined;
+  /** The worker's timing totals, sent to the build when the worker ends. */
+  timings?: TimingTotals | undefined;
 }
 
 async function imagesOf(client: PixeltwinClient, check: Check): Promise<CheckImages> {
@@ -184,19 +192,23 @@ export class Pixeltwin {
     const { settings } = this.#behaviour;
     const retakes = options.retakes ?? settings.retakes;
     let variant: Variant | undefined;
+    const timer = new CheckTimer();
     const check = await postWithRetakes(
       async () => {
-        const input = await this.#shoot(target, name, options);
+        const input = await timer.shoot(() => this.#shoot(target, name, options));
         // A retake is the same screen: keep the first screenshot's variant.
         variant ??= input.variant;
-        return client.postCheck(buildId, { ...input, variant });
+        return timer.post(() => client.postCheck(buildId, { ...input, variant }));
       },
       {
         retakes,
         intervalMs: settings.retakeIntervalMs,
       },
     );
-    await this.#report(client, check, name);
+    const timing = timer.result();
+    this.#behaviour.timings?.add(timing);
+    console.info(timingLine(name, check, timing));
+    await this.#report(client, check, name, timing);
     if ((options.failOnChange ?? settings.failOnChange) && failsOnChange(check)) {
       throw new PixeltwinCheckError(check, client.checkUrl(check));
     }
@@ -275,7 +287,7 @@ export class Pixeltwin {
   }
 
   /** The annotation and text attachment, the images when it changed, then `pixeltwinOnResult`. */
-  async #report(client: PixeltwinClient, check: Check, name: string): Promise<void> {
+  async #report(client: PixeltwinClient, check: Check, name: string, timing: CheckTiming): Promise<void> {
     const link = client.checkUrl(check);
     const summary = check.diff && 'summary' in check.diff ? ` — ${check.diff.summary}` : '';
     this.#testInfo.annotations.push({ type: 'pixeltwin', description: `${name}: ${check.result} ${link}` });
@@ -303,6 +315,6 @@ export class Pixeltwin {
           });
       }
     }
-    await this.#behaviour.onResult?.({ name, check, url: link, testInfo: this.#testInfo, images: load });
+    await this.#behaviour.onResult?.({ name, check, url: link, testInfo: this.#testInfo, timing, images: load });
   }
 }

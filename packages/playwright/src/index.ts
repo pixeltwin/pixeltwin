@@ -1,4 +1,4 @@
-import type { PixeltwinClient, Variant } from '@pixeltwin/client';
+import { type PixeltwinClient, TimingTotals, type Variant } from '@pixeltwin/client';
 import { clientFor, resolveSettings } from '@pixeltwin/client/run';
 import { test as base } from '@playwright/test';
 import type { CheckResultInfo } from './fixture.js';
@@ -18,6 +18,8 @@ export interface PixeltwinFixtures {
 export interface PixeltwinWorkerFixtures {
   /** One client per worker; null when pixeltwin is disabled. */
   pixeltwinClient: PixeltwinClient | null;
+  /** How long this worker's checks took; sent to the build when the worker ends. */
+  pixeltwinTimings: TimingTotals;
 }
 
 /** Playwright's `test` with the `pixeltwin` fixture. Combine with your own: `mergeTests(test, yours)`. */
@@ -35,8 +37,21 @@ export const test = base.extend<PixeltwinFixtures, PixeltwinWorkerFixtures>({
     { scope: 'worker' },
   ],
 
+  pixeltwinTimings: [
+    async ({ pixeltwinClient }, use) => {
+      const totals = new TimingTotals();
+      await use(totals);
+      const buildId = process.env.PIXELTWIN_BUILD_ID;
+      if (!pixeltwinClient || !buildId) return;
+      await totals.flush(pixeltwinClient, buildId).catch((err: unknown) => {
+        console.warn(`pixeltwin: could not send the timings: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    },
+    { scope: 'worker' },
+  ],
+
   pixeltwin: async (
-    { pixeltwinClient, pixeltwinVariant, pixeltwinAttachImages, pixeltwinOnResult, browserName },
+    { pixeltwinClient, pixeltwinTimings, pixeltwinVariant, pixeltwinAttachImages, pixeltwinOnResult, browserName },
     use,
     testInfo,
   ) => {
@@ -45,6 +60,7 @@ export const test = base.extend<PixeltwinFixtures, PixeltwinWorkerFixtures>({
         settings: resolveSettings(),
         attachImages: pixeltwinAttachImages,
         onResult: pixeltwinOnResult,
+        timings: pixeltwinTimings,
       }),
     );
   },

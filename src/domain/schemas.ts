@@ -61,6 +61,14 @@ export const createBuildSchema = z.strictObject({
   parallelTotal: z.number().int().min(1).max(1000).optional(),
 });
 
+/** What one SDK worker measured, added to the build's totals. */
+export const timingsSchema = z.strictObject({
+  checks: z.number().int().min(0).max(1_000_000).default(0),
+  screenshotMs: z.number().int().min(0).max(1e10).default(0),
+  uploadMs: z.number().int().min(0).max(1e10).default(0),
+  retakes: z.number().int().min(0).max(1_000_000).default(0),
+});
+
 export const finalizeBuildSchema = z.strictObject({
   /** The part (CI job) of a parallel build that is done; without it the build is finalized at once. */
   part: z.string().trim().min(1).max(200).optional(),

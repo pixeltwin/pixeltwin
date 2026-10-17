@@ -1,9 +1,17 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import { listBranchSummaries } from '../../domain/branches';
-import { createBuild, deleteBuilds, finalizeBuild, getBuild, getBuildRow, listBuilds } from '../../domain/builds';
+import {
+  addTimings,
+  createBuild,
+  deleteBuilds,
+  finalizeBuild,
+  getBuild,
+  getBuildRow,
+  listBuilds,
+} from '../../domain/builds';
 import { getProjectBySlug } from '../../domain/projects';
 import { approveBuild } from '../../domain/reviews';
-import { createBuildSchema, finalizeBuildSchema } from '../../domain/schemas';
+import { createBuildSchema, finalizeBuildSchema, timingsSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
@@ -130,6 +138,24 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       }
     }
     return c.json(await finalizeBuild(s.deps, id, input), 200);
+  });
+
+  const timings = defineRoute('check.write', {
+    method: 'post',
+    path: `${API}/builds/{id}/timings`,
+    tags: ['builds'],
+    summary: "Add what an SDK worker measured (screenshots, uploads, retakes) to the build's timing",
+    description: 'Additive: each worker of a run sends its own totals once, also after the build is finalized.',
+    request: {
+      params: idParam,
+      body: { required: true, content: { 'application/json': { schema: timingsSchema } } },
+    },
+    responses: { 200: json(BuildSchema, 'The build with its timing'), ...problems(401, 403, 404, 422) },
+  });
+  app.openapi(timings, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getBuildRow(s.deps, id)).projectId);
+    return c.json(await addTimings(s.deps, id, c.req.valid('json')), 200);
   });
 
   const approveAll = defineRoute('check.review', {

@@ -1,5 +1,6 @@
 import { type FieldError, PixeltwinError, PixeltwinNetworkError } from './errors.js';
 import { toPixelRect } from './png.js';
+import type { TimingInput } from './timing.js';
 import type {
   Build,
   Check,
@@ -145,6 +146,12 @@ export class PixeltwinClient {
   async finalize(buildId: string, options: { part?: string } = {}): Promise<Build> {
     const path = `/builds/${encodeURIComponent(buildId)}/finalize`;
     return (await this.#request<Build>('POST', path, options.part ? { json: { part: options.part } } : undefined)).data;
+  }
+
+  /** Adds what one worker measured (screenshots, uploads, retakes) to the build's timing. */
+  async addTimings(buildId: string, totals: TimingInput): Promise<Build> {
+    const path = `/builds/${encodeURIComponent(buildId)}/timings`;
+    return (await this.#request<Build>('POST', path, { json: totals })).data;
   }
 
   /** The branch's screens whose baseline differs from main's: what `promote` would copy. */

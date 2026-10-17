@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PixeltwinClient, PixeltwinError, PixeltwinGateError } from '@pixeltwin/client';
+import { type Build, PixeltwinClient, PixeltwinError, PixeltwinGateError } from '@pixeltwin/client';
 import {
   ciInfo,
   externalIdFor,
@@ -12,6 +12,7 @@ import {
   optionsToEnv,
   resolveSettings,
   startRun,
+  summaryLines,
 } from '@pixeltwin/client/run';
 import { makePng, WHITE } from '../helpers/png';
 import { REPO, startServer, type TestServer } from './server';
@@ -126,6 +127,23 @@ describe('settings', () => {
     expect(a).not.toBe(b);
     expect(externalIdFor({ externalId: undefined }, {}, false)).toStartWith('local-');
     expect(() => externalIdFor({ externalId: undefined }, {}, true)).toThrow('PIXELTWIN_EXTERNAL_ID');
+  });
+
+  test('the summary says how long pixeltwin took, when the SDK measured it', async () => {
+    const counts = {
+      total: 83,
+      result: { unchanged: 83, changed: 0, new: 0, error: 0 },
+      review: { none: 83, pending: 0, approved: 0, rejected: 0, outdated: 0 },
+      autoApproved: 0,
+    };
+    const timing = { checks: 83, screenshotMs: 38_000, uploadMs: 41_000, retakes: 6, compareMs: 92_000 };
+    const build = { id: 'bld_1', number: 7, branch: 'main', verdict: 'passed', counts, timing } as unknown as Build;
+    const client = { buildUrl: (id: string) => `http://pt/ui/builds/${id}` } as unknown as PixeltwinClient;
+    expect(await summaryLines(client, build)).toContain(
+      'pixeltwin: 2m 51s over 83 checks (2.1 s each): screenshots 38 s, upload 41 s, compare 1m 32s; 6 retakes',
+    );
+    const untimed = { ...build, timing: { ...timing, checks: 0 } } as Build;
+    expect((await summaryLines(client, untimed)).join('\n')).not.toContain(' over ');
   });
 
   test('a parallel build: part count and part id from options or the environment', () => {

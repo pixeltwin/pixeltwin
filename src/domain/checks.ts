@@ -35,6 +35,8 @@ export interface CheckView {
   reviewedAt: number | null;
   reviewComment: string | null;
   supersededBy: string | null;
+  /** Server time the check took: baseline, compare and store. */
+  compareMs: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -323,6 +325,7 @@ export async function submitCheck(
   /** The build row when the caller already read it (saves a query per upload). */
   known?: Build,
 ): Promise<{ check: CheckView; created: boolean }> {
+  const started = performance.now();
   const build = known?.id === buildId ? known : await getBuildRow(deps, buildId);
   if (build.state === 'finalized') throw buildFinalized(build);
   const meta = parseInput(checkMetaSchema, input.meta);
@@ -381,6 +384,8 @@ export async function submitCheck(
     reviewedBy: null,
     reviewedAt: null,
     reviewComment: null,
+    // Baseline, compare and store; the commit below is not counted.
+    compareMs: Math.round(performance.now() - started),
     updatedAt: now,
   };
   // The diff above can take seconds; the build may have been finalized meanwhile. Locking the
