@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pixeltwin: self-hosted visual regression testing</title>
+  <meta name="description" content="Open-source, self-hosted visual regression testing with an API built for CI and AI agents. Review screenshots with the keyboard, approve the same change once, and turn the pull request green.">
+  <link rel="canonical" href="./">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="pixeltwin">
+  <meta property="og:title" content="pixeltwin: self-hosted visual regression testing">
+  <meta property="og:description" content="Open-source visual regression testing you run on your own servers, with an API built for CI and AI agents.">
+  <meta property="og:url" content="https://pixeltwin.github.io/pixeltwin/">
+  <meta property="og:image" content="https://pixeltwin.github.io/pixeltwin/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="pixeltwin: visual regression testing you host yourself, next to its slider review view">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="pixeltwin: self-hosted visual regression testing">
+  <meta name="twitter:description" content="Open-source visual regression testing you run on your own servers, with an API built for CI and AI agents.">
+  <meta name="twitter:image" content="https://pixeltwin.github.io/pixeltwin/assets/og.png">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="./" aria-label="pixeltwin home">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M16 7 26 24H6Z"/></svg>
+        <span>pixeltwin</span>
+      </a>
+      <nav aria-label="Main">
+        <ul class="nav">
+          <li class="nav-hide"><a href="#how">How it works</a></li>
+          <li class="nav-hide"><a href="#features">Features</a></li>
+          <li class="nav-hide"><a href="#agents">Agents</a></li>
+          <li class="nav-hide"><a href="#quickstart">Quickstart</a></li>
+          <li class="nav-hide"><a href="https://github.com/pixeltwin/pixeltwin#readme">Docs</a></li>
+          <li><a class="btn btn-sm" href="https://github.com/pixeltwin/pixeltwin">
+            <svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+            GitHub</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap">
+        <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Open source · Apache-2.0 · early development<span class="wide-only"> (0.x)</span></p>
+        <h1 id="hero-title">Visual regression testing<br class="br-wide"> you host yourself</h1>
+        <p class="lede">Your tests post screenshots. pixeltwin compares them with approved baselines, reviews the same change once, and turns the pull request green. One binary on your own servers, with an API built for CI and AI agents.</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="#quickstart">Get started</a>
+          <a class="btn" href="https://github.com/pixeltwin/pixeltwin">
+            <svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.34.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+            View on GitHub</a>
+        </div>
+        <ul class="facts" aria-label="At a glance">
+          <li>Single binary or Docker</li>
+          <li>SQLite or Postgres</li>
+          <li>Playwright · WebdriverIO · HTTP API</li>
+          <li>Your screenshots stay on your servers</li>
+        </ul>
+        <figure class="frame hero-shot">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/review-slider-dark-800.webp 800w, assets/review-slider-dark-1440.webp 1440w" sizes="(min-width: 1240px) 1160px, calc(100vw - 32px)">
+            <img src="assets/review-slider-light-1440.webp" srcset="assets/review-slider-light-800.webp 800w, assets/review-slider-light-1440.webp 1440w" sizes="(min-width: 1240px) 1160px, calc(100vw - 32px)" width="1440" height="900" alt="The pixeltwin check page in the slider view: the baseline from main on the left of the divider, this build on the right, a 2.71% diff with one change, and Reject and Approve buttons with their R and A shortcuts." fetchpriority="high">
+          </picture>
+        </figure>
+      </div>
+    </section>
+
+    <section id="how" class="section" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="kicker">How it works</p>
+        <h2 id="how-title">From a screenshot to a green pull request</h2>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-n" aria-hidden="true">1</span>
+            <h3>Tests post screenshots</h3>
+            <p>The Playwright or WebdriverIO SDK opens one build per test run (across shards too) and sends each screenshot with the page's visible elements. Any other tool can use the HTTP API.</p>
+          </li>
+          <li class="step">
+            <span class="step-n" aria-hidden="true">2</span>
+            <h3>pixeltwin compares and groups</h3>
+            <p>Each screenshot is diffed against its approved baseline. The answer names what changed, element by element; screens with exactly the same change form one group, and screens that keep flipping are marked flaky.</p>
+          </li>
+          <li class="step">
+            <span class="step-n" aria-hidden="true">3</span>
+            <h3>A person or an agent reviews</h3>
+            <p>Approve in the UI with the keyboard, or let an agent decide with a reason. The commit status on the pull request updates with every review, so it goes green without running CI again.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="features" class="section" aria-labelledby="features-title">
+      <div class="wrap">
+        <p class="kicker">Review</p>
+        <h2 id="features-title">Review a build in minutes, not an afternoon</h2>
+
+        <div class="row">
+          <div class="row-text">
+            <h3>Keyboard review</h3>
+            <p>Side, Slider, Onion and Diff views, zoom to a changed region, and the next check is one key away. Reject asks why, in a small popover you answer with a number key.</p>
+            <ul class="keys" aria-label="Shortcuts">
+              <li><kbd>1</kbd>–<kbd>4</kbd> Side, Slider, Onion, Diff</li>
+              <li><kbd>A</kbd> approve</li>
+              <li><kbd>R</kbd> reject with a reason</li>
+              <li><kbd>U</kbd> undo</li>
+              <li><kbd>J</kbd> <kbd>K</kbd> next, previous</li>
+              <li><kbd>?</kbd> every shortcut</li>
+            </ul>
+          </div>
+          <figure class="frame row-media">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/review-diff-dark-800.webp 800w, assets/review-diff-dark-1440.webp 1440w" sizes="(min-width: 960px) 640px, calc(100vw - 32px)">
+              <img src="assets/review-diff-light-800.webp" srcset="assets/review-diff-light-800.webp 800w, assets/review-diff-light-1440.webp 1440w" sizes="(min-width: 960px) 640px, calc(100vw - 32px)" width="1440" height="900" loading="lazy" decoding="async" alt="The Diff view of a check: unchanged parts of the screenshot are faded and the changed button is solid red. The view switcher reads Side 1, Slider 2, Onion 3, Diff 4.">
+            </picture>
+          </figure>
+        </div>
+
+        <div class="row row-flip">
+          <div class="row-text">
+            <h3>Approve the same change once</h3>
+            <p>A new header on 40 screens is one card with Approve all and Reject all. Every changed region gets a fingerprint of its pixels, wherever it is on the screen, and checks with exactly the same changes form a group.</p>
+            <p>Screens that keep flipping back and forth, like a clock or an ad, are marked flaky from their last 20 checks and listed under Noisy screens. Ignore noisy area previews the part that keeps changing and ignores it.</p>
+          </div>
+          <div class="row-media illo" aria-hidden="true">
+            <div class="group-card">
+              <div class="gc-thumbs">
+                <span class="gc-thumb"><i></i><b></b></span>
+                <span class="gc-thumb"><i></i><b></b></span>
+                <span class="gc-thumb"><i></i><b></b></span>
+              </div>
+              <div class="gc-body">
+                <div class="gc-title">header <span class="pill pill-amber">change group · 40</span></div>
+                <div class="gc-sub">home, pricing, account, checkout and 36 more</div>
+                <div class="gc-actions"><span class="fake-btn">Reject all <kbd>R</kbd></span><span class="fake-btn fake-btn-primary">Approve all <kbd>A</kbd></span></div>
+              </div>
+            </div>
+            <div class="noisy">
+              <span class="noisy-dot"></span>
+              <span class="noisy-name">dashboard</span>
+              <span class="pill pill-grey">flaky · 2 flips</span>
+              <span class="noisy-act">Ignore noisy area</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-text">
+            <h3>Changes in words, not only pixels</h3>
+            <p>The SDKs send the boxes of the visible elements with each screenshot: test ids, roles, a short text and a few styles, never what was typed into a field. When the baseline has them too, the diff says what moved, resized, changed text or style, appeared or disappeared.</p>
+          </div>
+          <div class="row-media illo" aria-hidden="true">
+            <div class="elements">
+              <div class="el-stage">
+                <div class="el-page">
+                  <span class="el-h">Log in</span>
+                  <span class="el-line"></span>
+                  <span class="el-line el-line-short"></span>
+                  <span class="el-btn el-btn-old"></span>
+                  <span class="el-btn el-btn-new">Submit</span>
+                  <span class="el-arrow">4 px ↓</span>
+                </div>
+              </div>
+              <p class="el-summary"><code>button[data-testid=submit]</code> moved 4 px down; heading text changed from "Sign in" to "Log in".</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="row row-flip">
+          <div class="row-text">
+            <h3>A build page that keeps up</h3>
+            <p>The build page shows a page of cards that fits the window, with no scrolling on a desktop. <kbd>[</kbd> and <kbd>]</kbd> change the page, the arrows move between cards, and the thumbnails are small copies made on the server, so the page loads small images, not whole screenshots.</p>
+          </div>
+          <figure class="frame row-media">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/build-dark-800.webp 800w, assets/build-dark-1440.webp 1440w" sizes="(min-width: 960px) 640px, calc(100vw - 32px)">
+              <img src="assets/build-light-800.webp" srcset="assets/build-light-800.webp 800w, assets/build-light-1440.webp 1440w" sizes="(min-width: 960px) 640px, calc(100vw - 32px)" width="1440" height="900" loading="lazy" decoding="async" alt="Build #3 of feature/checkout: six cards, five passed and one unresolved with a 2.71% diff, with filters for All, Unresolved and Passed, and Approve all and Start review buttons.">
+            </picture>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="pull-requests" class="section" aria-labelledby="pr-title">
+      <div class="wrap">
+        <p class="kicker">Pull requests</p>
+        <h2 id="pr-title">The verdict lands where you merge</h2>
+        <div class="row">
+          <div class="row-text">
+            <p>Connect a project to GitHub (including Enterprise Server) or GitLab (including self-hosted), and every build reports back to its pull or merge request.</p>
+            <ul class="ticks">
+              <li><strong>Commit status</strong> <code>pixeltwin/&lt;project&gt;</code>: pending while screenshots wait, success when the build passes, posted again after every review.</li>
+              <li><strong>One comment per build</strong> with its counts and up to six changed screens linking to their review pages, edited in place.</li>
+              <li><strong>Promote on merge</strong>: a merged pull request copies its branch's baselines into the branch it merged into, once.</li>
+              <li><strong>Webhooks</strong> for builds, verdicts, reviews and new members, signed with HMAC-SHA256, retried with backoff, or posted to Slack.</li>
+            </ul>
+            <p class="small">The SDK reads the commit, repository and pull request from GitHub Actions and GitLab CI by itself.</p>
+          </div>
+          <div class="row-media pr-media">
+            <figure class="frame">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="assets/branches-dark-800.webp 800w, assets/branches-dark-1440.webp 1440w" sizes="(min-width: 960px) 640px, calc(100vw - 32px)">
+                <img src="assets/branches-light-800.webp" srcset="assets/branches-light-800.webp 800w, assets/branches-light-1440.webp 1440w" sizes="(min-width: 960px) 640px, calc(100vw - 32px)" width="1440" height="900" loading="lazy" decoding="async" alt="The branches of the Web shop project: main passed, fix/header running, and feature/checkout needs review with one changed and five unchanged screenshots.">
+              </picture>
+            </figure>
+            <div class="status-card" aria-hidden="true">
+              <div class="status-row"><span class="st st-pending"></span><code>pixeltwin/web</code><span class="st-text">3 screenshots to review</span></div>
+              <div class="status-arrow">approved in pixeltwin</div>
+              <div class="status-row"><span class="st st-ok"></span><code>pixeltwin/web</code><span class="st-text">41 screenshots passed (3 approved)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="agents" class="section section-tint" aria-labelledby="agents-title">
+      <div class="wrap">
+        <p class="kicker">AI agents</p>
+        <h2 id="agents-title">An agent that changed your UI can check its own work</h2>
+        <p class="section-lede">pixeltwin speaks to agents as plainly as to people: the same API, a Model Context Protocol server, and rules you set for what an agent may decide.</p>
+        <div class="agents">
+          <div class="agents-code">
+            <div class="code-head"><span>.mcp.json</span></div>
+            <pre data-copy><code>{
+  <span class="s">"mcpServers"</span>: {
+    <span class="s">"pixeltwin"</span>: {
+      <span class="s">"command"</span>: <span class="v">"npx"</span>,
+      <span class="s">"args"</span>: [
+        <span class="v">"-y"</span>, <span class="v">"--package=@pixeltwin/client"</span>,
+        <span class="v">"pixeltwin"</span>, <span class="v">"mcp"</span>
+      ],
+      <span class="s">"env"</span>: {
+        <span class="s">"PIXELTWIN_URL"</span>: <span class="v">"http://localhost:8080"</span>,
+        <span class="s">"PIXELTWIN_TOKEN"</span>: <span class="v">"${PIXELTWIN_TOKEN}"</span>,
+        <span class="s">"PIXELTWIN_PROJECT"</span>: <span class="v">"web"</span>
+      }
+    }
+  }
+}</code></pre>
+            <ul class="chips" aria-label="MCP tools">
+              <li>latest_build</li><li>list_changes</li><li>get_check</li><li>get_check_images</li><li>approve_check</li><li>reject_check</li><li>review_group</li><li>rejection_patterns</li><li>add_ignore_area</li>
+            </ul>
+          </div>
+          <div class="cards cards-2">
+            <article class="card">
+              <h3><code>pixeltwin mcp</code></h3>
+              <p>A stdio MCP server in <code>@pixeltwin/client</code>. The agent reads what changed element by element, looks at the images cropped to a change to save tokens, and judges a change group once.</p>
+            </article>
+            <article class="card">
+              <h3><code>/llms.txt</code> and OpenAPI</h3>
+              <p>Every server serves the workflow in plain text at <code>/llms.txt</code> and the full contract at <code>/openapi.json</code>, where each operation's <code>x-permission</code> says what it needs.</p>
+            </article>
+            <article class="card">
+              <h3>Reviews with a reason</h3>
+              <p>A token with the <code>review</code> scope approves or rejects with a reason, kept in the history with an agent badge. The project's policy decides what that does:</p>
+              <dl class="policy">
+                <div><dt>off</dt><dd>it applies</dd></div>
+                <div><dt>suggest</dt><dd>a person accepts or dismisses it</dd></div>
+                <div><dt>auto-below</dt><dd>approvals of small diffs apply, larger ones become suggestions</dd></div>
+              </dl>
+            </article>
+            <article class="card">
+              <h3>Rejections agents learn from</h3>
+              <p>Every rejection says why: <code>not_loaded</code>, <code>late_asset</code>, <code>animation</code>, <code>dynamic_data</code>, <code>environment</code>, <code>real_bug</code> or <code>other</code>. Agents see a screen's recent rejections with a hint, such as waiting for network idle before the screenshot.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="operate" class="section" aria-labelledby="operate-title">
+      <div class="wrap">
+        <p class="kicker">Teams and operations</p>
+        <h2 id="operate-title">Runs on your infrastructure, for your whole team</h2>
+        <div class="cards cards-3">
+          <article class="card">
+            <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <h3>Per-project access</h3>
+            <p>Viewers look, reviewers approve and reject, maintainers manage settings, tokens and members. A user outside a project gets 404, as if it did not exist.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+            <h3>Invites and sign-up with approval</h3>
+            <p>Invite people by email with a one-time link, or let them request access from the login page (optionally only for some email domains) until an admin approves.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>
+            <h3>Single binary or Docker</h3>
+            <p>Standalone binaries for Linux, macOS and Windows, and an image for amd64 and arm64. Start it, open the setup link, done. Data stays in a directory you choose.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+            <h3>SQLite or Postgres</h3>
+            <p>SQLite with images on disk by default. With Postgres the screenshots can live in the database too, so the server keeps no state and one <code>pg_dump</code> is the whole backup.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m12 22 0-10M3 7l9 5 9-5"/></svg>
+            <h3>Helm chart, several replicas</h3>
+            <p>With Postgres storage run as many replicas as you like with rolling updates. Migrations run once under a lock, and each webhook and mail goes out from one replica.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg>
+            <h3>Prometheus metrics</h3>
+            <p>With <code>METRICS=1</code>, requests, checks by result, builds by verdict, diff queue depth and outbox backlogs, on a port of their own so a proxy never exposes them.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="quickstart" class="section section-tint" aria-labelledby="quickstart-title">
+      <div class="wrap">
+        <p class="kicker">Quickstart</p>
+        <h2 id="quickstart-title">Get started</h2>
+
+        <ol class="qs">
+          <li class="qs-step">
+            <div class="qs-text">
+              <h3>Start the server</h3>
+              <p>The log prints a setup link. Open it to create the first admin, then a project and a CI token with the <code>read</code> and <code>write</code> scopes.</p>
+              <p class="small">Prefer Postgres, a binary or Kubernetes? See <a href="https://github.com/pixeltwin/pixeltwin#run-it">Run it</a>.</p>
+            </div>
+            <div class="code">
+              <div class="code-head"><span>shell</span></div>
+              <pre data-copy><code>docker run -d --name pixeltwin -p 8080:8080 -v pixeltwin-data:/data \
+  -e PUBLIC_URL=http://localhost:8080 ghcr.io/pixeltwin/pixeltwin:latest
+docker logs pixeltwin   <span class="c"># shows the setup link</span></code></pre>
+            </div>
+          </li>
+          <li class="qs-step">
+            <div class="qs-text">
+              <h3>Post screenshots from your tests</h3>
+              <p>One pixeltwin build per test run and a summary with review links at the end. Until the packages are on npm, install them from a GitHub release (no token needed).</p>
+            </div>
+            <div class="tabs" data-tabs>
+              <div class="tablist" role="tablist" aria-label="Test framework" hidden>
+                <button type="button" role="tab" id="tab-pw" aria-controls="panel-pw" aria-selected="true">Playwright</button>
+                <button type="button" role="tab" id="tab-wdio" aria-controls="panel-wdio" aria-selected="false" tabindex="-1">WebdriverIO</button>
+                <button type="button" role="tab" id="tab-api" aria-controls="panel-api" aria-selected="false" tabindex="-1">curl / API</button>
+              </div>
+
+              <div class="tabpanel" role="tabpanel" id="panel-pw" aria-labelledby="tab-pw">
+                <h4 class="panel-title">Playwright</h4>
+                <div class="code">
+                  <div class="code-head"><span>install</span></div>
+                  <pre data-copy><code>R=https://github.com/pixeltwin/pixeltwin/releases/download/v0.1.0
+npm install -D $R/pixeltwin-client-0.1.0.tgz \
+  $R/pixeltwin-playwright-0.1.0.tgz</code></pre>
+                </div>
+                <div class="code">
+                  <div class="code-head"><span>playwright.config.ts · tests/home.spec.ts</span></div>
+                  <pre data-copy><code><span class="c">// playwright.config.ts</span>
+<span class="k">export default</span> defineConfig({
+  globalSetup: <span class="v">'@pixeltwin/playwright/setup'</span>,
+  <span class="c">// …your projects</span>
+});
+
+<span class="c">// tests/home.spec.ts</span>
+<span class="k">import</span> { test } <span class="k">from</span> <span class="v">'@pixeltwin/playwright'</span>;
+
+test(<span class="v">'home'</span>, <span class="k">async</span> ({ page, pixeltwin }) =&gt; {
+  <span class="k">await</span> page.goto(<span class="v">'/'</span>);
+  <span class="k">await</span> pixeltwin.check(page, <span class="v">'home'</span>, { ignore: [page.locator(<span class="v">'.clock'</span>)] });
+});</code></pre>
+                </div>
+                <div class="code">
+                  <div class="code-head"><span>run</span></div>
+                  <pre data-copy><code>PIXELTWIN_URL=http://localhost:8080 PIXELTWIN_TOKEN=pt_… \
+PIXELTWIN_PROJECT=web PIXELTWIN_GATE=1 npx playwright test</code></pre>
+                </div>
+              </div>
+
+              <div class="tabpanel" role="tabpanel" id="panel-wdio" aria-labelledby="tab-wdio">
+                <h4 class="panel-title">WebdriverIO</h4>
+                <div class="code">
+                  <div class="code-head"><span>install</span></div>
+                  <pre data-copy><code>R=https://github.com/pixeltwin/pixeltwin/releases/download/v0.1.0
+npm install -D $R/pixeltwin-client-0.1.0.tgz \
+  $R/pixeltwin-wdio-0.1.0.tgz</code></pre>
+                </div>
+                <div class="code">
+                  <div class="code-head"><span>wdio.conf.ts · test/home.e2e.ts</span></div>
+                  <pre data-copy><code><span class="c">// wdio.conf.ts</span>
+<span class="k">import</span> { PixeltwinService } <span class="k">from</span> <span class="v">'@pixeltwin/wdio'</span>;
+
+<span class="k">export const</span> config: WebdriverIO.Config = {
+  services: [[PixeltwinService, { project: <span class="v">'web'</span> }]],
+  <span class="c">// …</span>
+};
+
+<span class="c">// test/home.e2e.ts</span>
+<span class="k">import</span> <span class="v">'@pixeltwin/wdio'</span>; <span class="c">// types for browser.pixeltwinCheck</span>
+
+it(<span class="v">'home'</span>, <span class="k">async</span> () =&gt; {
+  <span class="k">await</span> browser.url(<span class="v">'/'</span>);
+  <span class="k">await</span> browser.pixeltwinCheck(<span class="v">'home'</span>, { ignore: [$(<span class="v">'.clock'</span>)] });
+});</code></pre>
+                </div>
+                <div class="code">
+                  <div class="code-head"><span>run</span></div>
+                  <pre data-copy><code>PIXELTWIN_URL=http://localhost:8080 PIXELTWIN_TOKEN=pt_… \
+PIXELTWIN_GATE=1 npx wdio run wdio.conf.ts</code></pre>
+                </div>
+              </div>
+
+              <div class="tabpanel" role="tabpanel" id="panel-api" aria-labelledby="tab-api">
+                <h4 class="panel-title">curl / API</h4>
+                <div class="code">
+                  <div class="code-head"><span>shell</span></div>
+                  <pre data-copy><code>API=http://localhost:8080/api/v1
+AUTH="Authorization: Bearer $PIXELTWIN_TOKEN"
+
+<span class="c"># 1. Open a build (the same externalId on a retry returns the same build)</span>
+curl -X POST $API/projects/web/builds -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"branch":"feature/login","baseBranch":"main","externalId":"ci-run-123"}'
+
+<span class="c"># 2. Post each screenshot: the answer arrives after the comparison</span>
+curl -X POST $API/builds/&lt;buildId&gt;/checks -H "$AUTH" -F image=@login.png \
+  -F 'meta={"name":"login","variant":{"browser":"chromium","viewport":"1280x720"}}'
+
+<span class="c"># 3. Finalize, then act on the verdict: only "passed" is success</span>
+curl -X POST $API/builds/&lt;buildId&gt;/finalize -H "$AUTH"</code></pre>
+                </div>
+                <p class="small">The whole workflow for CI and agents is at <code>/llms.txt</code> on your server; the reference is at <code>/docs</code>.</p>
+              </div>
+            </div>
+          </li>
+          <li class="qs-step">
+            <div class="qs-text">
+              <h3>Gate CI on the verdict</h3>
+              <p>With <code>PIXELTWIN_GATE=1</code> the run fails unless the verdict is <code>passed</code>. By default a changed screenshot does not fail its own test: the verdict decides once, at the end.</p>
+            </div>
+            <dl class="env">
+              <div><dt><code>PIXELTWIN_URL</code></dt><dd>your server, e.g. <code>http://localhost:8080</code></dd></div>
+              <div><dt><code>PIXELTWIN_TOKEN</code></dt><dd>a project token with <code>read</code> and <code>write</code></dd></div>
+              <div><dt><code>PIXELTWIN_PROJECT</code></dt><dd>the project's slug</dd></div>
+              <div><dt><code>PIXELTWIN_GATE</code></dt><dd><code>1</code> fails the run unless it passed</dd></div>
+            </dl>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section closing" aria-labelledby="closing-title">
+      <div class="wrap closing-inner">
+        <h2 id="closing-title">Your screenshots, your servers</h2>
+        <p>pixeltwin is open source under the Apache-2.0 licence. Run it next to your CI and keep every image in a directory or database you control.</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="#quickstart">Get started</a>
+          <a class="btn" href="https://github.com/pixeltwin/pixeltwin#readme">Read the docs</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="./">
+          <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M16 7 26 24H6Z"/></svg>
+          <span>pixeltwin</span>
+        </a>
+        <p>Self-hosted visual regression testing. Licensed under <a href="https://github.com/pixeltwin/pixeltwin/blob/main/LICENSE">Apache-2.0</a>.</p>
+      </div>
+      <nav class="footer-nav" aria-label="Documentation">
+        <h2>Docs</h2>
+        <ul>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#run-it">Run it</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#post-screenshots-from-your-tests-the-javascript-sdk">JavaScript SDK</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#agents-pixeltwin-mcp">Agents and MCP</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#pull-requests-github-and-gitlab">Pull requests</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#webhooks">Webhooks</a></li>
+        </ul>
+      </nav>
+      <nav class="footer-nav" aria-label="Operations">
+        <h2>Operate</h2>
+        <ul>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#users-roles-and-projects">Users and roles</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#kubernetes">Kubernetes</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin/blob/main/deploy/helm/pixeltwin/README.md">Helm chart</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin#configuration">Configuration</a></li>
+        </ul>
+      </nav>
+      <nav class="footer-nav" aria-label="Project">
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/pixeltwin/pixeltwin">GitHub</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin/releases">Releases</a></li>
+          <li><a href="https://github.com/pixeltwin/pixeltwin/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
