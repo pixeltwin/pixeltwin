@@ -188,6 +188,32 @@ describe('UI areas', () => {
     expect(await page(`/ui/checks/${plain.id}`)).not.toContain('areas-toggle');
   });
 
+  test('the toolbar keeps the same buttons with Show diff on and off, so nothing moves', async () => {
+    // The area hides the only change: as compared, the check has no diff.
+    const check = await changedCheck();
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', ...overClock });
+    const toolbar = (body: string) => {
+      const from = body.indexOf('<div class="stage-toolbar"');
+      return body.slice(from, body.indexOf('<div class="panes">', from));
+    };
+    const buttons = (body: string) =>
+      [...toolbar(body).matchAll(/<(?:button|a)\b[^>]*>(?:(?!<\/(?:button|a)>).)*<\/(?:button|a)>/gs)].map((m) =>
+        m[0]
+          .replace(/<[^>]+>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      );
+    const on = await page(`/ui/checks/${check.id}?filter=all`);
+    const off = await page(`/ui/checks/${check.id}?filter=all&areas=off`);
+    expect(buttons(on)).toEqual(buttons(off));
+    expect(buttons(on)).toContain('Diff 4');
+    // Without a diff, Diff and Changes are there but disabled.
+    expect(toolbar(on)).toMatch(/<button type="button" data-mode-button="diff" aria-pressed="false" disabled/);
+    // Drawing is off while Show diff is on, but its buttons stay.
+    expect(toolbar(off)).toContain('class="segmented draw-tools"');
+    expect(toolbar(off)).not.toContain('data-draw=');
+  });
+
   test('Ignore is disabled on a snapshot that has compare areas', async () => {
     const check = await changedCheck();
     await createArea(t.deps, check.id, reviewer.id, { kind: 'compare', x: 0, y: 0, width: 100, height: 100 });

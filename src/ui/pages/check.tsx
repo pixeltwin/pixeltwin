@@ -91,9 +91,17 @@ const AREA_PLURAL: Record<Area['kind'], string> = { ignore: 'ignore areas', comp
  * one kind of area, so once it has some, the other kind is disabled. The edit bar shows while an
  * area is being moved or resized (the island needs JavaScript, so it starts hidden).
  */
-function DrawTools({ areas }: { areas: Area[] }) {
+function DrawTools({ areas, off = false }: { areas: Area[]; off?: boolean }) {
   const present = areas[0]?.kind;
   const tool = (kind: Area['kind'], label: string, key: string) => {
+    // While Show diff is on nothing can be drawn; the buttons stay so the toolbar does not move.
+    if (off) {
+      return (
+        <button type="button" disabled title="Back to the comparison with the areas to draw one">
+          {label} <kbd>{key.toUpperCase()}</kbd>
+        </button>
+      );
+    }
     const blocked = present !== undefined && present !== kind;
     const what = `Draw ${kind === 'ignore' ? 'an ignore' : 'a compare'} area`;
     return (
@@ -191,7 +199,12 @@ function Stage(props: {
     ['slider', 'Slider', '2'],
     ['onion', 'Onion', '3'],
   ];
-  if (check.diffImageSha) modes.push(['diff', 'Diff', '4']);
+  // With Show diff the toolbar keeps the same buttons either way (nothing moves under the pointer):
+  // Diff and Changes are there, disabled, when the areas hide every change.
+  const steady = props.areasSwitch !== undefined;
+  const noDiff = !check.diffImageSha;
+  if (check.diffImageSha || steady) modes.push(['diff', 'Diff', '4']);
+  const drawingOff = props.areasSwitch !== undefined && !props.areasSwitch.on;
   const baseSize = sizes.get(baseline.imageSha);
   const currentSize = sizes.get(check.imageSha);
   return (
@@ -207,12 +220,18 @@ function Stage(props: {
         <fieldset class="segmented modes">
           <legend class="visually-hidden">Compare mode</legend>
           {modes.map(([mode, label, key]) => (
-            <button type="button" data-mode-button={mode} aria-pressed="false">
+            <button
+              type="button"
+              data-mode-button={mode}
+              aria-pressed="false"
+              disabled={mode === 'diff' && noDiff}
+              title={mode === 'diff' && noDiff ? 'No changes left to show: the areas hide them' : undefined}
+            >
               {label} <kbd>{key}</kbd>
             </button>
           ))}
         </fieldset>
-        {check.diffImageSha && (
+        {check.diffImageSha ? (
           <button
             type="button"
             class="small highlight-toggle"
@@ -222,6 +241,12 @@ function Stage(props: {
           >
             Changes <kbd>H</kbd>
           </button>
+        ) : (
+          steady && (
+            <button type="button" class="small highlight-toggle" disabled title="No changes left to highlight">
+              Changes <kbd>H</kbd>
+            </button>
+          )
         )}
         {props.areasSwitch && (
           <a
@@ -242,7 +267,7 @@ function Stage(props: {
           <input type="range" min="0" max="100" value="50" data-onion />
         </label>
         <div class="stage-actions">
-          {props.canReview && <DrawTools areas={areas} />}
+          {props.canReview && <DrawTools areas={areas} off={drawingOff} />}
           <div class="zoom-controls">
             <button
               type="button"
@@ -955,7 +980,7 @@ function CheckPage(props: {
             check={shown}
             sizes={props.sizes}
             areas={off ? [] : props.areas}
-            canReview={props.canReview && !off}
+            canReview={props.canReview}
             areasSwitch={props.areasSwitch}
           />
           <Info

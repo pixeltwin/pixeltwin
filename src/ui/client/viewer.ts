@@ -130,7 +130,7 @@ export function mountViewer(root: HTMLElement): () => void {
 
   const isNew = stage.dataset.mode === 'new';
   const buttons = [...stage.querySelectorAll<HTMLButtonElement>('[data-mode-button]')];
-  const available = buttons.map((b) => b.dataset.modeButton as Mode);
+  const available = buttons.filter((b) => !b.disabled).map((b) => b.dataset.modeButton as Mode);
   const toolbar = stage.querySelector<HTMLElement>('.stage-toolbar');
   const onionControl = stage.querySelector<HTMLElement>('.onion-control');
   const onion = stage.querySelector<HTMLInputElement>('[data-onion]');

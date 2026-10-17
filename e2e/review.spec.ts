@@ -405,15 +405,23 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   const divider = () => page.locator('.divider').evaluate((el) => (el as HTMLElement).style.left);
   const moved = await divider();
   expect(moved).toBe('60%');
+  const where = async () => {
+    const box = await page.locator('.areas-toggle').boundingBox();
+    return [Math.round(box?.x ?? -1), Math.round(box?.y ?? -1)];
+  };
+  const before = await where();
   await page.locator('.areas-toggle').click();
   await expect(page.locator('.areas-off')).toBeVisible();
   await expect(page).toHaveURL(/areas=off/);
   expect(await divider()).toBe(moved);
+  // The button stays under the pointer.
+  expect(await where()).toEqual(before);
   await expect(page.locator('.pane-diff img')).toHaveCount(1);
   // Show diff is there to see the changes: they are highlighted even if Changes was off.
   await expect(page.locator('[data-highlight]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.areas-toggle').click();
   await expect(page.locator('.areas-off')).toHaveCount(0);
   await expect(page).not.toHaveURL(/areas=off/);
+  expect(await where()).toEqual(before);
   expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
 });
