@@ -123,8 +123,8 @@ describe('UI focus mode', () => {
     const check = (await submit(t.deps, buildId, withSquare, { name: 'home', variant })).check;
     // Values only; the keys are in the tooltip.
     const tags =
-      '<span class="variant-tag" data-key="device">iphone 13 pro max</span>' +
-      '<span class="variant-tag" data-key="os">ios 16.0</span>';
+      '<span class="variant-tag" data-variant-key="device">iphone 13 pro max</span>' +
+      '<span class="variant-tag" data-variant-key="os">ios 16.0</span>';
     const header = await page(`/ui/checks/${check.id}`);
     expect(header).toContain(tags);
     // The exact values stay in the tooltip.
