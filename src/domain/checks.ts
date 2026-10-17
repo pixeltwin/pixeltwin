@@ -1,5 +1,5 @@
 import { sql } from 'kysely';
-import type { Baseline, Build, CheckResult, CheckReview, CheckRow, Suggestion } from '../db/schema';
+import type { Baseline, Build, CheckResult, CheckReview, CheckRow, RejectReason, Suggestion } from '../db/schema';
 import { IDENTICAL_SUMMARY } from '../diff/summary';
 import type { DiffData, DiffErrorData, DiffJob, DiffJobResult, Rect, Size, SnapshotElement } from '../diff/types';
 import { AppError } from '../errors';
@@ -20,6 +20,8 @@ import { snapshotKey } from './snapshot-key';
 export interface CheckSuggestion {
   action: Suggestion;
   reason: string | null;
+  /** A suggested rejection's category. */
+  reasonCode: RejectReason | null;
   /** The project token that suggested, with its name at the time. */
   by: { kind: 'token'; id: string; name: string | null };
   at: number;
@@ -44,6 +46,8 @@ export interface CheckView {
   reviewedBy: string | null;
   reviewedAt: number | null;
   reviewComment: string | null;
+  /** The category of the current rejection; null otherwise or when none was given. */
+  reviewReasonCode: RejectReason | null;
   supersededBy: string | null;
   /** Server time the check took: baseline, compare and store. */
   compareMs: number | null;
@@ -240,6 +244,7 @@ function toCheckView(row: CheckWithJoins): CheckView {
     suggestedBy,
     suggestedByName,
     suggestionReason,
+    suggestionReasonCode,
     suggestedAt,
     changeKey,
     groupSize,
@@ -253,6 +258,7 @@ function toCheckView(row: CheckWithJoins): CheckView {
         ? {
             action: suggestion,
             reason: suggestionReason,
+            reasonCode: suggestionReasonCode,
             by: { kind: 'token', id: suggestedBy, name: suggestedByName },
             at: suggestedAt ?? 0,
           }
@@ -528,12 +534,14 @@ export async function submitCheck(
     reviewedBy: null,
     reviewedAt: null,
     reviewComment: null,
+    reviewReasonCode: null,
     elementsSha,
     // A new screenshot of the screen: a suggestion about the earlier one no longer applies.
     suggestion: null,
     suggestedBy: null,
     suggestedByName: null,
     suggestionReason: null,
+    suggestionReasonCode: null,
     suggestedAt: null,
     // Baseline, compare and store; the commit below is not counted.
     compareMs: Math.round(performance.now() - started),
@@ -639,6 +647,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
         suggestedBy: null,
         suggestedByName: null,
         suggestionReason: null,
+        suggestionReasonCode: null,
         suggestedAt: null,
         updatedAt: Date.now(),
       }))

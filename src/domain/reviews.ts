@@ -1,5 +1,13 @@
 import type { Db } from '../db/database';
-import type { ActorKind, CheckReview, Project, ReviewAction, ReviewEvent, Suggestion } from '../db/schema';
+import type {
+  ActorKind,
+  CheckReview,
+  Project,
+  RejectReason,
+  ReviewAction,
+  ReviewEvent,
+  Suggestion,
+} from '../db/schema';
 import { AppError } from '../errors';
 import { newId } from '../ids';
 import type { Principal } from './auth/policy';
@@ -40,10 +48,22 @@ export function actorFromPrincipal(principal: Principal): ReviewActor {
 /** What a review did: applied, or recorded as a suggestion for a person (agent review policy). */
 export type ReviewOutcome = 'applied' | 'suggested';
 
-/** The reason of a review: `reason`, or `comment` as older clients call it; empty is none. */
-function reasonOf(input: unknown): string | null {
-  const { comment, reason } = parseInput(reviewInputSchema, input);
-  return reason || comment || null;
+/** Why a review was made: the comment, and a rejection's category. */
+export interface ReviewReason {
+  /** `reason`, or `comment` as older clients call it; empty is none. */
+  reason: string | null;
+  reasonCode: RejectReason | null;
+}
+
+/** The reason of a review; a category only goes with a rejection (422 otherwise). */
+export function reasonOf(input: unknown, action: 'approve' | 'reject' | 'dismiss'): ReviewReason {
+  const { comment, reason, reasonCode } = parseInput(reviewInputSchema, input);
+  if (reasonCode && action !== 'reject') {
+    throw new AppError('validation_failed', 422, 'The request is invalid.', [
+      { path: 'reasonCode', message: 'A reason code goes with a rejection only' },
+    ]);
+  }
+  return { reason: reason || comment || null, reasonCode: reasonCode ?? null };
 }
 
 const NO_SUGGESTION = {
@@ -51,6 +71,7 @@ const NO_SUGGESTION = {
   suggestedBy: null,
   suggestedByName: null,
   suggestionReason: null,
+  suggestionReasonCode: null,
   suggestedAt: null,
 } as const;
 
@@ -103,9 +124,16 @@ async function outdatedGuard(tx: Db, checkId: string): Promise<AppError | null> 
 /** Appends to the check's review history, inside the transaction that made the change. */
 async function recordReview(
   tx: Db,
-  event: { checkId: string; projectId: string; action: ReviewAction; actor: ReviewActor; comment: string | null },
+  event: {
+    checkId: string;
+    projectId: string;
+    action: ReviewAction;
+    actor: ReviewActor;
+    comment: string | null;
+    reasonCode?: RejectReason | null;
+  },
 ): Promise<void> {
-  const { actor, ...rest } = event;
+  const { actor, reasonCode, ...rest } = event;
   await tx
     .insertInto('reviewEvents')
     .values({
@@ -114,6 +142,7 @@ async function recordReview(
       actor: actor.id,
       actorKind: actor.kind,
       actorName: actor.name,
+      reasonCode: reasonCode ?? null,
       createdAt: Date.now(),
     })
     .execute();
@@ -151,6 +180,7 @@ export async function tryApprove(
       reviewedBy: actor.id,
       reviewedAt: now,
       reviewComment: comment,
+      reviewReasonCode: null,
       ...NO_SUGGESTION,
       updatedAt: now,
     })
@@ -202,6 +232,8 @@ export interface Reviewed {
   action: 'approved' | 'rejected' | 'reset';
   actor: ReviewActor;
   reason: string | null;
+  /** A rejection's category. */
+  reasonCode?: RejectReason | null;
 }
 
 /**
@@ -212,8 +244,14 @@ export interface Reviewed {
  */
 export async function announce(deps: DbDeps, reviewed: Reviewed[], builds: string[]): Promise<void> {
   if (!deps.events) return;
-  for (const { actor, ...event } of reviewed) {
-    await deps.events.checkReviewed({ ...event, actor: actor.id, actorKind: actor.kind, actorName: actor.name });
+  for (const { actor, reasonCode, ...event } of reviewed) {
+    await deps.events.checkReviewed({
+      ...event,
+      reasonCode: reasonCode ?? null,
+      actor: actor.id,
+      actorKind: actor.kind,
+      actorName: actor.name,
+    });
   }
   if (builds.length > 0) await deps.events.buildsChanged(builds);
 }
@@ -224,7 +262,7 @@ export async function approveCheck(
   actor: string | ReviewActor,
   input: unknown = {},
 ): Promise<CheckView> {
-  await applyApproval(deps, checkId, actorOf(actor), reasonOf(input));
+  await applyApproval(deps, checkId, actorOf(actor), reasonOf(input, 'approve').reason);
   return getCheck(deps, checkId);
 }
 
@@ -245,7 +283,7 @@ export async function tryReject(
   tx: Db,
   checkId: string,
   actor: ReviewActor,
-  reason: string | null,
+  why: ReviewReason,
 ): Promise<RejectOutcome> {
   const outdated = await outdatedGuard(tx, checkId);
   if (outdated) return { rejected: false, error: outdated };
@@ -256,7 +294,8 @@ export async function tryReject(
       review: 'rejected',
       reviewedBy: actor.id,
       reviewedAt: now,
-      reviewComment: reason,
+      reviewComment: why.reason,
+      reviewReasonCode: why.reasonCode,
       ...NO_SUGGESTION,
       updatedAt: now,
     })
@@ -269,18 +308,25 @@ export async function tryReject(
     .select(['projectId', 'buildId'])
     .where('id', '=', checkId)
     .executeTakeFirstOrThrow();
-  await recordReview(tx, { checkId, projectId, action: 'rejected', actor, comment: reason });
+  await recordReview(tx, {
+    checkId,
+    projectId,
+    action: 'rejected',
+    actor,
+    comment: why.reason,
+    reasonCode: why.reasonCode,
+  });
   return { rejected: true, builds: [buildId] };
 }
 
 /** Rejects the pending check (409/404 when it cannot be) and announces the review. */
-async function applyRejection(deps: DbDeps, checkId: string, actor: ReviewActor, reason: string | null) {
+async function applyRejection(deps: DbDeps, checkId: string, actor: ReviewActor, why: ReviewReason) {
   const builds = await deps.db.transaction().execute(async (tx) => {
-    const outcome = await tryReject(tx, checkId, actor, reason);
+    const outcome = await tryReject(tx, checkId, actor, why);
     if (!outcome.rejected) throw outcome.error ?? (await notReviewable(tx, checkId, ['pending']));
     return outcome.builds;
   });
-  await announce(deps, [{ checkId, action: 'rejected', actor, reason }], builds);
+  await announce(deps, [{ checkId, action: 'rejected', actor, ...why }], builds);
 }
 
 export async function rejectCheck(
@@ -289,7 +335,7 @@ export async function rejectCheck(
   actor: string | ReviewActor,
   input: unknown = {},
 ): Promise<CheckView> {
-  await applyRejection(deps, checkId, actorOf(actor), reasonOf(input));
+  await applyRejection(deps, checkId, actorOf(actor), reasonOf(input, 'reject'));
   return getCheck(deps, checkId);
 }
 
@@ -318,6 +364,20 @@ function reasonRequired(project: Project, action: 'approve' | 'reject'): AppErro
   );
 }
 
+function reasonCodeRequired(project: Project): AppError {
+  return new AppError(
+    'reason_code_required',
+    422,
+    `Project "${project.slug}" reviews agents' decisions (agent review policy "${project.agentReview}"): a token must give a reasonCode to reject (not_loaded, late_asset, animation, dynamic_data, environment, real_bug or other).`,
+  );
+}
+
+/** Under an agent review policy a token gives a reason, and a category to reject. */
+function requireReason(project: Project, action: 'approve' | 'reject', why: ReviewReason): void {
+  if (!why.reason) throw reasonRequired(project, action);
+  if (action === 'reject' && !why.reasonCode) throw reasonCodeRequired(project);
+}
+
 function suggestable(action: Suggestion): CheckReview[] {
   return action === 'approve' ? APPROVABLE : ['pending'];
 }
@@ -332,7 +392,7 @@ export async function trySuggest(
   checkId: string,
   action: Suggestion,
   actor: ReviewActor,
-  reason: string,
+  why: ReviewReason,
 ): Promise<{ suggested: true } | { suggested: false; error: AppError | null }> {
   const outdated = await outdatedGuard(tx, checkId);
   if (outdated) return { suggested: false, error: outdated };
@@ -343,7 +403,8 @@ export async function trySuggest(
       suggestion: action,
       suggestedBy: actor.id,
       suggestedByName: actor.name,
-      suggestionReason: reason,
+      suggestionReason: why.reason,
+      suggestionReasonCode: action === 'reject' ? why.reasonCode : null,
       suggestedAt: now,
       updatedAt: now,
     })
@@ -357,7 +418,14 @@ export async function trySuggest(
     .where('id', '=', checkId)
     .executeTakeFirstOrThrow();
   const event = action === 'approve' ? 'suggested_approval' : 'suggested_rejection';
-  await recordReview(tx, { checkId, projectId, action: event, actor, comment: reason });
+  await recordReview(tx, {
+    checkId,
+    projectId,
+    action: event,
+    actor,
+    comment: why.reason,
+    reasonCode: action === 'reject' ? why.reasonCode : null,
+  });
   return { suggested: true };
 }
 
@@ -367,10 +435,10 @@ async function suggest(
   checkId: string,
   action: Suggestion,
   actor: ReviewActor,
-  reason: string,
+  why: ReviewReason,
 ): Promise<void> {
   await deps.db.transaction().execute(async (tx) => {
-    const outcome = await trySuggest(tx, checkId, action, actor, reason);
+    const outcome = await trySuggest(tx, checkId, action, actor, why);
     if (!outcome.suggested) throw outcome.error ?? (await notReviewable(tx, checkId, suggestable(action)));
   });
 }
@@ -378,7 +446,8 @@ async function suggest(
 /**
  * Approves or rejects a check as `actor`, through the project's agent review policy: a person's
  * review always applies; a token's applies with policy `off`, else it may be recorded as a
- * suggestion (the check stays pending) and must give a reason (422 reason_required).
+ * suggestion (the check stays pending) and must give a reason (422 reason_required), and a
+ * category to reject (422 reason_code_required).
  */
 export async function reviewCheck(
   deps: DbDeps,
@@ -388,18 +457,18 @@ export async function reviewCheck(
   input: unknown = {},
 ): Promise<{ check: CheckView; outcome: ReviewOutcome }> {
   const who = actorOf(actor);
-  const reason = reasonOf(input);
+  const why = reasonOf(input, action);
   if (who.kind === 'token') {
     const check = await getCheck(deps, checkId);
     const project = await getProjectById(deps, check.projectId);
-    if (project.agentReview !== 'off' && !reason) throw reasonRequired(project, action);
-    if (reason && suggestsInstead(project, check, action)) {
-      await suggest(deps, checkId, action, who, reason);
+    if (project.agentReview !== 'off') requireReason(project, action, why);
+    if (why.reason && suggestsInstead(project, check, action)) {
+      await suggest(deps, checkId, action, who, why);
       return { check: await getCheck(deps, checkId), outcome: 'suggested' };
     }
   }
-  if (action === 'approve') await applyApproval(deps, checkId, who, reason);
-  else await applyRejection(deps, checkId, who, reason);
+  if (action === 'approve') await applyApproval(deps, checkId, who, why.reason);
+  else await applyRejection(deps, checkId, who, why);
   return { check: await getCheck(deps, checkId), outcome: 'applied' };
 }
 
@@ -407,20 +476,20 @@ export async function reviewCheck(
  * How the project's agent review policy splits a token's review of these checks: those it may
  * apply itself and those that become suggestions (`suggestsInstead`). Null when everything
  * applies: a person, auto-approve, or policy `off`. A token must give a reason under a policy
- * (422 reason_required).
+ * (422 reason_required), and a category to reject (422 reason_code_required).
  */
 export async function splitByPolicy(
   deps: DbDeps,
   projectId: string,
   who: ReviewActor,
-  reason: string | null,
+  why: ReviewReason,
   action: 'approve' | 'reject',
   checkIds: string[],
 ): Promise<{ apply: Set<string>; suggest: Set<string> } | null> {
   if (who.kind !== 'token') return null;
   const project = await getProjectById(deps, projectId);
   if (project.agentReview === 'off') return null;
-  if (!reason) throw reasonRequired(project, action);
+  requireReason(project, action, why);
   const split = { apply: new Set<string>(), suggest: new Set<string>() };
   for (const id of checkIds) {
     if (suggestsInstead(project, await getCheck(deps, id), action)) split.suggest.add(id);
@@ -444,9 +513,9 @@ export async function acceptSuggestion(deps: DbDeps, checkId: string, actor: str
   }
   const check = await getCheck(deps, checkId);
   if (!check.suggestion) throw noSuggestion(checkId);
-  const { action, reason } = check.suggestion;
+  const { action, reason, reasonCode } = check.suggestion;
   if (action === 'approve') await applyApproval(deps, checkId, who, reason);
-  else await applyRejection(deps, checkId, who, reason);
+  else await applyRejection(deps, checkId, who, { reason, reasonCode });
   return getCheck(deps, checkId);
 }
 
@@ -458,7 +527,7 @@ export async function dismissSuggestion(
   input: unknown = {},
 ): Promise<CheckView> {
   const who = actorOf(actor);
-  const reason = reasonOf(input);
+  const { reason } = reasonOf(input, 'dismiss');
   await deps.db.transaction().execute(async (tx) => {
     const updated = await tx
       .updateTable('checks')
@@ -538,7 +607,14 @@ export async function resetIn(tx: Db, checkId: string, who: ReviewActor): Promis
   }
   const updated = await tx
     .updateTable('checks')
-    .set({ review: 'pending', reviewedBy: null, reviewedAt: null, reviewComment: null, updatedAt: Date.now() })
+    .set({
+      review: 'pending',
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewComment: null,
+      reviewReasonCode: null,
+      updatedAt: Date.now(),
+    })
     .where('id', '=', checkId)
     .where('review', '=', check.review)
     .executeTakeFirst();
@@ -562,7 +638,8 @@ export async function approveBuild(
 ): Promise<{ approved: number; suggested: number }> {
   const build = await getBuildRow(deps, buildId);
   const who = actorOf(actor);
-  const reason = reasonOf(input);
+  const why = reasonOf(input, 'approve');
+  const { reason } = why;
   const pendingIds = async (db: Db) =>
     (
       await db
@@ -574,12 +651,12 @@ export async function approveBuild(
         .execute()
     ).map((r) => r.id);
   // Under a policy a token approves only the checks judged here; one posted meanwhile waits.
-  const split = await splitByPolicy(deps, build.projectId, who, reason, 'approve', await pendingIds(deps.db));
+  const split = await splitByPolicy(deps, build.projectId, who, why, 'approve', await pendingIds(deps.db));
   const allowed = split?.apply ?? null;
   let suggested = 0;
   for (const id of split?.suggest ?? []) {
     try {
-      await suggest(deps, id, 'approve', who, reason ?? '');
+      await suggest(deps, id, 'approve', who, why);
       suggested += 1;
     } catch (err) {
       // Reviewed or outdated meanwhile: nothing to suggest any more.

@@ -833,6 +833,9 @@
               "null"
             ]
           },
+          "reviewReasonCode": {
+            "$ref": "#/components/schemas/RejectReason"
+          },
           "elementCount": {
             "type": [
               "integer",
@@ -857,6 +860,16 @@
                 "type": [
                   "string",
                   "null"
+                ]
+              },
+              "reasonCode": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RejectReason"
+                  },
+                  {
+                    "description": "A suggested rejection's category"
+                  }
                 ]
               },
               "by": {
@@ -891,6 +904,7 @@
             "required": [
               "action",
               "reason",
+              "reasonCode",
               "by",
               "at"
             ],
@@ -972,6 +986,7 @@
           "reviewedBy",
           "reviewedAt",
           "reviewComment",
+          "reviewReasonCode",
           "elementCount",
           "suggestion",
           "compareMs",
@@ -1318,6 +1333,23 @@
           "error"
         ]
       },
+      "RejectReason": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "not_loaded",
+          "late_asset",
+          "animation",
+          "dynamic_data",
+          "environment",
+          "real_bug",
+          "other",
+          null
+        ],
+        "description": "The category of the current rejection; null when not rejected or when none was given"
+      },
       "CheckPage": {
         "type": "object",
         "properties": {
@@ -1521,6 +1553,16 @@
             ],
             "description": "The reason given"
           },
+          "reasonCode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RejectReason"
+              },
+              {
+                "description": "A rejection's (or suggested rejection's) category; null for other actions or when none was given"
+              }
+            ]
+          },
           "createdAt": {
             "type": "integer"
           }
@@ -1534,6 +1576,7 @@
           "actorKind",
           "actorName",
           "comment",
+          "reasonCode",
           "createdAt"
         ]
       },
@@ -1782,6 +1825,25 @@
           "flaky": {
             "$ref": "#/components/schemas/Flaky"
           },
+          "noiseRejections": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "byCategory": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              }
+            },
+            "required": [
+              "count",
+              "byCategory"
+            ],
+            "description": "Rejections of these checks that call the change noise (not_loaded, late_asset, animation, dynamic_data): people's word that the screen is unstable. They do not change `flaky.score`, which counts what the screenshots did."
+          },
           "items": {
             "type": "array",
             "items": {
@@ -1796,6 +1858,7 @@
           "variant",
           "branch",
           "flaky",
+          "noiseRejections",
           "items"
         ]
       },
@@ -1904,6 +1967,216 @@
           "result",
           "review",
           "createdAt"
+        ]
+      },
+      "RejectionPatterns": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Rejections looked at (newest first, undone ones left out)"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "anyOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/RejectReason"
+                        },
+                        {
+                          "description": "Why a check was rejected. not_loaded: captured before the page or its content finished loading; late_asset: an image, banner, font or ad loaded late; animation: caught mid-animation or transition; dynamic_data: dates, prices or random content; environment: a browser, OS, rendering or viewport difference; real_bug: a real regression; other: see the comment."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "uncategorized"
+                      ]
+                    }
+                  ],
+                  "description": "A rejection category, or uncategorized for rejections made without one"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "screens": {
+                  "type": "integer",
+                  "description": "Screens rejected with it"
+                },
+                "lastAt": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "code",
+                "count",
+                "screens",
+                "lastAt"
+              ]
+            },
+            "description": "Most given first"
+          },
+          "screens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "snapshotKey": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "variant": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "checkId": {
+                  "type": "string",
+                  "description": "Per build: the screen's check in that build"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "byCategory": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "description": "Rejections per category"
+                },
+                "top": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/RejectReason"
+                    },
+                    {
+                      "description": "The category given most often"
+                    }
+                  ]
+                },
+                "tooEarly": {
+                  "type": "integer",
+                  "description": "Rejections as not_loaded or late_asset: the screenshot was taken too early"
+                },
+                "hint": {
+                  "type": "string",
+                  "description": "What the rejections say and what to do, in one sentence"
+                },
+                "recent": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Rejection"
+                  },
+                  "description": "The last rejections, newest first (at most 5)"
+                },
+                "lastAt": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshotKey",
+                "name",
+                "variant",
+                "count",
+                "byCategory",
+                "top",
+                "tooEarly",
+                "hint",
+                "recent",
+                "lastAt"
+              ]
+            },
+            "description": "The most recently rejected first"
+          }
+        },
+        "required": [
+          "total",
+          "categories",
+          "screens"
+        ]
+      },
+      "Rejection": {
+        "type": "object",
+        "properties": {
+          "checkId": {
+            "type": "string"
+          },
+          "buildId": {
+            "type": "string"
+          },
+          "buildNumber": {
+            "type": "integer"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "reasonCode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RejectReason"
+              },
+              {
+                "description": "Why a check was rejected. not_loaded: captured before the page or its content finished loading; late_asset: an image, banner, font or ad loaded late; animation: caught mid-animation or transition; dynamic_data: dates, prices or random content; environment: a browser, OS, rendering or viewport difference; real_bug: a real regression; other: see the comment."
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The comment"
+          },
+          "by": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "token",
+                  "auto"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A token's name when it rejected; null for people"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "name"
+            ]
+          },
+          "at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkId",
+          "buildId",
+          "buildNumber",
+          "branch",
+          "reasonCode",
+          "reason",
+          "by",
+          "at"
         ]
       },
       "BaselinePage": {
@@ -5295,6 +5568,18 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -5922,6 +6207,18 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -5998,7 +6295,7 @@
         "tags": [
           "reviews"
         ],
-        "summary": "Reject a check. A token's rejection may be recorded as a suggestion (see outcome)",
+        "summary": "Reject a check, with a `reasonCode` (why: not_loaded, late_asset, animation, …) and a `reason`. A token's rejection may be recorded as a suggestion (see outcome)",
         "x-permission": "check.review",
         "security": [
           {
@@ -6032,6 +6329,18 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -6221,6 +6530,18 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -7174,7 +7495,7 @@
           "reviews"
         ],
         "summary": "Approve every check of a change group that waits for review",
-        "description": "Optional `checkIds` limits it to those members (what a filtered page shows); `reason` is kept on each review. One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a single review: it must give a `reason` unless the policy is `off` (422 reason_required), and the members it may not decide itself become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response has the build’s new verdict.",
+        "description": "Optional `checkIds` limits it to those members (what a filtered page shows); `reason` (and, rejecting, `reasonCode`) is kept on each review. One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a single review: it must give a `reason` unless the policy is `off` (422 reason_required) and a `reasonCode` to reject (422 reason_code_required), and the members it may not decide itself become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response has the build’s new verdict.",
         "x-permission": "check.review",
         "security": [
           {
@@ -7216,6 +7537,18 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other"
+                    ]
                   },
                   "checkIds": {
                     "type": "array",
@@ -7292,7 +7625,7 @@
           "reviews"
         ],
         "summary": "Reject every check of a change group that waits for review",
-        "description": "Optional `checkIds` limits it to those members (what a filtered page shows); `reason` is kept on each review. One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a single review: it must give a `reason` unless the policy is `off` (422 reason_required), and the members it may not decide itself become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response has the build’s new verdict.",
+        "description": "Optional `checkIds` limits it to those members (what a filtered page shows); `reason` (and, rejecting, `reasonCode`) is kept on each review. One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a single review: it must give a `reason` unless the policy is `off` (422 reason_required) and a `reasonCode` to reject (422 reason_code_required), and the members it may not decide itself become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response has the build’s new verdict.",
         "x-permission": "check.review",
         "security": [
           {
@@ -7334,6 +7667,18 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other"
+                    ]
                   },
                   "checkIds": {
                     "type": "array",
@@ -7637,6 +7982,192 @@
                   "required": [
                     "items"
                   ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/rejections": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Rejection patterns of the project's screens: why they were rejected, by category and by screen",
+        "description": "Why screens were rejected, read from the review history: per category (most given first) and per screen (the most recently rejected first) with counts, the last rejections (category, comment, who, when) and a one-sentence `hint` on what to do in the test code. Undone rejections are left out. Read it before judging a change: a screen rejected as not_loaded or late_asset was captured too early (add a wait), as dynamic_data needs an ignore area, as animation needs animations disabled or retakes, as real_bug means a real regression. Without filters, the project's last 500 rejections on every branch.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Only rejections on builds of this branch"
+            },
+            "required": false,
+            "description": "Only rejections on builds of this branch",
+            "name": "branch",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Only this screen"
+            },
+            "required": false,
+            "description": "Only this screen",
+            "name": "snapshotKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "description": "Rejections to look at, newest first; default 500"
+            },
+            "required": false,
+            "description": "Rejections to look at, newest first; default 500",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The patterns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RejectionPatterns"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/rejections": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Rejection patterns of the build's screens, on every branch, each with its check in this build",
+        "description": "Why screens were rejected, read from the review history: per category (most given first) and per screen (the most recently rejected first) with counts, the last rejections (category, comment, who, when) and a one-sentence `hint` on what to do in the test code. Undone rejections are left out. Read it before judging a change: a screen rejected as not_loaded or late_asset was captured too early (add a wait), as dynamic_data needs an ignore area, as animation needs animations disabled or retakes, as real_bug means a real regression. One call for a whole build: what an agent reviewing it, or an SDK ending its run, needs.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The patterns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RejectionPatterns"
                 }
               }
             }

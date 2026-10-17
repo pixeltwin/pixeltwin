@@ -8,6 +8,7 @@ import {
   announce,
   type ReviewActor,
   type Reviewed,
+  reasonOf,
   resetIn,
   splitByPolicy,
   tryApprove,
@@ -186,7 +187,7 @@ function pick(group: ChangeGroup, checkIds: string[] | undefined): Set<string> {
 /**
  * Approves or rejects every check of the group that waits for review (of those in `checkIds`,
  * when given), in one transaction, each through the same core as a single review: its own review
- * event with the actor kind, token name and reason. Checks already reviewed are left as they are,
+ * event with the actor kind, token name, reason and (rejecting) the reason's category. Checks already reviewed are left as they are,
  * and so are outdated ones (a newer build of the branch approved their screen): `skipped`.
  *
  * A token goes through the project's agent review policy as a single review does: it must give a
@@ -202,14 +203,14 @@ export async function reviewGroup(
   input: unknown = {},
 ): Promise<GroupReviewResult> {
   const who = actorOf(actor);
-  const { comment, reason: given, checkIds } = parseInput(groupReviewSchema, input);
-  const reason = given || comment || null;
+  const { checkIds, ...given } = parseInput(groupReviewSchema, input);
+  const why = reasonOf(given, action);
   const group = await getGroup(deps, buildId, groupId);
   const wanted = pick(group, checkIds);
   const build = await getBuildRow(deps, buildId);
   const waiting = group.checks.filter((c) => wanted.has(c.id) && c.review === 'pending').map((c) => c.id);
   // Under a policy a token decides only the checks judged here; one that joined meanwhile waits.
-  const split = await splitByPolicy(deps, build.projectId, who, reason, action, waiting);
+  const split = await splitByPolicy(deps, build.projectId, who, why, action, waiting);
   const { applied, suggested, builds } = await deps.db.transaction().execute(async (tx) => {
     const pending = await tx
       .selectFrom('checks')
@@ -225,12 +226,12 @@ export async function reviewGroup(
     for (const { id } of pending) {
       if (!wanted.has(id)) continue;
       if (split?.suggest.has(id)) {
-        if ((await trySuggest(tx, id, action, who, reason ?? '')).suggested) suggested.push(id);
+        if ((await trySuggest(tx, id, action, who, why)).suggested) suggested.push(id);
         continue;
       }
       if (split && !split.apply.has(id)) continue;
       const outcome =
-        action === 'approve' ? await tryApprove(tx, id, who, reason) : await tryReject(tx, id, who, reason);
+        action === 'approve' ? await tryApprove(tx, id, who, why.reason) : await tryReject(tx, id, who, why);
       if ('builds' in outcome) {
         applied.push(id);
         builds.push(...outcome.builds);
@@ -241,7 +242,7 @@ export async function reviewGroup(
   const verb = action === 'approve' ? 'approved' : 'rejected';
   await announce(
     deps,
-    applied.map((checkId): Reviewed => ({ checkId, action: verb, actor: who, reason })),
+    applied.map((checkId): Reviewed => ({ checkId, action: verb, actor: who, ...why })),
     builds,
   );
   return resultOf(deps, buildId, groupId, applied, suggested);

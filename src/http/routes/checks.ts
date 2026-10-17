@@ -223,7 +223,7 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       summary:
         action === 'approve'
           ? "Approve a check; its image becomes the baseline. A token's approval may be recorded as a suggestion (see outcome)"
-          : "Reject a check. A token's rejection may be recorded as a suggestion (see outcome)",
+          : "Reject a check, with a `reasonCode` (why: not_loaded, late_asset, animation, …) and a `reason`. A token's rejection may be recorded as a suggestion (see outcome)",
       request: {
         params: idParam,
         body: { required: false, content: { 'application/json': { schema: reviewInputSchema } } },

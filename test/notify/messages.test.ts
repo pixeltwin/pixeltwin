@@ -194,6 +194,7 @@ describe('webhook payloads', () => {
       review: {
         action: 'approved',
         reason: 'The new <Sign in> button is intended',
+        reasonCode: null,
         actor: { id: 'usr_1', kind: 'user', name: 'alice@example.com' },
       },
     });

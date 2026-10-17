@@ -10,9 +10,10 @@ import { json, problems, ScreenHistorySchema } from '../schemas';
 
 /** A screen's history for the API: newest first, without the changes of each check. */
 export function historyJson(screen: ScreenHistory) {
-  const { history, ...rest } = screen;
+  const { history, noiseRejections, ...rest } = screen;
   return {
     ...rest,
+    noiseRejections: noiseRejections ?? { count: 0, byCategory: {} },
     items: history.map(({ regions: _regions, reviewedBy: _reviewedBy, ...entry }) => entry).reverse(),
   };
 }

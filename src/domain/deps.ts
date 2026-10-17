@@ -1,5 +1,5 @@
 import type { Db } from '../db/database';
-import type { ActorKind, ProjectRole } from '../db/schema';
+import type { ActorKind, ProjectRole, RejectReason } from '../db/schema';
 import type { DiffRunner } from '../diff/types';
 import type { Storage } from '../storage/storage';
 import type { SecretBox } from './secrets';
@@ -30,6 +30,8 @@ export interface DomainEvents {
     actorKind: ActorKind;
     actorName: string | null;
     reason: string | null;
+    /** A rejection's category (`REJECT_REASONS`); null without one. */
+    reasonCode?: RejectReason | null;
   }): Promise<void>;
   /**
    * A user became a member of a project: added by a maintainer or admin (`member`), by accepting

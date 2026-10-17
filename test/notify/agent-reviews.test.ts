@@ -97,6 +97,7 @@ describe('agent reviews and pull request notifications', () => {
     expect(payloadOf('check.reviewed')?.review).toEqual({
       action: 'approved',
       reason: REASON,
+      reasonCode: null,
       actor: { id: 'usr_1', kind: 'user', name: 'a deleted account' },
     });
   });
@@ -104,7 +105,10 @@ describe('agent reviews and pull request notifications', () => {
   test('an accepted rejection suggestion turns the status red', async () => {
     await updateProject(deps, 'web', { agentReview: 'suggest' });
     const { checkId } = await changedBuild();
-    await reviewCheck(deps, checkId, 'reject', AGENT, { reason: 'The banner overlaps the menu.' });
+    await reviewCheck(deps, checkId, 'reject', AGENT, {
+      reason: 'The banner overlaps the menu.',
+      reasonCode: 'real_bug',
+    });
     await notifier.drain();
     expect(gh.statuses).toHaveLength(1);
     await acceptSuggestion(deps, checkId, 'usr_1');
@@ -113,6 +117,7 @@ describe('agent reviews and pull request notifications', () => {
     expect(payloadOf('check.reviewed')?.review).toMatchObject({
       action: 'rejected',
       reason: 'The banner overlaps the menu.',
+      reasonCode: 'real_bug',
     });
   });
 
@@ -149,6 +154,7 @@ describe('agent reviews and pull request notifications', () => {
     expect(reviewed?.review).toEqual({
       action: 'approved',
       reason: REASON,
+      reasonCode: null,
       actor: { id: 'tok_agent', kind: 'token', name: 'token “claude”' },
     });
   });

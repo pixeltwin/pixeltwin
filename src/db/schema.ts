@@ -27,6 +27,23 @@ export const AGENT_REVIEW_POLICIES = ['off', 'suggest', 'auto-below'] as const;
 export type AgentReviewPolicy = (typeof AGENT_REVIEW_POLICIES)[number];
 export const SUGGESTIONS = ['approve', 'reject'] as const;
 export type Suggestion = (typeof SUGGESTIONS)[number];
+/**
+ * Why a check was rejected, as a category an agent can act on: not_loaded (captured before the page
+ * or its content finished loading), late_asset (an image, banner, font or ad arrived late),
+ * animation (caught mid-animation or transition), dynamic_data (dates, prices, random content),
+ * environment (browser, OS, rendering or viewport differences), real_bug (a real regression),
+ * other. Stable codes: the API, the history and agents use them.
+ */
+export const REJECT_REASONS = [
+  'not_loaded',
+  'late_asset',
+  'animation',
+  'dynamic_data',
+  'environment',
+  'real_bug',
+  'other',
+] as const;
+export type RejectReason = (typeof REJECT_REASONS)[number];
 export const AREA_KINDS = ['ignore', 'compare'] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 export type UserRole = (typeof USER_ROLES)[number];
@@ -124,6 +141,8 @@ export interface ChecksTable {
   reviewedBy: string | null;
   reviewedAt: number | null;
   reviewComment: string | null;
+  /** The category of the current rejection (`REJECT_REASONS`); null otherwise or when none was given. */
+  reviewReasonCode: Generated<RejectReason | null>;
   /** The check whose approval in a newer build of this branch made this one `outdated`. */
   supersededBy: string | null;
   /** Server time this check took: baseline, compare and store (null before timings were kept). */
@@ -136,6 +155,8 @@ export interface ChecksTable {
   suggestedBy: Generated<string | null>;
   suggestedByName: Generated<string | null>;
   suggestionReason: Generated<string | null>;
+  /** The category of a suggested rejection. */
+  suggestionReasonCode: Generated<RejectReason | null>;
   suggestedAt: Generated<number | null>;
   /**
    * The set of this changed check's change fingerprints (diff/fingerprint.ts); checks of a build
@@ -250,6 +271,8 @@ export interface ReviewEventsTable {
   actorName: Generated<string | null>;
   /** The reason given (`reason`, or `comment` in older clients). */
   comment: string | null;
+  /** A rejection's category (`REJECT_REASONS`); null for other actions or when none was given. */
+  reasonCode: Generated<RejectReason | null>;
   createdAt: number;
 }
 

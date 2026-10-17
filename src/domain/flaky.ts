@@ -1,12 +1,18 @@
-import type { CheckResult, CheckReview } from '../db/schema';
+import type { CheckResult, CheckReview, RejectReason } from '../db/schema';
 import type { DiffData, Rect, Region } from '../diff/types';
 import type { Deps } from './deps';
+import { noiseRejections } from './rejections';
 
 // Flaky screens: a screen whose screenshot keeps changing back and forth (a clock, an ad, an
 // animation caught mid-way) although nobody changed it. Found on read from the screen's last
 // checks on one branch, so nothing is stored that retention or a deleted build could leave stale,
 // and the same on SQLite and Postgres. Per branch, because a feature branch that changes a screen
 // legitimately would look like flipping next to main.
+//
+// Rejections that call a change noise (not_loaded, late_asset, animation, dynamic_data) are told
+// beside the signal (`noiseRejections`), as people's word that the screen is unstable; they do not
+// change the score, which counts what the screenshots did: a rejection is a judgement of one run,
+// and a screen rejected once as not loaded has not flipped.
 
 /** How many of a screen's last checks on a branch are looked at. */
 export const HISTORY_SIZE = 20;
@@ -133,6 +139,35 @@ export interface ScreenHistory {
   variant: Record<string, string>;
   history: HistoryEntry[];
   flaky: FlakySignal | null;
+  /**
+   * Rejections of the history's checks that call the change noise (not_loaded, late_asset,
+   * animation, dynamic_data), undone ones left out. Filled by screenHistory and noisyScreens.
+   */
+  noiseRejections?: NoiseRejections;
+}
+
+export interface NoiseRejections {
+  count: number;
+  byCategory: Partial<Record<RejectReason, number>>;
+}
+
+/** Fills in each screen's noise rejections, in one query per few hundred checks. */
+async function withNoise(deps: Pick<Deps, 'db'>, screens: ScreenHistory[]): Promise<ScreenHistory[]> {
+  const counts = await noiseRejections(
+    deps,
+    screens.flatMap((s) => s.history.map((h) => h.checkId)),
+  );
+  for (const screen of screens) {
+    const noise: NoiseRejections = { count: 0, byCategory: {} };
+    for (const { checkId } of screen.history) {
+      for (const [code, n] of Object.entries(counts.get(checkId) ?? {}) as Array<[RejectReason, number]>) {
+        noise.byCategory[code] = (noise.byCategory[code] ?? 0) + n;
+        noise.count += n;
+      }
+    }
+    screen.noiseRejections = noise;
+  }
+  return screens;
 }
 
 /** Keys per query, well below the parameter limits of SQLite and Postgres. */
@@ -231,7 +266,7 @@ export async function screenHistory(
   screen: { projectId: string; snapshotKey: string; branch: string },
 ): Promise<ScreenHistory | null> {
   const [found] = await screenHistories(deps, screen.projectId, [screen.snapshotKey], screen.branch);
-  return found ?? null;
+  return found ? ((await withNoise(deps, [found]))[0] ?? null) : null;
 }
 
 /**
@@ -251,17 +286,19 @@ export async function noisyScreens(deps: Pick<Deps, 'db'>, projectId: string): P
     projectId,
     changed.map((r) => r.snapshotKey),
   );
-  return screens
-    .filter((s) => s.flaky)
-    .sort((a, b) => {
-      const x = a.flaky as FlakySignal;
-      const y = b.flaky as FlakySignal;
-      return (
-        y.score - x.score ||
-        y.flips - x.flips ||
-        y.lastSeen - x.lastSeen ||
-        a.name.localeCompare(b.name) ||
-        a.branch.localeCompare(b.branch)
-      );
-    });
+  const flaky = await withNoise(
+    deps,
+    screens.filter((s) => s.flaky),
+  );
+  return flaky.sort((a, b) => {
+    const x = a.flaky as FlakySignal;
+    const y = b.flaky as FlakySignal;
+    return (
+      y.score - x.score ||
+      y.flips - x.flips ||
+      y.lastSeen - x.lastSeen ||
+      a.name.localeCompare(b.name) ||
+      a.branch.localeCompare(b.branch)
+    );
+  });
 }
