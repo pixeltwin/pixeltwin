@@ -187,6 +187,22 @@ describe('notifications', () => {
     expect(sync?.lastError).toContain('No repository');
   });
 
+  test('a build naming another repository than the integration is not posted (a CI token cannot redirect it)', async () => {
+    await connectGitHub();
+    const { buildId } = await changedBuild({ repository: 'someone/else' });
+    await notifier.drain();
+    expect(gh.requests).toHaveLength(0);
+    const sync = await deps.db
+      .selectFrom('integrationSyncs')
+      .selectAll()
+      .where('buildId', '=', buildId)
+      .executeTakeFirst();
+    expect(sync?.lastError).toContain('names repository someone/else');
+    await changedBuild({ repository: 'ACME/shop', externalId: 'same-repo' });
+    await notifier.drain();
+    expect(gh.statuses).toHaveLength(1);
+  });
+
   test('GitHub refusing (bad token) is kept as the error and not retried; GitHub down is retried later', async () => {
     await updateIntegration(deps, 'web', { baseUrl: gh.url, token: 'ghp_wrong9999', repository: 'acme/shop' });
     const { buildId } = await changedBuild();

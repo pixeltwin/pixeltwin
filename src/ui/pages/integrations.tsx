@@ -149,7 +149,7 @@ export function IntegrationSection(props: {
               <input
                 name="token"
                 type="password"
-                autocomplete="off"
+                autocomplete="new-password"
                 placeholder={integration.tokenSet ? `••••${integration.tokenLast4}` : ''}
                 {...describedBy('integration-token', 'hint', errors.token)}
               />
@@ -194,7 +194,7 @@ export function IntegrationSection(props: {
             <input
               name="webhookSecret"
               type="password"
-              autocomplete="off"
+              autocomplete="new-password"
               placeholder={integration.webhookSecretSet ? '••••••••' : ''}
               {...describedBy('integration-webhook-secret', 'hint', errors.webhookSecret)}
             />
@@ -366,7 +366,7 @@ function WebhookForm(props: {
         <input
           name="secret"
           type="password"
-          autocomplete="off"
+          autocomplete="new-password"
           {...describedBy('webhook-secret', 'hint', errors.secret)}
         />
       </Field>

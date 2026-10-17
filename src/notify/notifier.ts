@@ -37,8 +37,10 @@ import { OutboundError, outboundFetch } from './outbound';
 // whatever the build looks like when it runs, so ten quick approvals make one or two updates; the
 // code host is GitHub or GitLab behind one adapter interface (notify/http.ts).
 
-/** How long a claimed row is ours; well above a delivery's timeouts. */
+/** How long a claimed delivery is ours; well above its 10 s timeout. */
 const LEASE_MS = 2 * 60_000;
+/** A code host sync makes several calls, each with retries: up to a few minutes in the worst case. */
+const SYNC_LEASE_MS = 10 * 60_000;
 /** Waits before attempt 2, 3, …; the last is repeated. */
 const BACKOFF_MS = [10_000, 30_000, 120_000, 600_000, 1_800_000, 3_600_000, 7_200_000];
 const WEBHOOK_ATTEMPTS = 8;
@@ -523,7 +525,7 @@ export class Notifier implements DomainEvents {
     await eachLimited(due, CONCURRENCY, async ({ buildId }) => {
       const claimed = await this.#db
         .updateTable('integrationSyncs')
-        .set({ lockedUntil: now + LEASE_MS })
+        .set({ lockedUntil: now + SYNC_LEASE_MS })
         .where('buildId', '=', buildId)
         .whereRef('requested', '>', 'done')
         .where('dueAt', '<=', now)
@@ -570,6 +572,13 @@ export class Notifier implements DomainEvents {
         return;
       }
       const repository = build.repository ?? config.repository;
+      // A CI token may name any repository; the integration's token goes only where an admin said.
+      if (build.repository && config.repository && build.repository.toLowerCase() !== config.repository.toLowerCase()) {
+        await finish({
+          lastError: `Build #${build.number} names repository ${build.repository}, but the integration is for ${config.repository}; nothing was posted.`,
+        });
+        return;
+      }
       if (!repository) {
         await finish({
           lastError: 'No repository: set one in the integration settings, or let CI send it with the build.',
