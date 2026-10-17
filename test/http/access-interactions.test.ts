@@ -266,6 +266,26 @@ describe('project access on the routes main added', () => {
         .status,
     ).toBe(200);
 
+    // The token an admin entered never follows the base URL a maintainer moves elsewhere.
+    const moved = await t.request('PATCH', '/api/v1/projects/web/integration', {
+      as: maintainer,
+      json: { baseUrl: 'https://collector.example.com' },
+    });
+    expect(moved.status).toBe(422);
+    expect((await problemOf(moved)).errors?.map((e) => e.path)).toEqual(['token']);
+    const stored = (await (await t.request('GET', '/api/v1/projects/web/integration', { as: maintainer })).json()) as {
+      baseUrl: string;
+    };
+    expect(stored.baseUrl).toBe(gh.url);
+    expect(
+      (
+        await t.request('PATCH', '/api/v1/projects/web/integration', {
+          as: maintainer,
+          json: { baseUrl: gh.url, repository: 'acme/web' },
+        })
+      ).status,
+    ).toBe(200);
+
     // Another project's: hidden. Another project's webhook through this project: not found here.
     for (const [method, path] of [
       ['GET', '/api/v1/projects/other/integration'],

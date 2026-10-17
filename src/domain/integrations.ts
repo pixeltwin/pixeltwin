@@ -200,6 +200,14 @@ export async function updateIntegration(
     next.webhookSecret = changes.webhookSecret === null ? null : box.seal(changes.webhookSecret);
   }
   const errors: FieldError[] = [];
+  // The token goes to the base URL with every call: whoever moves it elsewhere (a maintainer, who
+  // cannot read the token someone else entered) must enter the token again.
+  if (stored?.token && next.baseUrl !== stored.baseUrl && changes.token === undefined) {
+    errors.push({
+      path: 'token',
+      message: 'Enter the token again: the URL changed, and the saved token is not sent to a new URL',
+    });
+  }
   if (provider === 'github' && next.repository && !/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(next.repository)) {
     errors.push({ path: 'repository', message: 'Use owner/name, e.g. acme/shop' });
   }

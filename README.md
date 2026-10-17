@@ -211,6 +211,7 @@ however many checks it reviewed), so approving in pixeltwin turns the pull reque
 green without running CI again. With *Pull request comment* each build keeps one comment (GitLab: a
 merge request note) with its counts and up to six changed screens linking to their review pages,
 edited in place. The token is never shown again; the API returns `tokenSet` and `tokenLast4`.
+Changing the API (instance) URL needs the token again, so a saved token is never sent to a new host.
 
 The SDK sends the commit, repository and pull request from GitHub Actions and GitLab CI by itself
 (on GitHub `pull_request` runs, the pull request's head commit, not the merge commit). Without the
@@ -303,7 +304,7 @@ it out.
 | `DIFF_QUEUE_MAX` | `DIFF_WORKERS` × 20: while more diffs wait, uploads get `503 server_busy` with `Retry-After`; `0` never refuses |
 | `SHUTDOWN_GRACE_MS` | `20000`: on SIGTERM, requests in flight get this long to finish (keep it below Kubernetes' `terminationGracePeriodSeconds`) |
 | `SECRET_KEY` | unset → integration tokens and webhook secrets are stored as they are (the settings page says so); set (≥ 32 characters, the same on every replica) to encrypt them with AES-256-GCM. Changing it makes the stored ones unreadable: enter them again |
-| `OUTBOUND_BLOCK_PRIVATE` | off: webhooks and GitHub/GitLab calls may reach loopback and private networks (a chat server or GitHub Enterprise next door); `1` refuses them too. Link-local addresses (cloud metadata) are always refused |
+| `OUTBOUND_BLOCK_PRIVATE` | off: webhooks and GitHub/GitLab calls may reach loopback and private networks (a chat server or GitHub Enterprise next door); `1` refuses them too. Link-local addresses (cloud metadata) are always refused. Project maintainers set webhook and code host URLs too: set `1` when they should not reach your internal network |
 | `MAX_IMAGE_BYTES` | `10485760` |
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |
