@@ -81,7 +81,7 @@ export const NOTICES: Record<string, string> = {
   'member-added': 'Member added.',
   'member-saved': 'Member updated.',
   'member-removed': 'Member removed.',
-  'user-created': 'User created.',
+  'user-created': 'User created. Add them to projects in each project’s settings.',
   'user-saved': 'User updated.',
   'user-deleted': 'User deleted.',
   'project-deleted': 'Project deleted.',

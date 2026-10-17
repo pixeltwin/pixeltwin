@@ -1,11 +1,12 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import { USER_ROLES, type UserRole } from '../../db/schema';
+import { type ProjectRole, USER_ROLES, type UserRole } from '../../db/schema';
 import { hasPermission } from '../../domain/auth/policy';
 import { createUser, deleteUser, listUsers, type UserView, updateUser } from '../../domain/auth/users';
+import { membershipsOf } from '../../domain/members';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
-import { Ago, describedBy, Field, formErrors, PasswordField } from '../components';
+import { Ago, describedBy, Field, formErrors, PasswordField, Pill } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { Layout } from '../layout';
 
@@ -14,15 +15,34 @@ function requireUserAdmin(c: Context<AppEnv>): void {
 }
 
 const ROLE_HELP =
-  'Admins manage everything. Reviewers approve or reject changes and manage ignore and compare areas. Viewers only look.';
+  'Admins manage everything and see every project. Everyone else sees the projects they are added to, in each project’s settings, and those visible to everyone.';
 
 /** What each role may do, shown under the Role select for the chosen one. */
 const ROLE_HINTS: Record<UserRole, string> = {
-  viewer: 'Sees every project, build and screenshot, but cannot change anything.',
+  viewer:
+    'Cannot change anything. Sees the projects they are added to and those visible to everyone; a project can give them more.',
   reviewer:
-    'Approves or rejects changes and manages ignore and compare areas, in every project. Cannot change settings, tokens or users.',
-  admin: 'Manages everything: projects, settings, tokens and users. Reviews too.',
+    'Approves or rejects changes and manages ignore and compare areas, in the projects they are added to and those visible to everyone. Cannot change users.',
+  admin: 'Manages everything: every project, its settings, tokens and members, and users. Reviews too.',
 };
+
+type Memberships = Map<string, Array<{ slug: string; name: string; role: ProjectRole }>>;
+
+/** The projects column: admins see every project; others what they were added to. */
+function UserProjects({ ui, user, memberships }: { ui: Ui; user: UserView; memberships: Memberships }) {
+  if (user.role === 'admin') return <span class="muted">Every project</span>;
+  const mine = memberships.get(user.id) ?? [];
+  if (mine.length === 0) return <span class="muted">Only projects visible to everyone</span>;
+  return (
+    <ul class="user-projects">
+      {mine.map((m) => (
+        <li>
+          <a href={ui.url(`/ui/p/${m.slug}/settings#members-title`)}>{m.name}</a> <Pill tone="grey">{m.role}</Pill>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 type UserValues = { email?: string | undefined; role?: string | undefined };
 
@@ -91,7 +111,19 @@ function NewUserForm({
   );
 }
 
-function UsersPage({ ui, users, notice, error }: { ui: Ui; users: UserView[]; notice?: string; error?: string }) {
+function UsersPage({
+  ui,
+  users,
+  memberships,
+  notice,
+  error,
+}: {
+  ui: Ui;
+  users: UserView[];
+  memberships: Memberships;
+  notice?: string;
+  error?: string;
+}) {
   return (
     <Layout ui={ui} title="Users" notice={notice} error={error} crumbs={[{ label: 'Users' }]}>
       <div class="page-head">
@@ -110,6 +142,7 @@ function UsersPage({ ui, users, notice, error }: { ui: Ui; users: UserView[]; no
           <tr>
             <th>User</th>
             <th>Role</th>
+            <th>Projects</th>
             <th>Added</th>
             <th>
               <span class="visually-hidden">Actions</span>
@@ -142,6 +175,9 @@ function UsersPage({ ui, users, notice, error }: { ui: Ui; users: UserView[]; no
                     Save
                   </button>
                 </form>
+              </td>
+              <td>
+                <UserProjects ui={ui} user={u} memberships={memberships} />
               </td>
               <td>
                 <Ago at={u.createdAt} />
@@ -195,9 +231,18 @@ function statusOf(err: unknown): 400 | 403 | 404 | 409 | 422 {
 }
 
 export function registerUserPages(app: OpenAPIHono<AppEnv>, s: Services): void {
-  const list = async (c: Context<AppEnv>, error?: string) => (
-    <UsersPage ui={uiOf(c, s)} users={await listUsers(s.deps)} notice={noticeOf(c)} {...(error ? { error } : {})} />
-  );
+  const list = async (c: Context<AppEnv>, error?: string) => {
+    const [users, memberships] = await Promise.all([listUsers(s.deps), membershipsOf(s.deps)]);
+    return (
+      <UsersPage
+        ui={uiOf(c, s)}
+        users={users}
+        memberships={memberships}
+        notice={noticeOf(c)}
+        {...(error ? { error } : {})}
+      />
+    );
+  };
 
   app.get('/ui/admin/users', async (c) => {
     requireUserAdmin(c);

@@ -28,7 +28,9 @@ describe('UI administration', () => {
       expect(await get('/ui/admin/users/new')).toContain('action="/ui/admin/users"');
       // The hint under Role explains the chosen role; each option carries its own text for the switch.
       const form = await get('/ui/admin/users/new');
-      expect(form).toContain('<p class="hint" id="user-role-hint">Sees every project, build and screenshot');
+      expect(form).toContain(
+        '<p class="hint" id="user-role-hint">Cannot change anything. Sees the projects they are added to',
+      );
       expect(form).toContain('data-hint-from-option="true"');
       expect(form).toMatch(/<option value="reviewer" data-hint="Approves or rejects changes/);
       expect(form).toMatch(/<option value="admin" data-hint="Manages everything/);
