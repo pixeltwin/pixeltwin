@@ -1,7 +1,7 @@
 // `pixeltwin finalize`: the CI step after every shard. `pixeltwin promote`: the CI step after a
 // merge. Same environment as the test run.
 import { PixeltwinError, PixeltwinGateError, PixeltwinNetworkError } from './errors.js';
-import { clientFor, externalIdFor, finishRun, resolveSettings } from './run.js';
+import { clientFor, externalIdFor, finishRun, linkOf, resolveSettings } from './run.js';
 
 const HELP = `Usage: pixeltwin finalize [--gate] [--wait <seconds>] [--build <id>]
 
@@ -103,6 +103,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
         branch: settings.branch,
         baseBranch: settings.baseBranch,
         commitSha: settings.commitSha,
+        ...linkOf(settings),
         externalId: externalIdFor(settings, env, true),
       });
       if (build.created) console.log(`pixeltwin: no shard posted to this run; build #${build.number} is empty.`);

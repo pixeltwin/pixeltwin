@@ -25,7 +25,7 @@ if (done.verdict !== 'passed') process.exitCode = 1;  // empty | error | rejecte
 
 | Method | |
 |---|---|
-| `openBuild(project, { branch?, baseBranch?, commitSha?, externalId?, parallelTotal? })` | the same `externalId` returns the same build (`created: false`); one is generated when missing. `parallelTotal`: that many parts (CI jobs) finalize it |
+| `openBuild(project, { branch?, baseBranch?, commitSha?, repository?, pullRequest?, externalId?, parallelTotal? })` | the same `externalId` returns the same build (`created: false`); one is generated when missing. `parallelTotal`: that many parts (CI jobs) finalize it |
 | `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent? })` | answers after the comparison; the same name + variant again replaces the check |
 | `getBuild(id)`, `listChecks(buildId, { result?, review?, limit?, cursor? })` | |
 | `finalize(buildId, { part? })` | idempotent; a part of a parallel build is counted once, and the build stays open until every part has finalized it |

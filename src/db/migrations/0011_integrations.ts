@@ -28,7 +28,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn('created_at', 'bigint', (c) => c.notNull())
     .addColumn('updated_at', 'bigint', (c) => c.notNull())
     .execute();
-  await db.schema.createIndex('github_integrations_repository').on('github_integrations').column('repository').execute();
+  await db.schema
+    .createIndex('github_integrations_repository')
+    .on('github_integrations')
+    .column('repository')
+    .execute();
 
   await db.schema
     .createTable('github_syncs')
@@ -99,11 +103,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn('created_at', 'bigint', (c) => c.notNull())
     .addColumn('finished_at', 'bigint')
     .execute();
-  await db.schema
-    .createIndex('webhook_deliveries_due')
-    .on('webhook_deliveries')
-    .columns(['state', 'due_at'])
-    .execute();
+  await db.schema.createIndex('webhook_deliveries_due').on('webhook_deliveries').columns(['state', 'due_at']).execute();
   await db.schema
     .createIndex('webhook_deliveries_webhook')
     .on('webhook_deliveries')

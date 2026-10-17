@@ -21,8 +21,15 @@ export interface PixeltwinOptions {
   branch?: string;
   /** `PIXELTWIN_BASE_BRANCH`; else the pull request's target branch, else the project's main branch. */
   baseBranch?: string;
-  /** `PIXELTWIN_COMMIT_SHA`; else `GITHUB_SHA` / `CI_COMMIT_SHA`. */
+  /**
+   * `PIXELTWIN_COMMIT_SHA`; else the pull request's head commit (GitHub Actions `pull_request` events),
+   * `GITHUB_SHA` or `CI_COMMIT_SHA`.
+   */
   commitSha?: string;
+  /** `PIXELTWIN_REPOSITORY`: `owner/name`; else `GITHUB_REPOSITORY` / `CI_PROJECT_PATH`. */
+  repository?: string;
+  /** `PIXELTWIN_PULL_REQUEST`: the pull request number; else from the GitHub event / `CI_MERGE_REQUEST_IID`. */
+  pullRequest?: number;
   /** `PIXELTWIN_EXTERNAL_ID`: every process or shard with the same id posts to the same build. */
   externalId?: string;
   /** `PIXELTWIN_GATE=1`: fail the run unless the verdict is `passed`. */
@@ -68,6 +75,8 @@ export interface Settings {
   branch: string | undefined;
   baseBranch: string | undefined;
   commitSha: string | undefined;
+  repository: string | undefined;
+  pullRequest: number | undefined;
   /** Only when given explicitly; see `externalIdFor`. */
   externalId: string | undefined;
   gate: boolean;
@@ -92,6 +101,9 @@ export interface CiInfo {
   branch?: string;
   baseBranch?: string;
   commitSha?: string;
+  /** `owner/name` (GitLab: the project path). */
+  repository?: string;
+  pullRequest?: number;
 }
 
 const TRUE = new Set(['1', 'true', 'yes', 'on']);
@@ -110,14 +122,45 @@ function text(value: string | undefined): string | undefined {
   return v ? v : undefined;
 }
 
-/** Branch, base branch, commit and run id from GitHub Actions, GitLab CI or `CI_RUN_ID`. */
+function positive(value: number | string | undefined): number | undefined {
+  const n = Number(value);
+  return value !== undefined && value !== '' && Number.isInteger(n) && n >= 1 ? n : undefined;
+}
+
+/**
+ * The pull request of a GitHub Actions run: number and head commit from the event file of a
+ * `pull_request` (or `pull_request_target`) event, else the number from `refs/pull/<n>/merge`.
+ */
+function githubPullRequest(env: Env): { number?: number; headSha?: string } {
+  const fromRef = positive(/^refs\/pull\/(\d+)\//.exec(env.GITHUB_REF ?? '')?.[1]);
+  if (!env.GITHUB_EVENT_NAME?.startsWith('pull_request') || !env.GITHUB_EVENT_PATH) {
+    return fromRef ? { number: fromRef } : {};
+  }
+  try {
+    const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')) as {
+      pull_request?: { number?: number; head?: { sha?: string } };
+    };
+    const number = positive(event.pull_request?.number) ?? fromRef;
+    const headSha = text(event.pull_request?.head?.sha);
+    return { ...(number ? { number } : {}), ...(headSha ? { headSha } : {}) };
+  } catch {
+    return fromRef ? { number: fromRef } : {};
+  }
+}
+
+/** Branch, base branch, commit, pull request and run id from GitHub Actions, GitLab CI or `CI_RUN_ID`. */
 export function ciInfo(env: Env = process.env): CiInfo {
   if (env.GITHUB_ACTIONS === 'true') {
+    // On a pull_request event GITHUB_SHA is a merge commit GitHub made for the run; the pull
+    // request shows statuses of its head commit.
+    const pr = githubPullRequest(env);
     return {
       runId: env.GITHUB_RUN_ID ? `github-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT ?? '1'}` : text(env.CI_RUN_ID),
       branch: text(env.GITHUB_HEAD_REF) ?? text(env.GITHUB_REF_NAME),
       baseBranch: text(env.GITHUB_BASE_REF),
-      commitSha: text(env.GITHUB_SHA),
+      commitSha: pr.headSha ?? text(env.GITHUB_SHA),
+      repository: text(env.GITHUB_REPOSITORY),
+      pullRequest: pr.number,
     };
   }
   if (env.GITLAB_CI === 'true') {
@@ -126,7 +169,9 @@ export function ciInfo(env: Env = process.env): CiInfo {
       ...(text(env.CI_JOB_ID) ? { jobId: text(env.CI_JOB_ID) } : {}),
       branch: text(env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME) ?? text(env.CI_COMMIT_REF_NAME),
       baseBranch: text(env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME),
-      commitSha: text(env.CI_COMMIT_SHA),
+      commitSha: text(env.CI_MERGE_REQUEST_SOURCE_BRANCH_SHA) ?? text(env.CI_COMMIT_SHA),
+      repository: text(env.CI_PROJECT_PATH),
+      pullRequest: positive(env.CI_MERGE_REQUEST_IID),
     };
   }
   return { runId: text(env.CI_RUN_ID) };
@@ -174,6 +219,8 @@ export function resolveSettings(options: PixeltwinOptions = {}, env: Env = proce
     branch: options.branch ?? text(env.PIXELTWIN_BRANCH) ?? ci.branch ?? gitBranch(cwd),
     baseBranch: options.baseBranch ?? text(env.PIXELTWIN_BASE_BRANCH) ?? ci.baseBranch,
     commitSha: options.commitSha ?? text(env.PIXELTWIN_COMMIT_SHA) ?? ci.commitSha,
+    repository: options.repository ?? text(env.PIXELTWIN_REPOSITORY) ?? ci.repository,
+    pullRequest: positive(options.pullRequest) ?? positive(text(env.PIXELTWIN_PULL_REQUEST)) ?? ci.pullRequest,
     externalId: options.externalId ?? text(env.PIXELTWIN_EXTERNAL_ID),
     gate: options.gate ?? flag(env.PIXELTWIN_GATE) ?? false,
     waitSeconds: Number.isFinite(wait) && wait > 0 ? wait : 0,
@@ -206,6 +253,8 @@ export function optionsToEnv(options: PixeltwinOptions): Record<string, string> 
   set('PIXELTWIN_BRANCH', options.branch);
   set('PIXELTWIN_BASE_BRANCH', options.baseBranch);
   set('PIXELTWIN_COMMIT_SHA', options.commitSha);
+  set('PIXELTWIN_REPOSITORY', options.repository);
+  set('PIXELTWIN_PULL_REQUEST', options.pullRequest);
   set('PIXELTWIN_RETAKES', options.retakes);
   set('PIXELTWIN_RETAKE_INTERVAL_MS', options.retakeIntervalMs);
   set('PIXELTWIN_FAIL_ON_CHANGE', options.failOnChange);
@@ -239,6 +288,17 @@ export function externalIdFor(settings: Pick<Settings, 'externalId'>, env: Env, 
     );
   }
   return `${runId ?? 'local'}-${random()}`;
+}
+
+/** The repository and pull request to send when opening a build (only those known). */
+export function linkOf(settings: Pick<Settings, 'repository' | 'pullRequest'>): {
+  repository?: string;
+  pullRequest?: number;
+} {
+  return {
+    ...(settings.repository ? { repository: settings.repository } : {}),
+    ...(settings.pullRequest ? { pullRequest: settings.pullRequest } : {}),
+  };
 }
 
 export function clientFor(settings: Settings): PixeltwinClient {
@@ -339,6 +399,7 @@ async function openRun(
       branch: settings.branch,
       baseBranch: settings.baseBranch,
       commitSha: settings.commitSha,
+      ...linkOf(settings),
       externalId,
       ...(settings.parallelTotal ? { parallelTotal: settings.parallelTotal } : {}),
     });

@@ -108,7 +108,9 @@ export default withPixeltwin(defineConfig({ /* … */ }), { project: 'shop', gat
 | `PIXELTWIN_PROJECT` | `project` | required |
 | `PIXELTWIN_BRANCH` | `branch` | CI branch (GitHub Actions, GitLab CI), else `.git/HEAD`, else the project's main branch |
 | `PIXELTWIN_BASE_BRANCH` | `baseBranch` | the pull/merge request's target, else the project's main branch |
-| `PIXELTWIN_COMMIT_SHA` | `commitSha` | from CI |
+| `PIXELTWIN_COMMIT_SHA` | `commitSha` | from CI: on GitHub Actions `pull_request` events the pull request's head commit (not the merge commit), else `GITHUB_SHA` / `CI_COMMIT_SHA` |
+| `PIXELTWIN_REPOSITORY` | `repository` | from CI: `GITHUB_REPOSITORY` / `CI_PROJECT_PATH` |
+| `PIXELTWIN_PULL_REQUEST` | `pullRequest` | from CI: the pull request of a GitHub Actions run / `CI_MERGE_REQUEST_IID`. With the repository and commit, the project's GitHub integration reports the verdict on the pull request |
 | `PIXELTWIN_GATE=1` | `gate` | off |
 | `PIXELTWIN_WAIT` | `waitSeconds` | `0`; seconds to wait for reviews while the verdict is `pending` |
 | `PIXELTWIN_EXTERNAL_ID` | `externalId` | see Sharding |

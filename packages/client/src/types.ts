@@ -41,6 +41,10 @@ export interface Build {
   baseBranch: string;
   externalId: string | null;
   commitSha: string | null;
+  /** `owner/name` of the repository the commit is in. */
+  repository: string | null;
+  /** The pull (merge) request CI ran for. */
+  pullRequest: number | null;
   state: 'open' | 'finalized';
   createdAt: number;
   finalizedAt: number | null;
@@ -111,6 +115,10 @@ export interface OpenBuildInput {
   branch?: string;
   baseBranch?: string;
   commitSha?: string;
+  /** `owner/name` (GitLab: `group/project`); with `pullRequest`, where the GitHub integration reports. */
+  repository?: string;
+  /** The pull (merge) request number CI ran for. */
+  pullRequest?: number;
   /** Opening again with the same id returns the same build. Generated when missing. */
   externalId?: string;
   /**
