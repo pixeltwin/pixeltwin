@@ -1,3 +1,5 @@
+import type { RejectReason } from './reasons.js';
+
 // The API shapes the SDK reads, as in openapi.json.
 
 export type Verdict = 'empty' | 'error' | 'rejected' | 'pending' | 'outdated' | 'passed';
@@ -126,6 +128,8 @@ export interface Diff {
 export interface Suggestion {
   action: 'approve' | 'reject';
   reason: string | null;
+  /** A suggested rejection's category (servers before reject reasons leave it out). */
+  reasonCode?: RejectReason | null;
   by: { kind: 'token'; id: string; name: string | null };
   at: number;
 }
@@ -153,6 +157,8 @@ export interface Check {
   reviewedBy: string | null;
   reviewedAt: number | null;
   reviewComment: string | null;
+  /** The category of the current rejection (servers before reject reasons leave it out). */
+  reviewReasonCode?: RejectReason | null;
   /** Server time this check took, in ms: baseline, compare and store. */
   compareMs: number | null;
   /** Page elements sent with the screenshot; null when none. */
@@ -213,6 +219,8 @@ export interface ReviewEvent {
   actorKind: 'user' | 'token' | 'auto';
   actorName: string | null;
   comment: string | null;
+  /** A rejection's category (servers before reject reasons leave it out). */
+  reasonCode?: RejectReason | null;
   createdAt: number;
 }
 
@@ -278,6 +286,48 @@ export interface Flaky {
   lastSeen: number;
   /** Where it keeps changing (screenshot pixels). */
   unstableArea: Rect | null;
+}
+
+/** One rejection of a screen. */
+export interface Rejection {
+  checkId: string;
+  buildId: string;
+  buildNumber: number;
+  branch: string;
+  reasonCode: RejectReason | null;
+  /** The comment. */
+  reason: string | null;
+  by: { kind: 'user' | 'token' | 'auto'; id: string; name: string | null };
+  at: number;
+}
+
+export type RejectionCategory = RejectReason | 'uncategorized';
+
+/** Why a screen was rejected. */
+export interface ScreenRejections {
+  snapshotKey: string;
+  name: string;
+  variant: Variant;
+  /** In a build's patterns: the screen's check in that build. */
+  checkId?: string;
+  count: number;
+  byCategory: Partial<Record<RejectionCategory, number>>;
+  /** The category given most often; null when none was given. */
+  top: RejectReason | null;
+  /** Rejections as not_loaded or late_asset: the screenshot was taken too early. */
+  tooEarly: number;
+  /** What the rejections say and what to do, in one sentence. */
+  hint: string;
+  /** Newest first, at most 5. */
+  recent: Rejection[];
+  lastAt: number;
+}
+
+/** Why screens were rejected: by category (most given first) and by screen (newest first). */
+export interface RejectionPatterns {
+  total: number;
+  categories: Array<{ code: RejectionCategory; count: number; screens: number; lastAt: number }>;
+  screens: ScreenRejections[];
 }
 
 /** A screen's last checks on a branch, newest first, and whether it is flaky. */
