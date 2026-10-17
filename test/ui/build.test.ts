@@ -219,6 +219,18 @@ describe('UI build page', () => {
     expect(page).toContain('data-islands="search live thumbs"');
   });
 
+  test('a rejected change shows no diff percentage on its card', async () => {
+    const { buildId, changed } = await seedBuild();
+    const card = async () => {
+      const body = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all`, { as: reviewer }));
+      const at = body.indexOf(`id="${changed.id}"`);
+      return body.slice(at, body.indexOf('</a>', at));
+    };
+    expect(await card()).toContain('class="diff-pct"');
+    await rejectCheck(t.deps, changed.id, reviewer.id);
+    expect(await card()).not.toContain('class="diff-pct"');
+  });
+
   test('Resolved lists what a person approved; Passed also has new screens the project approved itself', async () => {
     const { buildId, changed, fresh, same } = await seedBuild();
     await approveCheck(t.deps, changed.id, reviewer.id);

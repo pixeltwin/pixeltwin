@@ -55,7 +55,7 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
           <Variant variant={check.variant} />
           <span class="card-status">
             <span class="card-state">{cardStatus(check)}</span>
-            {check.result === 'changed' && diff && (
+            {check.result === 'changed' && check.review !== 'rejected' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}
           </span>
