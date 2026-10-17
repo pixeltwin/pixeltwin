@@ -1,6 +1,6 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Child } from 'hono/jsx';
-import type { ActorKind, Project, ReviewAction } from '../../db/schema';
+import { type ActorKind, type Project, REJECT_REASONS, type RejectReason, type ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, ElementChange, Rect, Region, Size } from '../../diff/types';
 import { actorName } from '../../domain/actors';
@@ -16,10 +16,11 @@ import {
 import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, compareWithoutAreas, listChecks } from '../../domain/checks';
-import { type ScreenHistory, screenHistory } from '../../domain/flaky';
+import { type NoiseRejections, type ScreenHistory, screenHistory } from '../../domain/flaky';
 import { type ChangeGroup, getGroup } from '../../domain/groups';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
+import { REJECT_REASON_INFO } from '../../domain/reject-reasons';
 import {
   acceptSuggestion,
   approveCheck,
@@ -45,6 +46,7 @@ import {
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { type CheckFilter, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
+import { ReasonTag, RejectMenu, reasonInput } from '../reject-menu';
 
 function isDiffData(diff: CheckView['diff']): diff is DiffData {
   return diff !== null && !('error' in diff);
@@ -490,6 +492,7 @@ interface HistoryEntry {
   who: string;
   kind: ActorKind;
   comment: string | null;
+  reasonCode: RejectReason | null;
   at: number;
 }
 
@@ -514,6 +517,7 @@ async function historyOf(s: Services, checkId: string): Promise<HistoryEntry[]> 
     who: names.get(e.actor) ?? e.actor,
     kind: e.actorKind,
     comment: e.comment,
+    reasonCode: e.reasonCode,
     at: e.createdAt,
   }));
 }
@@ -637,6 +641,7 @@ function History({ check, history }: { check: CheckView; history: HistoryEntry[]
                   agent
                 </span>
               )}
+              <ReasonTag code={entry.reasonCode} />
             </span>
             <Ago at={entry.at} />
             {entry.comment && <span class="comment">{`“${entry.comment}”`}</span>}
@@ -845,7 +850,7 @@ function Suggestion(props: { ui: Ui; check: CheckView; filter: CheckFilter; canR
     <section class={`suggestion suggestion-${suggestion.action}`} aria-label="Agent suggestion" data-suggestion>
       <p class="suggestion-text">
         <strong>{`Agent suggests ${SUGGESTS[suggestion.action]}`}</strong>
-        {suggestion.reason ? `: ${suggestion.reason}` : ''}
+        {suggestion.reason ? `: ${suggestion.reason}` : ''} <ReasonTag code={suggestion.reasonCode} />
       </p>
       <p class="suggestion-who muted">
         <span class="badge-agent">agent</span>
@@ -923,6 +928,22 @@ function GroupNote(props: { ui: Ui; check: CheckView; group: ChangeGroup; filter
 }
 
 /**
+ * People's word that the screen is unstable: its checks rejected as not loaded, late assets,
+ * animation or dynamic data. Told beside the flaky signal; it does not change the score.
+ */
+function NoiseNote({ noise, flaky }: { noise: NoiseRejections | undefined; flaky: boolean }) {
+  if (!noise || noise.count === 0) return null;
+  const parts = REJECT_REASONS.filter((code) => noise.byCategory[code]).map(
+    (code) => `${noise.byCategory[code]}× ${REJECT_REASON_INFO[code].label.toLowerCase()}`,
+  );
+  return (
+    <p class="hint noise-note">
+      {`Rejected here as noise: ${parts.join(', ')}. ${flaky ? 'That agrees with the flips above.' : 'Fix the test (a wait, an ignore area) rather than the page.'}`}
+    </p>
+  );
+}
+
+/**
  * The screen's last results on this branch and, when it keeps flipping, why it is flaky and a way
  * to ignore the area that keeps changing: a preview of the area first, then one click.
  */
@@ -951,6 +972,7 @@ function ScreenSection(props: {
       {flaky && (
         <p class="hint">{`It keeps changing back and forth: ${flakyText(flaky)}. Its changes are likely noise.`}</p>
       )}
+      <NoiseNote noise={screen.noiseRejections} flaky={!!flaky} />
       {flaky && area && props.canReview && (
         <details class="unstable" data-unstable-trigger>
           <summary
@@ -1229,31 +1251,31 @@ function ActionBar(props: {
         </form>
       )}
       {reviewable && (
-        <form class="review-form" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-review-form>
-          <input type="hidden" name="filter" value={filter.key} />
-          <div class="review-buttons">
-            {check.review === 'pending' && (
-              // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
-              <button
-                type="submit"
-                class="reject"
-                formaction={ui.url(`/ui/checks/${check.id}/reject`)}
-                data-key="r"
-                data-key-label="Reject"
-              >
-                Reject <kbd>R</kbd>
-              </button>
-            )}
-            {next && (
-              <a class="button ghost" href={next} data-skip>
-                Skip
-              </a>
-            )}
+        <div class="review-buttons">
+          {check.review === 'pending' && (
+            // Spec §3.4: only a pending check can be rejected; a rejected one can still be approved.
+            <RejectMenu
+              action={ui.url(`/ui/checks/${check.id}/reject`)}
+              label="Reject"
+              dataKey="r"
+              up
+              title="Reject, with why (R); Shift+R rejects without a reason"
+            >
+              <input type="hidden" name="filter" value={filter.key} />
+            </RejectMenu>
+          )}
+          {next && (
+            <a class="button ghost" href={next} data-skip>
+              Skip
+            </a>
+          )}
+          <form class="review-form" method="post" action={ui.url(`/ui/checks/${check.id}/approve`)} data-review-form>
+            <input type="hidden" name="filter" value={filter.key} />
             <button type="submit" class="approve" data-key="a" data-key-label="Approve">
               Approve <kbd>A</kbd>
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
     </div>
   );
@@ -1519,11 +1541,12 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       const id = c.req.param('id');
       await visibleCheck(c, s.deps, id, 'check.review');
       const form = await c.req.parseBody();
-      const comment = field(form, 'comment');
       const filterKey = field(form, 'filter');
       const filter = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
-      const review = action === 'approve' ? approveCheck : rejectCheck;
-      const check = await review(s.deps, id, user.id, comment ? { comment } : {});
+      const check =
+        action === 'approve'
+          ? await approveCheck(s.deps, id, user.id, reasonInput(form, false))
+          : await rejectCheck(s.deps, id, user.id, reasonInput(form, true));
       const done = action === 'approve' ? 'approved' : 'rejected';
       // From a card on the build page: back to that page and card.
       if (field(form, 'back') === 'build') {

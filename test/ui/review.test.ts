@@ -219,11 +219,11 @@ describe('UI focus mode', () => {
     expect(body).toContain('<p class="diff-error">The diff took too long.</p>');
   });
 
-  test('reviewers get Approve, Reject and Skip, without a comment field; viewers get none of them', async () => {
+  test('reviewers get Approve, Reject (asking why) and Skip; viewers get none of them', async () => {
     const { changed, fresh } = await seedBuild();
     const body = await page(`/ui/checks/${changed.id}?filter=pending`);
     expect(body).toContain(`action="/ui/checks/${changed.id}/approve"`);
-    expect(body).toContain(`formaction="/ui/checks/${changed.id}/reject"`);
+    expect(body).toContain(`action="/ui/checks/${changed.id}/reject" data-reject-form`);
     expect(body).toContain('data-key="a"');
     expect(body).toContain('data-key="r"');
     expect(body).not.toContain('<textarea');

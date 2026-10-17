@@ -34,7 +34,7 @@ test("an agent's suggestion: the reviewer sees its reason, accepts it in one cli
 
 test('dismissing a suggestion keeps the check waiting', async ({ reviewerPage: page, seeded, admin }) => {
   await admin.call('PATCH', `/projects/${seeded.slug}`, { agentReview: 'suggest' });
-  await seeded.ci.call('POST', `/checks/${seeded.changed}/reject`, { reason: 'Looks broken.' });
+  await seeded.ci.call('POST', `/checks/${seeded.changed}/reject`, { reason: 'Looks broken.', reasonCode: 'real_bug' });
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
   const card = page.getByRole('region', { name: 'Agent suggestion' });
   await expect(card).toContainText('Agent suggests rejecting: Looks broken.');

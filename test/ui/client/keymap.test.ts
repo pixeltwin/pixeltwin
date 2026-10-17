@@ -3,7 +3,7 @@ import type * as Keymap from '../../../src/ui/client/keymap';
 import type { KeyInput } from '../../../src/ui/client/keymap';
 import { clientModule } from '../../helpers/client';
 
-const { shortcutOf } = await clientModule<typeof Keymap>('keymap');
+const { plainOf, shortcutOf } = await clientModule<typeof Keymap>('keymap');
 
 const key = (k: string, extra: Partial<KeyInput> = {}): KeyInput => ({
   key: k,
@@ -42,11 +42,15 @@ describe('shortcutOf', () => {
     expect(shortcutOf(key('a', { altKey: true }))).toBeNull();
   });
 
-  test('Shift with an arrow is its own shortcut; Shift with other keys is just the character', () => {
+  test('Shift with an arrow or a letter is its own shortcut; Shift with other keys is just the character', () => {
     expect(shortcutOf(key('ArrowRight', { shiftKey: true }))).toBe('shift+arrowright');
     expect(shortcutOf(key('ArrowRight'))).toBe('arrowright');
     expect(shortcutOf(key('?', { shiftKey: true }))).toBe('?');
-    expect(shortcutOf(key('A', { shiftKey: true }))).toBe('a');
+    expect(shortcutOf(key('A', { shiftKey: true }))).toBe('shift+a');
+    // Nothing listens for Shift+A: it falls back to A (Shift+R rejects without a reason).
+    expect(plainOf('shift+a')).toBe('a');
+    expect(plainOf('shift+arrowright')).toBeNull();
+    expect(plainOf('a')).toBeNull();
   });
 
   test('bare modifier presses are ignored', () => {

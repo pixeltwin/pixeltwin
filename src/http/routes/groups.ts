@@ -41,12 +41,13 @@ export function registerGroupRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
           ? 'Approve every check of a change group that waits for review'
           : 'Reject every check of a change group that waits for review',
       description:
-        'Optional `checkIds` limits it to those members (what a filtered page shows); `reason` is kept on each ' +
-        'review. One transaction; each check gets its own review event, as with a single review. Checks already ' +
-        'reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in ' +
-        '`skipped`. A token goes through the project’s agent review policy as with a single review: it must give ' +
-        'a `reason` unless the policy is `off` (422 reason_required), and the members it may not decide itself ' +
-        'become suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response ' +
+        'Optional `checkIds` limits it to those members (what a filtered page shows); `reason` (and, rejecting, ' +
+        '`reasonCode`) is kept on each review. One transaction; each check gets its own review event, as with a ' +
+        'single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left ' +
+        'as they are and listed in `skipped`. A token goes through the project’s agent review policy as with a ' +
+        'single review: it must give a `reason` unless the policy is `off` (422 reason_required) and a ' +
+        '`reasonCode` to reject (422 reason_code_required), and the members it may not decide itself become ' +
+        'suggestions for a person, listed in `suggested` (`changed` lists what was applied). The response ' +
         'has the build’s new verdict.',
       request: {
         params: groupParam,

@@ -87,11 +87,17 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server on stdin/stdo
 (Claude Code, Cursor, …), configured by `PIXELTWIN_URL`, `PIXELTWIN_TOKEN` and `PIXELTWIN_PROJECT`
 (and `PIXELTWIN_BRANCH`, else the checked-out branch). Tools: `latest_build`, `list_changes`,
 `get_check`, `get_check_images` (cropped to an element change or a rectangle, shrunk to 1568 px at
-most), `approve_check` and `reject_check` (with a `reason`), `review_group` (a change group, the
-same change on several screens, decided at once) and `add_ignore_area`. `list_changes` shows each
-change group once with a representative check and marks checks on flaky screens. See the
+most), `approve_check` and `reject_check` (with a `reason`; rejecting also a `reasonCode`:
+`not_loaded`, `late_asset`, `animation`, `dynamic_data`, `environment`, `real_bug` or `other`),
+`review_group` (a change group, the same change on several screens, decided at once),
+`rejection_patterns` (why the project's screens were rejected, by category and by screen) and
+`add_ignore_area`. `list_changes` shows each change group once with a representative check, marks
+checks on flaky screens and carries each screen's recent rejections with a hint on what to do;
+approving a screen that was rejected before as captured too early says so. See the
 [main README](../../README.md#agents-pixeltwin-mcp) for a `.mcp.json`. It is a small JSON-RPC loop of
 its own: the package keeps no dependencies.
 
 `@pixeltwin/client/run` exports the run lifecycle the integrations share (`resolveSettings`,
-`startRun`, `finishRun`, `summaryLines`), for wiring pixeltwin into another runner.
+`startRun`, `finishRun`, `summaryLines`, `rejectionTips`), for wiring pixeltwin into another runner.
+The summary ends with a tip for each screen of the build that was rejected at least twice as
+captured too early (`not_loaded`, `late_asset`), from one request.

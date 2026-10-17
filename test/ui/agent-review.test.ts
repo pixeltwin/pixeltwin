@@ -89,7 +89,7 @@ describe('UI: element changes and agent reviews', () => {
   test('dismissing a suggestion keeps the check waiting', async () => {
     await updateProject(t.deps, 'web', { agentReview: 'suggest' });
     const check = await changedCheck();
-    await reviewCheck(t.deps, check.id, 'reject', agent, { reason: 'Looks broken' });
+    await reviewCheck(t.deps, check.id, 'reject', agent, { reason: 'Looks broken', reasonCode: 'real_bug' });
     expect(await get(`/ui/checks/${check.id}`)).toContain('<strong>Agent suggests rejecting</strong>: Looks broken');
     const res = await postForm(t, `/ui/checks/${check.id}/suggestion/dismiss`, { filter: 'pending' }, reviewer);
     expect(location(res)).toContain('done=suggestion-dismissed');

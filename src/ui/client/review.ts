@@ -5,6 +5,7 @@ import { ApiError, api, basePath, fetchPage } from './api.ts';
 import { mountAreas } from './areas.ts';
 import { onKey } from './keys.ts';
 import { adjacent, type Frame, nextPending } from './queue.ts';
+import { initRejectMenus, openMenu, type RejectBody } from './reject.ts';
 import { toast } from './toast.ts';
 import { mountViewer } from './viewer.ts';
 
@@ -205,21 +206,22 @@ async function alreadyReviewed(id: string): Promise<void> {
   await advance();
 }
 
-async function review(action: Action): Promise<void> {
+/** `label`: the picked category's words for the toast (the chip's label). */
+async function review(action: Action, body: RejectBody = {}, label = ''): Promise<void> {
   if (busy) return;
   busy = true;
   const id = currentId();
   const name = currentName();
   try {
     try {
-      await api('POST', `/checks/${id}/${action}`, {});
+      await api('POST', `/checks/${id}/${action}`, body);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) return await alreadyReviewed(id);
       if (err instanceof ApiError && err.status === 401) return;
       toast(`Couldn't ${action} ${name}`, {
         tone: 'danger',
         timeout: 0,
-        action: { label: 'Retry', run: () => void review(action) },
+        action: { label: 'Retry', run: () => void review(action, body, label) },
       });
       return;
     }
@@ -228,7 +230,7 @@ async function review(action: Action): Promise<void> {
     forget(id);
     lastReviewed = id;
     lastGroup = null;
-    toast(`${action === 'approve' ? 'Approved' : 'Rejected'} ${name}`, {
+    toast(`${action === 'approve' ? 'Approved' : 'Rejected'} ${name}${label ? ` (${label.toLowerCase()})` : ''}`, {
       tone: action === 'approve' ? 'success' : 'danger',
       action: { label: 'Undo (U)', run: () => void undo(id) },
     });
@@ -362,8 +364,7 @@ function onSubmit(event: SubmitEvent): void {
   if (!(form instanceof HTMLFormElement) || !root.contains(form)) return;
   if (form.matches('[data-review-form]')) {
     event.preventDefault();
-    const action: Action = event.submitter?.getAttribute('formaction')?.endsWith('/reject') ? 'reject' : 'approve';
-    void review(action);
+    void review('approve');
   } else if (form.matches('[data-reset-form]')) {
     event.preventDefault();
     void undo(currentId());
@@ -411,6 +412,25 @@ export function init(): void {
   paint();
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
+  // R opens the reject popover (its button's data-key); there Enter rejects with the reason.
+  initRejectMenus((form, body, label) => {
+    if (root.contains(form)) void review('reject', body, label);
+  });
+  onKey({
+    key: 'r',
+    label: 'Reject, with why',
+    run: () => {
+      const menu = root.querySelector<HTMLDetailsElement>('details[data-reject-menu]');
+      if (menu) openMenu(menu);
+    },
+  });
+  onKey({
+    key: 'shift+r',
+    label: 'Reject without a reason',
+    run: () => {
+      if (root.querySelector('[data-reject-menu]')) void review('reject');
+    },
+  });
   onKey({ key: 'u', label: 'Undo the last review', run: () => void (lastGroup ? undoGroup(lastGroup) : undo()) });
   // ← and → do what K and J do: the header's previous and next links (UI spec §5.1).
   onKey({

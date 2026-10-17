@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AGENT_REVIEW_POLICIES, AREA_KINDS } from '../db/schema';
+import { AGENT_REVIEW_POLICIES, AREA_KINDS, REJECT_REASONS } from '../db/schema';
 import { validationError } from '../errors';
 
 // Input schemas shared by the domain and (in Plan 2) the HTTP layer. Objects are strict:
@@ -138,6 +138,11 @@ export const reviewInputSchema = z.strictObject({
   reason: z.string().trim().max(1000).optional(),
   /** The older name of `reason`. */
   comment: z.string().trim().max(1000).optional(),
+  /**
+   * A rejection's category, kept with the review so agents can learn from it. Rejections only.
+   * A token must give one to reject when the project's agent review policy is not `off`.
+   */
+  reasonCode: z.enum(REJECT_REASONS).optional(),
 });
 
 const groupCheckIds = z.array(z.string().min(1).max(64)).max(1000).optional();

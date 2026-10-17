@@ -1,5 +1,6 @@
-import type { ActorKind, CheckResult, CheckReview, Project, ProjectRole } from '../db/schema';
+import type { ActorKind, CheckResult, CheckReview, Project, ProjectRole, RejectReason } from '../db/schema';
 import type { BuildView } from '../domain/builds';
+import { reasonLabel } from '../domain/reject-reasons';
 import type { Verdict } from '../domain/verdict';
 import type { StatusUpdate } from './http';
 
@@ -209,6 +210,8 @@ export interface WebhookPayload {
     action: 'approved' | 'rejected' | 'reset';
     /** Why, as the reviewer said (for an accepted agent suggestion, the agent's reason); null without. */
     reason: string | null;
+    /** A rejection's category (not_loaded, late_asset, animation, …); null without one. */
+    reasonCode: RejectReason | null;
     /** `kind`: `user` (a person) or `token` (a project token: an agent or CI). */
     actor: { id: string; kind: ActorKind; name: string };
   };
@@ -299,7 +302,8 @@ export function slackMessage(payload: WebhookPayload): { text: string; blocks: u
       .map((k) => payload.check?.variant[k]);
     const variant = values.length > 0 ? ` (${slack(values.join(', '))})` : '';
     const action = payload.review.action === 'reset' ? 'sent back to review' : payload.review.action;
-    const by = `${action} by ${slack(payload.review.actor.name)}`;
+    const label = reasonLabel(payload.review.reasonCode);
+    const by = `${action}${label ? ` (${label.toLowerCase()})` : ''} by ${slack(payload.review.actor.name)}`;
     text = `pixeltwin · ${project}: ${slack(payload.check.name)}${variant} ${by} in ${where}`;
     reviewed = `<${payload.check.url}|${slack(payload.check.name)}>${variant} ${by}`;
     if (payload.review.reason) reviewed += `\n>${slack(payload.review.reason).replace(/\n/g, '\n>')}`;

@@ -1,5 +1,6 @@
 import { type FieldError, PixeltwinError, PixeltwinNetworkError } from './errors.js';
 import { toPixelRect } from './png.js';
+import type { RejectReason } from './reasons.js';
 import type { TimingInput } from './timing.js';
 import type {
   Area,
@@ -15,6 +16,7 @@ import type {
   PageElement,
   PromotionCandidate,
   Rect,
+  RejectionPatterns,
   ReviewEvent,
   ReviewOutcome,
   ScreenHistory,
@@ -191,10 +193,14 @@ export class PixeltwinClient {
   async review(
     checkId: string,
     action: 'approve' | 'reject',
-    options: { reason?: string } = {},
+    options: { reason?: string; reasonCode?: RejectReason } = {},
   ): Promise<Check & { outcome: ReviewOutcome }> {
     const path = `/checks/${encodeURIComponent(checkId)}/${action}`;
-    const body = options.reason ? { json: { reason: options.reason } } : undefined;
+    const fields = {
+      ...(options.reason ? { reason: options.reason } : {}),
+      ...(options.reasonCode ? { reasonCode: options.reasonCode } : {}),
+    };
+    const body = Object.keys(fields).length ? { json: fields } : undefined;
     return (await this.#request<Check & { outcome: ReviewOutcome }>('POST', path, body)).data;
   }
 
@@ -213,11 +219,12 @@ export class PixeltwinClient {
     buildId: string,
     groupId: string,
     action: 'approve' | 'reject',
-    options: { reason?: string; checkIds?: string[] } = {},
+    options: { reason?: string; reasonCode?: RejectReason; checkIds?: string[] } = {},
   ): Promise<GroupReview> {
     const path = `/builds/${encodeURIComponent(buildId)}/groups/${encodeURIComponent(groupId)}/${action}`;
     const body = {
       ...(options.reason ? { reason: options.reason } : {}),
+      ...(options.reasonCode ? { reasonCode: options.reasonCode } : {}),
       ...(options.checkIds ? { checkIds: options.checkIds } : {}),
     };
     return (await this.#request<GroupReview>('POST', path, Object.keys(body).length ? { json: body } : undefined)).data;
@@ -226,6 +233,27 @@ export class PixeltwinClient {
   /** The check's screen over its last checks on the branch, and whether it is flaky. */
   async checkHistory(checkId: string): Promise<ScreenHistory> {
     return (await this.#request<ScreenHistory>('GET', `/checks/${encodeURIComponent(checkId)}/history`)).data;
+  }
+
+  /**
+   * Why the project's screens were rejected: by category and by screen, newest first, with the last
+   * rejections and a hint on what to do. Optionally on one branch, or one screen (`snapshotKey`).
+   */
+  async rejectionPatterns(
+    project: string,
+    query: { branch?: string; snapshotKey?: string; limit?: number } = {},
+  ): Promise<RejectionPatterns> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const qs = params.size ? `?${params}` : '';
+    const path = `/projects/${encodeURIComponent(project)}/rejections${qs}`;
+    return (await this.#request<RejectionPatterns>('GET', path)).data;
+  }
+
+  /** Why the screens of a build were rejected before (on every branch), each with its check in the build. */
+  async buildRejections(buildId: string): Promise<RejectionPatterns> {
+    const path = `/builds/${encodeURIComponent(buildId)}/rejections`;
+    return (await this.#request<RejectionPatterns>('GET', path)).data;
   }
 
   /** The project's flaky screens, per branch, most flaky first. */

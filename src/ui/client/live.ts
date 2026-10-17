@@ -5,14 +5,19 @@
 import { ApiError, api, fetchPage } from './api.ts';
 import { onKey } from './keys.ts';
 import { pollDelay } from './rank.ts';
+import { bodyOfReject, closeMenu, initRejectMenus, openMenu } from './reject.ts';
 import { adopt, focusedCard, focusTarget, serverMarkup } from './swap.ts';
 import { toast } from './toast.ts';
 
-/** What a form posts in place: its `data-inplace-body` (JSON), else its checkIds inputs, else nothing. */
+/**
+ * What a form posts in place: its `data-inplace-body` (JSON), else its checkIds inputs and, for a
+ * reject popover, the category and comment; else nothing.
+ */
 function bodyOf(form: HTMLFormElement): Record<string, unknown> {
   if (form.dataset.inplaceBody) return JSON.parse(form.dataset.inplaceBody) as Record<string, unknown>;
   const ids = [...form.querySelectorAll<HTMLInputElement>('input[name="checkIds"]')].map((input) => input.value);
-  return ids.length > 0 ? { checkIds: ids } : {};
+  const why = form.matches('[data-reject-form]') ? bodyOfReject(form) : {};
+  return { ...(ids.length > 0 ? { checkIds: ids } : {}), ...why };
 }
 
 export function init(): void {
@@ -38,6 +43,8 @@ export function init(): void {
     for (const current of document.querySelectorAll<HTMLElement>('[data-live]')) {
       // Cards reviewed in place that left the filter stay until the reviewer changes page.
       if (current.dataset.live === 'checks' && current.querySelector('[data-gone]')) continue;
+      // An open reject popover (a reason picked, a comment typed) waits for the next round.
+      if (current.querySelector('details[data-reject-menu][open]')) continue;
       const fresh = doc.querySelector(`[data-live="${CSS.escape(current.dataset.live ?? '')}"]`);
       if (!fresh) {
         // Onboarding disappears when the first build arrives: show the real page.
@@ -79,7 +86,7 @@ export function init(): void {
   let lastUndo: (() => Promise<void>) | null = null;
 
   async function submitInPlace(form: HTMLFormElement, path: string): Promise<void> {
-    const button = form.querySelector('button');
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (button?.disabled) return;
     if (button) button.disabled = true;
     // Pages fetched ahead (grid island) show the cards as they were: they are fetched again.
@@ -197,7 +204,8 @@ export function init(): void {
     onKey({ key: 'u', label: 'Undo the last review', run: () => void lastUndo?.() });
   }
   if (document.querySelector('[data-live="checks"]')) {
-    // A on a focused new screenshot approves it; on a group card A and R review the whole group.
+    // A on a focused new screenshot approves it; on a group card A approves the whole group and
+    // R asks why first (the reject popover); Shift+R rejects the group without a reason.
     const cardForm = (action: string) =>
       focusedCard()?.querySelector<HTMLFormElement>(
         action === 'approve'
@@ -205,8 +213,29 @@ export function init(): void {
           : 'form[data-group-action="reject"]',
       );
     onKey({ key: 'a', label: 'Approve the focused card', run: () => cardForm('approve')?.requestSubmit() });
-    onKey({ key: 'r', label: 'Reject the focused group', run: () => cardForm('reject')?.requestSubmit() });
+    onKey({
+      key: 'r',
+      label: 'Reject the focused group, with why',
+      run: () => {
+        const menu = cardForm('reject')?.closest<HTMLDetailsElement>('details[data-reject-menu]');
+        if (menu) openMenu(menu);
+      },
+    });
+    onKey({
+      key: 'shift+r',
+      label: 'Reject the focused group without a reason',
+      run: () => {
+        const form = cardForm('reject');
+        if (!form) return;
+        const menu = form.closest<HTMLDetailsElement>('details[data-reject-menu]');
+        if (menu) closeMenu(menu, false);
+        form.reset();
+        form.requestSubmit();
+      },
+    });
   }
+
+  initRejectMenus();
 
   document.addEventListener('visibilitychange', () => {
     unchanged = 0;

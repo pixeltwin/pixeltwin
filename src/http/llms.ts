@@ -64,8 +64,9 @@ on everything but GET /me and POST /auth/logout.
    curl -X POST ${api}/builds/<buildId>/finalize -H "Authorization: Bearer $PIXELTWIN_TOKEN"
 
 5. Act on \`verdict\`. Only \`passed\` is success. Changes wait for a human (or a token with the
-   \`review\` scope): POST ${api}/checks/<checkId>/approve or /reject with {"reason":"…"} (kept in
-   the review history, GET ${api}/checks/<checkId>/reviews, with actorKind user | token | auto).
+   \`review\` scope): POST ${api}/checks/<checkId>/approve with {"reason":"…"}, or /reject with
+   {"reasonCode":"not_loaded","reason":"…"} (see Rejection reasons), kept in the review history
+   (GET ${api}/checks/<checkId>/reviews, with actorKind user | token | auto and reasonCode).
    /reset undoes either. The answer's \`outcome\` is \`applied\` or \`suggested\` (see Agent reviews).
    The same change on several screens is reviewed once: checks of a build with exactly the same
    changes share a \`groupId\` (\`diff.regions[].fingerprint\` names each change, wherever it is on
@@ -87,6 +88,8 @@ on everything but GET /me and POST /auth/logout.
    ({score, flips, checks, lastSeen, unstableArea}, null when it is steady). A flaky screen's
    change is likely noise, not a regression: suggest an ignore area over \`unstableArea\` instead
    of approving it again. GET ${api}/projects/<slug>/noisy-screens lists every flaky screen.
+   \`noiseRejections\` counts the screen's rejections as not_loaded, late_asset, animation or
+   dynamic_data: people's word that it is unstable (they do not change \`flaky.score\`).
 
 6. After merging a branch, promote it so main does not ask to review the same screens again:
    GET ${api}/projects/<slug>/branches/<branch>/promote lists the screens that differ from main;
@@ -105,18 +108,47 @@ maintainers set it up with PATCH ${api}/projects/<slug>/integration and add webh
 build.verdict_changed, check.reviewed, member.added; signed X-Pixeltwin-Signature: sha256=<HMAC>) with
 POST ${api}/projects/<slug>/webhooks.
 
+## Rejection reasons (learn from them)
+
+Every rejection can say why, as a \`reasonCode\` beside the free \`reason\`:
+
+  not_loaded    captured before the page or its content finished loading
+  late_asset    an image, banner, font or ad loaded late
+  animation     caught mid-animation or transition
+  dynamic_data  dates, prices or random content
+  environment   a browser, OS, rendering or viewport difference
+  real_bug      a real regression
+  other         something else (read the comment)
+
+GET ${api}/builds/<buildId>/rejections (the build's screens, on every branch, each with its
+\`checkId\` in the build) and GET ${api}/projects/<slug>/rejections?branch=…&snapshotKey=… sum the
+rejections up: \`categories\` (most given first) and \`screens\` (newest first) with \`count\`,
+\`byCategory\`, \`tooEarly\` (not_loaded + late_asset), \`hint\` (one sentence) and \`recent\` (the last
+5: reasonCode, reason, by, at). Undone rejections are left out. How to act on them:
+
+- not_loaded, late_asset: the screenshot was taken too early. Fix the test: wait for network idle,
+  for the element, for images to complete and document.fonts.ready before the screenshot. Do not
+  approve a change on such a screen until you are sure it is not a loading artefact.
+- dynamic_data: fix the data in the test (clock, seed, mocks) or add an ignore area over it.
+- animation: disable animations and transitions for the screenshot, or use retakes.
+- environment: take the screenshots in one pinned browser, OS and viewport.
+- real_bug: a real regression was caught on this screen before: fix the code.
+
 ## Agent reviews (an agent that changed the UI)
 
 1. After the test run: GET ${api}/projects/<slug>/builds?branch=<your branch>&limit=1, then
    GET ${api}/builds/<buildId>/checks?result=changed (and result=new).
-2. For each check read \`diff.changes\` (and \`diff.summary\`); look at the images (\`links\`) when
+2. Read why the build's screens were rejected before: GET ${api}/builds/<buildId>/rejections
+   (see Rejection reasons). A screen rejected as not_loaded or late_asset needs a wait in the test.
+3. For each check read \`diff.changes\` (and \`diff.summary\`); look at the images (\`links\`) when
    unsure. Decide: is every change one you meant to make?
-3. Intended: POST /checks/<id>/approve {"reason":"Moved the submit button below the form, as asked"}.
-   Not intended: POST /checks/<id>/reject {"reason":"…"} and fix the code. Never approve what you
-   did not intend; leave it for a person instead.
-4. A check with a \`groupId\` has the same changes as the group's other checks: judge it once and
-   POST /builds/<buildId>/groups/<groupId>/approve (or /reject) {"reason":"…"} instead of one
-   call per check.
+4. Intended: POST /checks/<id>/approve {"reason":"Moved the submit button below the form, as asked"}.
+   Not intended: POST /checks/<id>/reject {"reasonCode":"real_bug","reason":"…"} and fix the code
+   (or the test, for not_loaded, late_asset, animation, dynamic_data). Never approve what you did
+   not intend; leave it for a person instead.
+5. A check with a \`groupId\` has the same changes as the group's other checks: judge it once and
+   POST /builds/<buildId>/groups/<groupId>/approve {"reason":"…"} (or /reject with a "reasonCode"
+   too; it goes on every member) instead of one call per check.
 
 A project's \`agentReview\` policy decides what a token's review does: \`off\` (it applies),
 \`suggest\` (it is recorded as \`check.suggestion\`; the check stays pending until a person accepts
@@ -124,18 +156,22 @@ or dismisses it: POST /checks/<id>/suggestion/accept or /suggestion/dismiss) or 
 (approvals of a diff up to \`agentMaxDiffPercent\` apply; larger ones and new screenshots become
 suggestions; rejections apply). A group review goes through the policy check by check:
 \`changed\` lists what applied, \`suggested\` what became a suggestion. Unless \`off\`, a token must give a reason (422 reason_required)
-and cannot change areas (403 agent_review_policy). \`build.counts.suggested\` counts open suggestions.
+and a reasonCode to reject (422 reason_code_required), and cannot change areas (403
+agent_review_policy). \`build.counts.suggested\` counts open suggestions.
 A suggestion leaves the commit status pending and sends no check.reviewed webhook; a person
 accepting it does both, with the agent's reason.
 
 MCP: \`npx pixeltwin mcp\` (package @pixeltwin/client) is a Model Context Protocol server on stdio
 with these steps as tools: latest_build, list_changes, get_check, get_check_images (cropped to a
-change), approve_check, reject_check (with a reason), review_group and add_ignore_area. Environment:
+change), approve_check, reject_check (with a reasonCode and a reason), review_group,
+rejection_patterns and add_ignore_area. Environment:
 PIXELTWIN_URL=${publicUrl}, PIXELTWIN_TOKEN (read and review), PIXELTWIN_PROJECT.
 list_changes shows each change group once (its members by name and one representative check) and
 marks checks on flaky screens with a flakyScore (likely noise). Judge a group once via review_group:
 look at the representative (get_check_images), then approve or reject the whole group with one
-reason instead of one approve_check per member.
+reason instead of one approve_check per member. list_changes and get_check carry each screen's
+recent rejections with a hint; read them first. Approving a screen rejected before as not_loaded or
+late_asset answers with a warning.
 
 ## Values
 
@@ -144,11 +180,13 @@ check.review:  none (nothing to review) | pending | approved | rejected | outdat
                of the branch approved this screen; it cannot be approved or rejected: 409 check_outdated)
 build.verdict: empty (no checks) | error | rejected | pending | outdated | passed
 review event:  approved | rejected | reset | suggested_approval | suggested_rejection | suggestion_dismissed
+reasonCode:    not_loaded | late_asset | animation | dynamic_data | environment | real_bug | other
 
 ## Errors
 
 Errors are application/problem+json with a stable \`code\` (e.g. build_finalized, invalid_image,
-validation_failed with \`errors[].path\`, reason_required, agent_review_policy, no_suggestion).
+validation_failed with \`errors[].path\`, reason_required, reason_code_required, agent_review_policy,
+no_suggestion).
 Branch on \`code\`, not on \`detail\`.
 `;
 }

@@ -236,6 +236,7 @@ export class Notifier implements DomainEvents {
         review: {
           action: event.action,
           reason: event.reason,
+          reasonCode: event.reasonCode ?? null,
           actor: { id: event.actor, kind: event.actorKind, name },
         },
       }));

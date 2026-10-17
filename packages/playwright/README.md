@@ -2,7 +2,9 @@
 
 Visual regression checks for [Playwright Test](https://playwright.dev) with
 [pixeltwin](../../README.md): one fixture call per screenshot, one pixeltwin build per test run,
-a summary with review links at the end and an optional CI gate.
+a summary with review links at the end and an optional CI gate. When people keep rejecting a screen
+as not fully loaded (or for a late image, banner or font), the summary ends with a one-line tip:
+`pixeltwin: tip: 'home' was rejected 3× as not fully loaded — wait for it before the screenshot`.
 
 ```sh
 npm install -D @pixeltwin/playwright     # Playwright Test ≥ 1.49

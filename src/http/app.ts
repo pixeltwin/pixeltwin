@@ -20,6 +20,7 @@ import { registerImageRoutes } from './routes/images';
 import { INBOUND_WEBHOOK_PATH, registerIntegrationRoutes } from './routes/integrations';
 import { registerInviteRoutes } from './routes/invites';
 import { registerProjectRoutes } from './routes/projects';
+import { registerRejectionRoutes } from './routes/rejections';
 import { registerSignupRoutes } from './routes/signup';
 import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
@@ -183,6 +184,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerCheckRoutes(app, services);
   registerGroupRoutes(app, services);
   registerFlakyRoutes(app, services);
+  registerRejectionRoutes(app, services);
   registerBaselineRoutes(app, services);
   registerIntegrationRoutes(app, services);
   registerImageRoutes(app, services);

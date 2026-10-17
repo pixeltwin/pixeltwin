@@ -9,6 +9,7 @@ import {
   DELIVERY_STATES,
   PROJECT_ROLES,
   PROVIDERS,
+  REJECT_REASONS,
   REVIEW_ACTIONS,
   SUGGESTIONS,
   USER_ROLES,
@@ -318,6 +319,14 @@ export const AreaSchema = z
   })
   .openapi('Area');
 
+export const RejectReasonSchema = z.enum(REJECT_REASONS).openapi('RejectReason', {
+  description:
+    'Why a check was rejected. not_loaded: captured before the page or its content finished loading; ' +
+    'late_asset: an image, banner, font or ad loaded late; animation: caught mid-animation or transition; ' +
+    'dynamic_data: dates, prices or random content; environment: a browser, OS, rendering or viewport ' +
+    'difference; real_bug: a real regression; other: see the comment.',
+});
+
 export const ReviewEventSchema = z
   .object({
     id: z.string(),
@@ -330,9 +339,69 @@ export const ReviewEventSchema = z
       .openapi({ description: 'user: a person; token: a project token (an agent or CI); auto: auto-approve-new' }),
     actorName: z.string().nullable().openapi({ description: "The token's name when it acted; null for people" }),
     comment: z.string().nullable().openapi({ description: 'The reason given' }),
+    reasonCode: RejectReasonSchema.nullable().openapi({
+      description: "A rejection's (or suggested rejection's) category; null for other actions or when none was given",
+    }),
     createdAt: z.number().int(),
   })
   .openapi('ReviewEvent');
+
+const RejectionCategorySchema = z.union([RejectReasonSchema, z.literal('uncategorized')]).openapi({
+  description: 'A rejection category, or uncategorized for rejections made without one',
+});
+
+export const RejectionSchema = z
+  .object({
+    checkId: z.string(),
+    buildId: z.string(),
+    buildNumber: z.number().int(),
+    branch: z.string(),
+    reasonCode: RejectReasonSchema.nullable(),
+    reason: z.string().nullable().openapi({ description: 'The comment' }),
+    by: z.object({
+      kind: z.enum(ACTOR_KINDS),
+      id: z.string(),
+      name: z.string().nullable().openapi({ description: "A token's name when it rejected; null for people" }),
+    }),
+    at: z.number().int(),
+  })
+  .openapi('Rejection');
+
+export const RejectionPatternsSchema = z
+  .object({
+    total: z.number().int().openapi({ description: 'Rejections looked at (newest first, undone ones left out)' }),
+    categories: z
+      .array(
+        z.object({
+          code: RejectionCategorySchema,
+          count: z.number().int(),
+          screens: z.number().int().openapi({ description: 'Screens rejected with it' }),
+          lastAt: z.number().int(),
+        }),
+      )
+      .openapi({ description: 'Most given first' }),
+    screens: z
+      .array(
+        z.object({
+          snapshotKey: z.string(),
+          name: z.string(),
+          variant: z.record(z.string(), z.string()),
+          checkId: z.string().optional().openapi({ description: "Per build: the screen's check in that build" }),
+          count: z.number().int(),
+          byCategory: z.record(z.string(), z.number().int()).openapi({ description: 'Rejections per category' }),
+          top: RejectReasonSchema.nullable().openapi({ description: 'The category given most often' }),
+          tooEarly: z
+            .number()
+            .int()
+            .openapi({ description: 'Rejections as not_loaded or late_asset: the screenshot was taken too early' }),
+          hint: z.string().openapi({ description: 'What the rejections say and what to do, in one sentence' }),
+          recent: z.array(RejectionSchema).openapi({ description: 'The last rejections, newest first (at most 5)' }),
+          lastAt: z.number().int(),
+        }),
+      )
+      .openapi({ description: 'The most recently rejected first' }),
+  })
+  .openapi('RejectionPatterns');
 
 export const CheckSchema = z
   .object({
@@ -354,6 +423,9 @@ export const CheckSchema = z
     reviewedBy: z.string().nullable(),
     reviewedAt: z.number().int().nullable(),
     reviewComment: z.string().nullable(),
+    reviewReasonCode: RejectReasonSchema.nullable().openapi({
+      description: 'The category of the current rejection; null when not rejected or when none was given',
+    }),
     elementCount: z
       .number()
       .int()
@@ -363,6 +435,7 @@ export const CheckSchema = z
       .object({
         action: z.enum(SUGGESTIONS),
         reason: z.string().nullable(),
+        reasonCode: RejectReasonSchema.nullable().openapi({ description: "A suggested rejection's category" }),
         by: z.object({ kind: z.literal('token'), id: z.string(), name: z.string().nullable() }),
         at: z.number().int(),
       })
@@ -489,6 +562,17 @@ export const ScreenHistorySchema = z
     flaky: FlakySchema.nullable().openapi({
       description: 'Set when the screen is flaky: it flipped at least twice. Null once an ignore area covers it.',
     }),
+    noiseRejections: z
+      .object({
+        count: z.number().int(),
+        byCategory: z.record(z.string(), z.number().int()),
+      })
+      .openapi({
+        description:
+          'Rejections of these checks that call the change noise (not_loaded, late_asset, animation, dynamic_data): ' +
+          "people's word that the screen is unstable. They do not change `flaky.score`, which counts what the " +
+          'screenshots did.',
+      }),
     items: z
       .array(HistoryEntrySchema)
       .openapi({ description: 'The last 20 checks of the screen on the branch, newest first' }),

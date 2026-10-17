@@ -98,7 +98,10 @@ describe('agent review routes', () => {
   test('dismissing a suggestion keeps the check pending', async () => {
     await t.request('PATCH', '/api/v1/projects/web', { as: admin, json: { agentReview: 'suggest' } });
     const { check } = await changedCheck();
-    await t.request('POST', `/api/v1/checks/${check.id}/reject`, { as: agent, json: { reason: 'Looks broken' } });
+    await t.request('POST', `/api/v1/checks/${check.id}/reject`, {
+      as: agent,
+      json: { reason: 'Looks broken', reasonCode: 'real_bug' },
+    });
     const res = await t.request('POST', `/api/v1/checks/${check.id}/suggestion/dismiss`, {
       as: admin,
       json: { reason: 'It is fine' },

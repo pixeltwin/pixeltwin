@@ -56,6 +56,11 @@ describe('documentation routes', () => {
       '/groups/<groupId>/approve',
       'flaky',
       'noisy-screens',
+      '"reasonCode":"not_loaded"',
+      '/builds/<buildId>/rejections',
+      'rejection_patterns',
+      'reason_code_required',
+      'wait for network idle',
     ]) {
       expect(text).toContain(word);
     }

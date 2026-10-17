@@ -109,6 +109,7 @@ describe('review history', () => {
       '0013_change_groups',
       '0014_project_members',
       '0015_mail_outbox',
+      '0016_reject_reasons',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([
@@ -121,6 +122,7 @@ describe('review history', () => {
         actorKind: 'user',
         actorName: null,
         comment: 'broken',
+        reasonCode: null,
         createdAt: reviewedAt ?? 0,
       },
     ]);
@@ -145,6 +147,7 @@ describe('review history', () => {
       '0013_change_groups',
       '0014_project_members',
       '0015_mail_outbox',
+      '0016_reject_reasons',
     ]);
 
     const kind = async (id: string) => (await listReviews(deps, id)).map((e) => [e.actorKind, e.actorName]);

@@ -2,7 +2,7 @@
 
 A [WebdriverIO](https://webdriver.io) service for [pixeltwin](../../README.md): `browser.pixeltwinCheck`
 and `element.pixeltwinCheck`, one pixeltwin build per run, a summary with review links at the end
-and an optional CI gate.
+(with a one-line tip for screens people keep rejecting as not fully loaded) and an optional CI gate.
 
 ```sh
 npm install -D @pixeltwin/wdio     # WebdriverIO ≥ 8

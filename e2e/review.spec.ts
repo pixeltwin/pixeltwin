@@ -3,6 +3,8 @@ import { expect, open, test } from './fixtures';
 
 interface CheckJson {
   review: string;
+  reviewReasonCode?: string | null;
+  reviewComment?: string | null;
 }
 
 test('a reviewer goes through a build with the keyboard, without page loads', async ({
@@ -82,7 +84,8 @@ test('one toast at a time, dropping in at the top centre, in the colour of what 
     expect(apart, (await button.getAttribute('class')) ?? '').toBe(true);
   }
 
-  await page.keyboard.press('r');
+  // Shift+R: the one-key reject, without a reason.
+  await page.keyboard.press('Shift+R');
   const rejected = page.locator('.toast.tone-danger');
   await expect(rejected).toHaveCount(1);
   // The new toast replaced the first one, at the same size.
@@ -252,12 +255,61 @@ test('zooming keeps the toolbar still: Ignore and Compare do not move as the zoo
   }
 });
 
-test('R rejects the check and moves on', async ({ reviewerPage: page, seeded }) => {
+test('R asks why: 1–7 pick a category, a letter starts the comment, Enter rejects and moves on', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
   await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
   await page.keyboard.press('r');
-  await expect(page.locator('.toast').last()).toContainText('Rejected home');
+  const popover = page.locator('.reject-popover');
+  await expect(popover).toBeVisible();
+  await expect(popover.locator('.reason-chip')).toHaveCount(7);
+  // Anchored to the Reject button, above the action bar: a popover, not a page.
+  const button = await page.locator('.reject-menu > summary').boundingBox();
+  const box = await popover.boundingBox();
+  if (!button || !box) throw new Error('no popover');
+  expect(box.y + box.height).toBeLessThanOrEqual(button.y);
+  // 3 picks animation, 2 then late asset (one at a time); A types into the comment, not approve.
+  await page.keyboard.press('3');
+  await page.keyboard.press('2');
+  await expect(popover.locator('input[value="late_asset"]')).toBeChecked();
+  await expect(popover.locator('input[value="animation"]')).not.toBeChecked();
+  await page.keyboard.type('a banner was blank');
+  await expect(popover.locator('[data-reason-comment]')).toHaveValue('a banner was blank');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.toast')).toHaveCount(1);
+  await expect(page.locator('.toast')).toContainText('Rejected home (late asset)');
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
-  expect((await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).review).toBe('rejected');
+  expect(await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).toMatchObject({
+    review: 'rejected',
+    reviewReasonCode: 'late_asset',
+    reviewComment: 'a banner was blank',
+  });
+});
+
+test('Esc closes the reject popover and leaves the check; Shift+R rejects without a reason', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=pending`);
+  await page.keyboard.press('r');
+  await page.keyboard.press('1');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.reject-popover')).toBeHidden();
+  // Esc closed the popover only: still on the check, nothing reviewed, the category forgotten.
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
+  expect((await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).review).toBe('pending');
+  await page.keyboard.press('r');
+  await expect(page.locator('.reject-popover input[value="not_loaded"]')).not.toBeChecked();
+  await page.keyboard.press('Escape');
+
+  await page.keyboard.press('Shift+R');
+  await expect(page.locator('.toast')).toContainText('Rejected home');
+  await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}`));
+  expect(await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.changed}`)).toMatchObject({
+    review: 'rejected',
+    reviewReasonCode: null,
+  });
 });
 
 test('arrow keys move between checks; Shift+arrows move the slider', async ({ reviewerPage: page, seeded }) => {
@@ -324,8 +376,20 @@ test('without JavaScript the same page reviews with plain forms', async ({ brows
   await page.getByRole('button', { name: /Approve/ }).click();
   await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.fresh}\\?filter=pending&done=approved`));
   await expect(page.locator('.flash.notice')).toHaveText('Approved.');
-  await page.getByRole('button', { name: /Reject/ }).click();
+  // Reject unfolds the same popover; the form posts the category and the comment.
+  await page.locator('.reject-menu > summary').click();
+  await page.getByText('Dynamic data').click();
+  await page.getByPlaceholder('e.g. the banner had not loaded yet').fill('the date changed');
+  await page
+    .locator('.reject-popover')
+    .getByRole('button', { name: /Reject/ })
+    .click();
   await expect(page).toHaveURL(new RegExp(`/ui/builds/${seeded.buildId}\\?done=rejected`));
+  expect(await seeded.ci.call<CheckJson>('GET', `/checks/${seeded.fresh}`)).toMatchObject({
+    review: 'rejected',
+    reviewReasonCode: 'dynamic_data',
+    reviewComment: 'the date changed',
+  });
   await context.close();
 });
 

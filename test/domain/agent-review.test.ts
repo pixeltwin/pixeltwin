@@ -91,6 +91,7 @@ describe('agent review policy', () => {
     expect(suggested.suggestion).toEqual({
       action: 'approve',
       reason: 'The button moved 4 px: intended',
+      reasonCode: null,
       by: { kind: 'token', id: 'tok_agent', name: 'claude' },
       at: expect.any(Number),
     });
@@ -110,15 +111,21 @@ describe('agent review policy', () => {
     await policy('suggest');
     const one = (await changed(small, 'one')).check;
     const two = (await changed(small, 'two')).check;
-    await reviewCheck(deps, one.id, 'reject', agent, { reason: 'The logo is cut off' });
+    await reviewCheck(deps, one.id, 'reject', agent, { reason: 'The logo is cut off', reasonCode: 'late_asset' });
     await reviewCheck(deps, two.id, 'approve', agent, { reason: 'Intended' });
+    expect((await getCheck(deps, one.id)).suggestion?.reasonCode).toBe('late_asset');
 
     const rejected = await acceptSuggestion(deps, one.id, 'usr_1');
-    expect(rejected).toMatchObject({ review: 'rejected', reviewedBy: 'usr_1', reviewComment: 'The logo is cut off' });
+    expect(rejected).toMatchObject({
+      review: 'rejected',
+      reviewedBy: 'usr_1',
+      reviewComment: 'The logo is cut off',
+      reviewReasonCode: 'late_asset',
+    });
     expect(rejected.suggestion).toBeNull();
-    expect((await listReviews(deps, one.id)).map((e) => [e.action, e.actorKind])).toEqual([
-      ['rejected', 'user'],
-      ['suggested_rejection', 'token'],
+    expect((await listReviews(deps, one.id)).map((e) => [e.action, e.actorKind, e.reasonCode])).toEqual([
+      ['rejected', 'user', 'late_asset'],
+      ['suggested_rejection', 'token', 'late_asset'],
     ]);
 
     expect((await appError(acceptSuggestion(deps, two.id, agent))).status).toBe(403);
@@ -144,7 +151,11 @@ describe('agent review policy', () => {
     expect((await reviewCheck(deps, tiny.id, 'approve', agent, why)).outcome).toBe('applied');
     expect((await reviewCheck(deps, big.id, 'approve', agent, why)).outcome).toBe('suggested');
     expect((await reviewCheck(deps, fresh.id, 'approve', agent, why)).outcome).toBe('suggested');
-    expect((await reviewCheck(deps, bad.id, 'reject', agent, why)).outcome).toBe('applied');
+    // Rejecting under a policy also takes a category.
+    expect((await appError(reviewCheck(deps, bad.id, 'reject', agent, why))).code).toBe('reason_code_required');
+    expect((await reviewCheck(deps, bad.id, 'reject', agent, { ...why, reasonCode: 'real_bug' })).outcome).toBe(
+      'applied',
+    );
     expect((await appError(reviewCheck(deps, bad.id, 'approve', agent))).code).toBe('reason_required');
   });
 

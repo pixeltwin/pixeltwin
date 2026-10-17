@@ -125,6 +125,7 @@ describe('change groups and pull request notifications', () => {
       expect(p.review).toEqual({
         action: 'approved',
         reason: 'New logo.',
+        reasonCode: null,
         actor: { id: 'usr_1', kind: 'user', name: 'a deleted account' },
       });
     }
@@ -177,6 +178,7 @@ describe('change groups and pull request notifications', () => {
     expect(reviewed[0]?.review).toEqual({
       action: 'approved',
       reason: REASON,
+      reasonCode: null,
       actor: { id: AGENT.id, kind: 'token', name: 'token “claude”' },
     });
     expect(events()).not.toContain('build.verdict_changed');

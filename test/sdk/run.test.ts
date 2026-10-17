@@ -199,6 +199,59 @@ describe('settings', () => {
     expect((await summaryLines(client, untimed)).join('\n')).not.toContain(' over ');
   });
 
+  test('the summary ends with a tip for screens people keep rejecting as captured too early', async () => {
+    const counts = {
+      total: 3,
+      result: { unchanged: 3, changed: 0, new: 0, error: 0 },
+      review: { none: 3, pending: 0, approved: 0, rejected: 0, outdated: 0 },
+      autoApproved: 0,
+    };
+    const build = { id: 'bld_1', number: 7, branch: 'main', verdict: 'passed', counts } as unknown as Build;
+    const screen = (name: string, byCategory: Record<string, number>, tooEarly: number) => ({
+      snapshotKey: name,
+      name,
+      variant: name === 'home' ? { browser: 'chromium' } : {},
+      count: tooEarly,
+      byCategory,
+      top: null,
+      tooEarly,
+      hint: '',
+      recent: [],
+      lastAt: 0,
+    });
+    let requests = 0;
+    const client = {
+      buildUrl: (id: string) => `http://pt/ui/builds/${id}`,
+      buildRejections: async () => {
+        requests += 1;
+        return {
+          total: 6,
+          categories: [],
+          screens: [
+            screen('home', { not_loaded: 3 }, 3),
+            screen('hero', { late_asset: 2, not_loaded: 1 }, 3),
+            screen('cart', { not_loaded: 1, real_bug: 4 }, 1),
+          ],
+        };
+      },
+    } as unknown as PixeltwinClient;
+    const lines = await summaryLines(client, build);
+    expect(requests).toBe(1);
+    expect(lines.filter((l) => l.includes('tip:'))).toEqual([
+      "pixeltwin: tip: 'home' (chromium) was rejected 3× as not fully loaded — wait for it before the screenshot",
+      "pixeltwin: tip: 'hero' was rejected 2× for an image, banner or font that loaded late (and 1× as not fully loaded) — wait for it before the screenshot",
+    ]);
+    expect(lines.at(-1)).toBe('pixeltwin: review at http://pt/ui/builds/bld_1');
+    // An older server (or no read scope): no tips, and the summary still ends with the link.
+    const older = {
+      buildUrl: client.buildUrl,
+      buildRejections: async () => {
+        throw new PixeltwinError({ status: 404, code: 'not_found', detail: 'Not found', method: 'GET', path: '/' });
+      },
+    } as unknown as PixeltwinClient;
+    expect((await summaryLines(older, build)).join('\n')).not.toContain('tip:');
+  });
+
   test('a parallel build: part count and part id from options or the environment', () => {
     expect(resolveSettings({}, {})).toMatchObject({ parallelTotal: undefined, parallelPart: undefined });
     const env = { PIXELTWIN_PARALLEL_TOTAL: '2', PIXELTWIN_PARALLEL_PART: 'farm1' };
@@ -314,6 +367,29 @@ describe('run lifecycle against a real server', () => {
     const done = await finishRun(settings, nextId, { env, log });
     expect(done.finalized).toBe(true);
     expect(done.build.verdict).toBe('passed');
+  });
+
+  test('finish prints a tip for a screen rejected again and again as not loaded', async () => {
+    const banner = (x: number) =>
+      makePng(120, 80, WHITE, [{ x, y: 40, width: 30, height: 20, color: [200, 0, 0, 255] }]);
+    const first = await client.openBuild('run', { branch: 'tips' });
+    await client.postCheck(first.id, { name: 'banner', image: banner(10) });
+    await client.approveBuild(first.id);
+    for (const x of [40, 70]) {
+      const build = await client.openBuild('run', { branch: 'tips' });
+      const check = await client.postCheck(build.id, { name: 'banner', image: banner(x) });
+      await client.review(check.id, 'reject', { reasonCode: 'not_loaded', reason: 'The banner was still loading' });
+    }
+    const env: Record<string, string | undefined> = {};
+    const lines: string[] = [];
+    const settings = settingsFor(env, { branch: 'tips' });
+    const started = await startRun(settings, { env, log: (line) => lines.push(line) });
+    await client.postCheck(started.build?.id ?? '', { name: 'banner', image: banner(85) });
+    await finishRun(settings, started.build?.id ?? '', { env, log: (line) => lines.push(line) });
+    started.restoreEnv();
+    expect(lines).toContain(
+      "pixeltwin: tip: 'banner' was rejected 2× as not fully loaded — wait for it before the screenshot",
+    );
   });
 
   test('a shard leaves the build open; the next shard finds it by the CI run id', async () => {

@@ -35,7 +35,11 @@ import queue from './client/queue.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import rank from './client/rank.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import reasons from './client/reasons.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import rects from './client/rects.ts' with { type: 'text' };
+// @ts-expect-error -- see above
+import reject from './client/reject.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import review from './client/review.ts' with { type: 'text' };
 // @ts-expect-error -- see above
@@ -72,7 +76,9 @@ const SOURCES: Record<string, string> = {
   promote,
   queue,
   rank,
+  reasons,
   rects,
+  reject,
   review,
   select,
   swap,

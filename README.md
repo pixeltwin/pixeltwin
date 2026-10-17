@@ -7,7 +7,8 @@ Self-hosted visual regression testing with an API built for CI and AI agents.
 ![Branches of a project: main passed, a feature branch waiting for review](docs/screenshots/branches-light.png)
 
 Review a build with the keyboard: Side, Slider, Onion and Diff views, zoom to a changed region,
-<kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>U</kbd> undo, <kbd>→</kbd>/<kbd>←</kbd> (or <kbd>J</kbd>/<kbd>K</kbd>)
+<kbd>A</kbd> approve, <kbd>R</kbd> reject (it asks why: <kbd>1</kbd>–<kbd>7</kbd> pick the reason, a comment, <kbd>Enter</kbd>;
+<kbd>Shift</kbd>+<kbd>R</kbd> rejects without one), <kbd>U</kbd> undo, <kbd>→</kbd>/<kbd>←</kbd> (or <kbd>J</kbd>/<kbd>K</kbd>)
 next and previous, <kbd>?</kbd> for every shortcut. The build page shows a page of cards that fits
 the window (no scrolling on a desktop): <kbd>[</kbd>/<kbd>]</kbd> change the page, <kbd>J</kbd>/<kbd>K</kbd> and the
 arrows move between cards and across pages, and thumbnails are small copies made on the server.
@@ -373,12 +374,19 @@ element by element, look at the screenshots, and approve what it meant to do wit
 tools: `latest_build` (by branch; the checked-out one by default), `list_changes` (changed and new
 checks with their summary and element changes), `get_check`, `get_check_images` (baseline, new
 and diff as images, cropped to a change to save tokens), `approve_check` and `reject_check` (with
-a `reason`; the answer says whether it applied or was recorded as a suggestion), `review_group`
-and `add_ignore_area`. A header changed on 40 screens is one change group: `list_changes` shows it
+a `reason`, and rejecting a `reasonCode`; the answer says whether it applied or was recorded as a
+suggestion), `review_group`, `rejection_patterns` and `add_ignore_area`. A header changed on 40 screens is one change group: `list_changes` shows it
 once, with its members by name and one representative check, and the agent judges it once and
 decides all 40 with `review_group` (what applied, what became a suggestion, what was skipped, and
 the build's new verdict). Checks on flaky screens carry a `flakyScore`, so the agent treats their
-changes as likely noise; `get_check` adds the flips and the unstable area. For Claude Code, a
+changes as likely noise; `get_check` adds the flips and the unstable area. Every rejection keeps
+its reason (`not_loaded`, `late_asset`, `animation`, `dynamic_data`, `environment`, `real_bug`,
+`other`, and a comment), and agents learn from them: `list_changes` and `get_check` carry the
+screen's recent rejections with a hint ("rejected 3× as not_loaded: likely captured before the page
+finished loading — wait for network idle or for the element before the screenshot"),
+`rejection_patterns` sums them up, and approving a screen often rejected as not loaded warns that
+the change may be a loading artefact. The SDKs end a run with a one-line tip for such screens. For
+Claude Code, a
 `.mcp.json` in the repository:
 
 ```json

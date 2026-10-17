@@ -14,6 +14,7 @@ import * as m0012 from './0012_agent_review';
 import * as m0013 from './0013_change_groups';
 import * as m0014 from './0014_project_members';
 import * as m0015 from './0015_mail_outbox';
+import * as m0016 from './0016_reject_reasons';
 
 // Static list: a compiled binary has no migrations directory to scan.
 const migrations: Record<string, Migration> = {
@@ -32,6 +33,7 @@ const migrations: Record<string, Migration> = {
   '0013_change_groups': m0013,
   '0014_project_members': m0014,
   '0015_mail_outbox': m0015,
+  '0016_reject_reasons': m0016,
 };
 
 export const migrationProvider: MigrationProvider = {

@@ -484,20 +484,25 @@ body.focus main {
 }
 .review-form {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: 1;
+  margin: 0;
 }
 .review-buttons {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+}
+/* The Reject popover ends where the Reject button ends: the buttons sit at the right edge. */
+.review-buttons .reject-popover {
+  right: 0;
+  left: auto;
 }
 .outdated-note {
   margin: 0;
   color: var(--text-muted);
 }
 .review-buttons button,
+.review-buttons summary,
 .review-buttons .button {
   min-height: 38px;
   padding: 0 var(--space-4);
@@ -522,14 +527,20 @@ body.focus main {
   .review-title .muted {
     display: none;
   }
-  .review-form {
-    flex-wrap: wrap;
-  }
   .review-buttons {
     width: 100%;
   }
   .review-buttons > * {
     flex: 1;
+  }
+  .review-buttons summary,
+  .review-form button {
+    width: 100%;
+  }
+  /* Reject is the first button on a phone: its popover opens from the left edge. */
+  .review-buttons .reject-popover {
+    right: auto;
+    left: 0;
   }
 }
 .stage.magnified .canvas img {

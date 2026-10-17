@@ -161,6 +161,8 @@ describe('pixeltwin mcp', () => {
     });
     expect(init.result.instructions).toContain('approve_check');
     expect(init.result.instructions).toContain('review_group');
+    expect(init.result.instructions).toContain('rejection_patterns');
+    expect(init.result.instructions).toContain('not_loaded or late_asset');
     mcp.send(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
     expect((await mcp.call('ping')).result).toEqual({});
 
@@ -174,6 +176,7 @@ describe('pixeltwin mcp', () => {
       'approve_check',
       'reject_check',
       'review_group',
+      'rejection_patterns',
       'add_ignore_area',
     ]);
     for (const t of result.tools) {
@@ -354,13 +357,16 @@ describe('pixeltwin mcp with change groups and flaky screens', () => {
     expect(flaky.flaky).toEqual({ score: 0.67, flips: 2, unstableArea: { x: 90, y: 4, width: 20, height: 8 } });
   }, 60_000);
 
-  test('review_group needs a reason', async () => {
+  test('review_group needs a reason, and a reasonCode to reject', async () => {
     const { buildId, groupId } = await headerBuild('no-reason');
     const refused = await tool('review_group', { buildId, groupId, action: 'approve' }, groups);
     expect(refused.isError).toBe(true);
     expect(texts(refused)[0]).toBe('"reason" is required.');
     const blank = await tool('review_group', { buildId, groupId, action: 'approve', reason: '  ' }, groups);
     expect(blank.isError).toBe(true);
+    const noCode = await tool('review_group', { buildId, groupId, action: 'reject', reason: 'Broken' }, groups);
+    expect(noCode.isError).toBe(true);
+    expect(texts(noCode)[0]).toStartWith('"reasonCode" is required to reject');
   }, 60_000);
 
   test('under "suggest" the group review is a suggestion for every member', async () => {
@@ -426,6 +432,152 @@ describe('pixeltwin mcp with change groups and flaky screens', () => {
       action: 'approved',
       actorKind: 'token',
       comment: 'The wider logo is the new brand.',
+    });
+  }, 60_000);
+});
+
+describe('pixeltwin mcp and the reasons screens were rejected', () => {
+  let rpc: Rpc;
+  let rc: PixeltwinClient;
+
+  /** A build on `branch` where `name` changed again (its logo grows by `step` each time). */
+  let step = 0;
+  const changedAgain = async (name: string, branch = 'main') => {
+    step += 1;
+    const build = await rc.openBuild('learn', { branch });
+    const check = await rc.postCheck(build.id, { name, image: headerPage(30 + step * 4, 100) });
+    return { buildId: build.id, checkId: check.id };
+  };
+  const reject = (checkId: string, reasonCode: string, reason: string) =>
+    fetch(`${server.url}/api/v1/checks/${checkId}/reject`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: server.cookie, origin: server.url },
+      body: JSON.stringify({ reasonCode, reason }),
+    });
+
+  beforeAll(async () => {
+    const token = await server.newProject('learn');
+    rc = new PixeltwinClient({ url: server.url, token });
+    rpc = startMcp({ PIXELTWIN_URL: server.url, PIXELTWIN_TOKEN: token, PIXELTWIN_PROJECT: 'learn' });
+    const first = await rc.openBuild('learn', { branch: 'main' });
+    for (const name of ['home', 'pricing']) await rc.postCheck(first.id, { name, image: headerPage(30, 100) });
+    const approved = await fetch(`${server.url}/api/v1/builds/${first.id}/approve`, {
+      method: 'POST',
+      headers: { cookie: server.cookie, origin: server.url },
+    });
+    expect(approved.status).toBe(200);
+    // A person rejected "home" three times as not loaded, and "pricing" once for its random prices.
+    for (const reason of ['Spinner still showing', 'Hero image blank', 'Still loading']) {
+      const { checkId } = await changedAgain('home');
+      expect((await reject(checkId, 'not_loaded', reason)).status).toBe(200);
+    }
+    const prices = await changedAgain('pricing');
+    expect((await reject(prices.checkId, 'dynamic_data', 'Prices are random')).status).toBe(200);
+  }, 60_000);
+
+  afterAll(async () => {
+    await rpc?.stop();
+  });
+
+  test("list_changes and get_check carry the screen's recent rejections and a hint", async () => {
+    const { buildId, checkId } = await changedAgain('home');
+    const listed = await tool('list_changes', { buildId }, rpc);
+    expect(texts(listed)[0]).toContain('1 check on screens rejected before');
+    const [item] = lastJson(listed).checks;
+    expect(item.rejections).toMatchObject({
+      count: 3,
+      byCategory: { not_loaded: 3 },
+      hint: 'Rejected 3× as not_loaded: likely captured before the page finished loading — wait for network idle or for the element before the screenshot.',
+    });
+    expect(item.rejections.recent).toHaveLength(3);
+    expect(item.rejections.recent[0]).toMatchObject({
+      reasonCode: 'not_loaded',
+      reason: 'Still loading',
+      by: expect.stringMatching(/^person \(usr_/),
+      build: expect.stringMatching(/^#\d+ on main$/),
+    });
+
+    const detail = lastJson(await tool('get_check', { checkId }, rpc));
+    expect(detail.rejections.count).toBe(3);
+    expect(detail.rejections.recent.map((r: { reason: string }) => r.reason)).toEqual([
+      'Still loading',
+      'Hero image blank',
+      'Spinner still showing',
+    ]);
+  }, 60_000);
+
+  test('rejection_patterns sums the reasons up by category and by screen', async () => {
+    const all = await tool('rejection_patterns', {}, rpc);
+    expect(texts(all)[0]).toStartWith(
+      '4 rejections on every branch on 2 screens; most often 3× not_loaded, 1× dynamic_data.',
+    );
+    expect(texts(all)[0]).toContain('home: Rejected 3× as not_loaded');
+    expect(texts(all)[0]).toContain('pricing: Rejected 1× as dynamic_data');
+    const data = lastJson(all);
+    expect(data.categories[0]).toMatchObject({
+      code: 'not_loaded',
+      count: 3,
+      screens: 1,
+      act: 'wait for network idle or for the element before the screenshot',
+    });
+    expect(data.screens.map((sc: { name: string; count: number }) => [sc.name, sc.count])).toEqual([
+      ['pricing', 1],
+      ['home', 3],
+    ]);
+    const { checkId } = await changedAgain('pricing');
+    const one = lastJson(await tool('rejection_patterns', { checkId }, rpc));
+    expect(one.screens.map((sc: { name: string }) => sc.name)).toEqual(['pricing']);
+    const none = await tool('rejection_patterns', { branch: 'feature/none' }, rpc);
+    expect(texts(none)).toEqual(['No rejections on feature/none.']);
+  }, 60_000);
+
+  test('approving a group warns about its members rejected as not loaded', async () => {
+    step += 1;
+    const build = await rc.openBuild('learn', { branch: 'main' });
+    for (const name of ['home', 'pricing'])
+      await rc.postCheck(build.id, { name, image: headerPage(30 + step * 4, 100) });
+    const [group] = lastJson(await tool('list_changes', { buildId: build.id }, rpc)).groups;
+    expect(group.members.find((m: { name: string }) => m.name === 'home').rejectedBefore).toStartWith(
+      'Rejected 3× as not_loaded',
+    );
+    const done = await tool(
+      'review_group',
+      { buildId: build.id, groupId: group.groupId, action: 'approve', reason: 'The wider logo is intended.' },
+      rpc,
+    );
+    expect(texts(done)[0]).toStartWith('Applied: 2 checks approved.');
+    expect(texts(done)[1]).toBe(
+      'Careful: 1 screen of this group was rejected before as captured too early (home: 3×); make sure the change is not a loading artefact before you rely on this approval.',
+    );
+  }, 60_000);
+
+  test('rejecting needs a reasonCode; approving a screen rejected as not loaded warns', async () => {
+    const { checkId } = await changedAgain('home');
+    const missing = await tool('reject_check', { checkId, reason: 'Looks wrong' }, rpc);
+    expect(missing.isError).toBe(true);
+    expect(texts(missing)[0]).toStartWith('"reasonCode" is required to reject');
+    const wrong = await tool('reject_check', { checkId, reason: 'Looks wrong', reasonCode: 'slow' }, rpc);
+    expect(wrong.isError).toBe(true);
+    expect((await rc.getCheck(checkId)).review).toBe('pending');
+
+    const approved = await tool('approve_check', { checkId, reason: 'The wider logo is intended.' }, rpc);
+    expect(texts(approved)[0]).toStartWith('Applied: the check is approved.');
+    expect(texts(approved)[1]).toStartWith(
+      'Careful: this screen was rejected before as captured too early (3× not_loaded); make sure the change is not a loading artefact',
+    );
+
+    const next = await changedAgain('pricing');
+    const rejected = await tool(
+      'reject_check',
+      { checkId: next.checkId, reason: 'The price changed again', reasonCode: 'dynamic_data' },
+      rpc,
+    );
+    expect(texts(rejected)[0]).toStartWith('Applied: the check is rejected.');
+    expect((await rc.listReviews(next.checkId))[0]).toMatchObject({
+      action: 'rejected',
+      actorKind: 'token',
+      reasonCode: 'dynamic_data',
+      comment: 'The price changed again',
     });
   }, 60_000);
 });

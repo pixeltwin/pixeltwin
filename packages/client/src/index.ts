@@ -15,6 +15,7 @@ export {
   PixeltwinNetworkError,
 } from './errors.js';
 export { type CssToPixels, cssBoxToPixels, pngSize, toPixelRect } from './png.js';
+export { isRejectReason, REJECT_REASON_INFO, REJECT_REASONS, type RejectReason, TOO_EARLY } from './reasons.js';
 export { postWithRetakes, type RetakeOptions } from './retake.js';
 export {
   CheckTimer,
@@ -44,9 +45,13 @@ export type {
   PageElement,
   PromotionCandidate,
   Rect,
+  Rejection,
+  RejectionCategory,
+  RejectionPatterns,
   ReviewEvent,
   ReviewOutcome,
   ScreenHistory,
+  ScreenRejections,
   Suggestion,
   Variant,
   Verdict,
