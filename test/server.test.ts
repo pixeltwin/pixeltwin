@@ -288,6 +288,8 @@ describe('command line', () => {
       const port = new URL(server.url).port;
       expect(await main(['healthcheck'], { DATA_DIR: dir, PORT: port }, out)).toBe(0);
       expect(lines.at(-1)).toBe('ok');
+      // `helm test` checks the Service from another pod: the URL is given, PORT does not matter.
+      expect(await main(['healthcheck', `${server.url}/`], { DATA_DIR: dir, PORT: '1' }, out)).toBe(0);
     } finally {
       await server.stop();
     }

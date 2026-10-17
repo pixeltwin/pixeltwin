@@ -11,7 +11,8 @@ const USAGE = `Usage: pixeltwin <command>
 Commands:
   serve                          Start the server (default)
   migrate                        Apply database migrations and exit
-  healthcheck                    Exit 0 when the server on PORT answers /healthz (for Docker)
+  healthcheck [url]              Exit 0 when the server on PORT (or at url, e.g. a Kubernetes
+                                 Service) answers /healthz; for Docker and \`helm test\`
   admin reset-password <email>   Give a user a new random password and print it
 
 Configuration comes from environment variables; see the README.`;
@@ -70,8 +71,9 @@ export async function main(
         return null;
       }
       case 'healthcheck': {
+        const base = (args[0] ?? `http://127.0.0.1:${config.port}`).replace(/\/+$/, '');
         try {
-          const res = await fetch(`http://127.0.0.1:${config.port}/healthz`, { signal: AbortSignal.timeout(3000) });
+          const res = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(3000) });
           out.log(res.ok ? 'ok' : `unhealthy: HTTP ${res.status}`);
           return res.ok ? 0 : 1;
         } catch (err) {
