@@ -58,6 +58,7 @@ describe('database', () => {
       agentReview: 'off',
       agentMaxDiffPercent: 1,
       visibleToAll: 0,
+      reviewWithinTolerance: 0,
     });
     expect(typeof row.createdAt).toBe('number');
   });
@@ -130,6 +131,7 @@ describe('openDatabase', () => {
         '0015_mail_outbox',
         '0016_reject_reasons',
         '0017_insights',
+        '0019_within_tolerance',
       ]);
       await handle.close();
     } finally {

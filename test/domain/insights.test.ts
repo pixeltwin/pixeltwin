@@ -244,8 +244,8 @@ describe('insights backfill', () => {
     const handle = openDatabase('sqlite::memory:');
     try {
       const migrator = new Migrator({ db: handle.db, provider: migrationProvider });
-      const { error } = await migrator.migrateTo('0016_reject_reasons');
-      expect(error).toBeUndefined();
+      // Seeded with today's code, then taken back to before insights (later migrations undone).
+      await migrateToLatest(handle.db);
       const deps = {
         db: handle.db,
         storage: new MemoryStorage(),
@@ -256,6 +256,8 @@ describe('insights backfill', () => {
       await seedBaseline(deps as TestDeps, project, white, { name: 'about' });
       const buildId = await openBuild(deps as TestDeps);
       await submit(deps as TestDeps, buildId, square(5), { name: 'about' });
+      const { error } = await migrator.migrateTo('0016_reject_reasons');
+      expect(error).toBeUndefined();
       // Finalized before insights existed (finalizeBuild would mark it in a table not there yet).
       await handle.db
         .updateTable('builds')

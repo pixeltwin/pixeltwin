@@ -1,7 +1,9 @@
+import type { ExpressionBuilder } from 'kysely';
 import type { Db } from '../db/database';
 import type {
   ActorKind,
   CheckReview,
+  DB,
   Project,
   RejectReason,
   ReviewAction,
@@ -87,11 +89,21 @@ async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): P
   return new AppError(
     'check_not_reviewable',
     409,
-    `Check ${checkId} has review state "${check.review}"; expected ${allowed.map((s) => `"${s}"`).join(' or ')}.`,
+    `Check ${checkId} has review state "${check.review}"; expected ${allowed.map((s) => `"${s}"`).join(' or ')}, or a check that passed within the tolerance.`,
   );
 }
 
 const APPROVABLE: CheckReview[] = ['pending', 'rejected'];
+
+/**
+ * The checks in one of these review states, or that passed within the tolerance without a review:
+ * a person may still approve such a check (its screenshot becomes the baseline, so the drift does
+ * not add up) or reject it as a real change.
+ */
+function reviewableIn(states: CheckReview[]) {
+  return (eb: ExpressionBuilder<DB, 'checks'>) =>
+    eb.or([eb('review', 'in', states), eb.and([eb('review', '=', 'none'), eb('withinTolerance', '=', 1)])]);
+}
 
 /** The check's screen (project, snapshot, branch) and build number; undefined when it does not exist. */
 async function screenOf(db: Db, checkId: string) {
@@ -189,7 +201,7 @@ export async function tryApprove(
       updatedAt: now,
     })
     .where('id', '=', checkId)
-    .where('review', 'in', APPROVABLE)
+    .where(reviewableIn(APPROVABLE))
     .executeTakeFirst();
   if (Number(updated.numUpdatedRows) === 0) return { approved: false, error: null };
 
@@ -304,7 +316,7 @@ export async function tryReject(
       updatedAt: now,
     })
     .where('id', '=', checkId)
-    .where('review', '=', 'pending')
+    .where(reviewableIn(['pending']))
     .executeTakeFirst();
   if (Number(updated.numUpdatedRows) === 0) return { rejected: false, error: null };
   const { projectId, buildId } = await tx
@@ -345,7 +357,8 @@ export async function rejectCheck(
 
 /** The diff percent a token's approval is measured by; null for a new screenshot (nothing to measure). */
 function diffPercent(check: CheckView): number | null {
-  return check.diff && 'percent' in check.diff && check.result === 'changed' ? check.diff.percent : null;
+  const measured = check.result === 'changed' || check.withinTolerance;
+  return check.diff && 'percent' in check.diff && measured ? check.diff.percent : null;
 }
 
 /**
@@ -413,7 +426,7 @@ export async function trySuggest(
       updatedAt: now,
     })
     .where('id', '=', checkId)
-    .where('review', 'in', suggestable(action))
+    .where(reviewableIn(suggestable(action)))
     .executeTakeFirst();
   if (Number(updated.numUpdatedRows) === 0) return { suggested: false, error: null };
   const { projectId } = await tx
@@ -556,7 +569,8 @@ export async function dismissSuggestion(
 const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
 
 /**
- * UI spec §3.5, undo: returns an approved or rejected check to pending. Undoing an approval also
+ * UI spec §3.5, undo: returns an approved or rejected check to pending (one that had passed within
+ * the tolerance to passed, unless it had to wait for review). Undoing an approval also
  * deletes the baseline it appended, but only while that baseline is still the current one for
  * its snapshot and branch and no later check was compared with it; otherwise the call fails with
  * 409 review_not_resettable. Allowed on finalized builds, like approve.
@@ -576,7 +590,16 @@ export async function resetIn(tx: Db, checkId: string, who: ReviewActor): Promis
   const check = await tx
     .selectFrom('checks')
     .innerJoin('builds', 'builds.id', 'checks.buildId')
-    .select(['checks.review', 'checks.projectId', 'checks.buildId', 'checks.snapshotKey', 'builds.branch'])
+    .select([
+      'checks.review',
+      'checks.projectId',
+      'checks.buildId',
+      'checks.snapshotKey',
+      'checks.result',
+      'checks.withinTolerance',
+      'checks.reviewWithinTolerance',
+      'builds.branch',
+    ])
     .where('checks.id', '=', checkId)
     .executeTakeFirst();
   if (!check || !RESETTABLE.includes(check.review)) throw await notReviewable(tx, checkId, RESETTABLE);
@@ -609,10 +632,13 @@ export async function resetIn(tx: Db, checkId: string, who: ReviewActor): Promis
     // The older checks this approval outdated wait for review again.
     changed.push(...(await restoreOutdated(tx, checkId)));
   }
+  // Back to where it started: a check that passed within the tolerance passes again.
+  const passedAlone =
+    check.result === 'unchanged' && Number(check.withinTolerance) === 1 && Number(check.reviewWithinTolerance) === 0;
   const updated = await tx
     .updateTable('checks')
     .set({
-      review: 'pending',
+      review: passedAlone ? 'none' : 'pending',
       reviewedBy: null,
       reviewedAt: null,
       reviewComment: null,

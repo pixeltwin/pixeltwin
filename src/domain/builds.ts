@@ -64,6 +64,7 @@ export async function countChecks(deps: DbDeps, buildIds: string[]): Promise<Map
       (eb) => eb.fn.countAll<number>().as('n'),
       (eb) => eb.fn.sum<number>(eb.case().when('reviewedBy', '=', AUTO_APPROVER).then(1).else(0).end()).as('auto'),
       (eb) => eb.fn.sum<number>(eb.case().when('suggestion', 'is not', null).then(1).else(0).end()).as('suggested'),
+      (eb) => eb.fn.sum<number>('withinTolerance').as('tolerance'),
     ])
     .where('buildId', 'in', buildIds)
     .groupBy(['buildId', 'result', 'review'])
@@ -77,6 +78,9 @@ export async function countChecks(deps: DbDeps, buildIds: string[]): Promise<Map
     c.review[row.review] += n;
     if (row.review === 'approved') c.autoApproved += Number(row.auto ?? 0);
     c.suggested += Number(row.suggested ?? 0);
+    const tolerance = Number(row.tolerance ?? 0);
+    c.withinTolerance += tolerance;
+    if (row.review === 'none') c.withinTolerancePassed += tolerance;
   }
   const withAreas = await deps.db
     .selectFrom('checks')

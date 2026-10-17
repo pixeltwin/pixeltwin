@@ -21,14 +21,21 @@ const PROJECT_COLUMNS = [
   'agentReview',
   'agentMaxDiffPercent',
   'visibleToAll',
+  'reviewWithinTolerance',
   'createdAt',
   'updatedAt',
 ] as const;
 
-type ProjectRow = Omit<Project, 'autoApproveNew' | 'visibleToAll'> & { autoApproveNew: number; visibleToAll: number };
+type Flag = 'autoApproveNew' | 'visibleToAll' | 'reviewWithinTolerance';
+type ProjectRow = Omit<Project, Flag> & Record<Flag, number>;
 
 function toProject(row: ProjectRow): Project {
-  return { ...row, autoApproveNew: Number(row.autoApproveNew) === 1, visibleToAll: Number(row.visibleToAll) === 1 };
+  return {
+    ...row,
+    autoApproveNew: Number(row.autoApproveNew) === 1,
+    visibleToAll: Number(row.visibleToAll) === 1,
+    reviewWithinTolerance: Number(row.reviewWithinTolerance) === 1,
+  };
 }
 
 /** Also what a user who may not see the project gets, so slugs do not leak. */
@@ -59,6 +66,7 @@ export async function createProject(deps: DbDeps, input: unknown): Promise<Proje
           ...project,
           autoApproveNew: project.autoApproveNew ? 1 : 0,
           visibleToAll: project.visibleToAll ? 1 : 0,
+          reviewWithinTolerance: project.reviewWithinTolerance ? 1 : 0,
         })
         .execute();
       return project;
@@ -95,13 +103,14 @@ export async function updateProject(deps: DbDeps, slug: string, input: unknown):
   const changes = parseInput(updateProjectSchema, input);
   const project = await getProjectBySlug(deps, slug);
   const updated: Project = { ...project, ...changes, updatedAt: Date.now() };
-  const { autoApproveNew, visibleToAll, ...columns } = changes;
+  const { autoApproveNew, visibleToAll, reviewWithinTolerance, ...columns } = changes;
   await deps.db
     .updateTable('projects')
     .set({
       ...columns,
       ...(autoApproveNew === undefined ? {} : { autoApproveNew: autoApproveNew ? 1 : 0 }),
       ...(visibleToAll === undefined ? {} : { visibleToAll: visibleToAll ? 1 : 0 }),
+      ...(reviewWithinTolerance === undefined ? {} : { reviewWithinTolerance: reviewWithinTolerance ? 1 : 0 }),
       updatedAt: updated.updatedAt,
     })
     .where('id', '=', project.id)

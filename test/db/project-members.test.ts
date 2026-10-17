@@ -55,6 +55,7 @@ describe('migration 0014_project_members', () => {
       '0015_mail_outbox',
       '0016_reject_reasons',
       '0017_insights',
+      '0019_within_tolerance',
     ]);
     const members = await handle.db
       .selectFrom('projectMembers')
@@ -81,6 +82,7 @@ describe('migration 0014_project_members', () => {
       '0015_mail_outbox',
       '0016_reject_reasons',
       '0017_insights',
+      '0019_within_tolerance',
     ]);
   });
 

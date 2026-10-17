@@ -12,6 +12,10 @@ export interface BuildCounts {
   withAreas: number;
   /** Checks with an agent's open suggestion (agent review policy), waiting for a person. */
   suggested: number;
+  /** Unchanged only because the diff is within the tolerance (some pixels differ), whatever their review. */
+  withinTolerance: number;
+  /** Of withinTolerance, those that passed with no review (none waits, nobody decided). */
+  withinTolerancePassed: number;
 }
 
 export function emptyCounts(): BuildCounts {
@@ -22,6 +26,8 @@ export function emptyCounts(): BuildCounts {
     autoApproved: 0,
     withAreas: 0,
     suggested: 0,
+    withinTolerance: 0,
+    withinTolerancePassed: 0,
   };
 }
 

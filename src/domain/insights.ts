@@ -68,9 +68,11 @@ export interface ReviewerTotals {
 export interface DayTotals {
   builds: number;
   checks: number;
-  /** Unchanged, or approved by the auto-approve-new setting: no person or agent was needed. */
+  /** Unchanged and not reviewed, or approved by the auto-approve-new setting: no person or agent was needed. */
   autoPassed: number;
-  /** Changed or new and not approved automatically. */
+  /** Of autoPassed, the checks that passed within the tolerance: some pixels differ. */
+  withinTolerance: number;
+  /** Changed or new and not approved automatically, or unchanged and reviewed (within the tolerance). */
   neededReview: number;
   /** Approved by a person or a token, rejected (now), by category. */
   approved: number;
@@ -103,6 +105,7 @@ export function emptyTotals(): DayTotals {
     builds: 0,
     checks: 0,
     autoPassed: 0,
+    withinTolerance: 0,
     neededReview: 0,
     approved: 0,
     rejected: 0,
@@ -209,6 +212,7 @@ const NUMBER_FIELDS = [
   'builds',
   'checks',
   'autoPassed',
+  'withinTolerance',
   'neededReview',
   'approved',
   'rejected',
@@ -302,12 +306,13 @@ async function computeTotals(deps: DbDeps, projectId: string, builds: BuildRow[]
         'result',
         'review',
         'reviewReasonCode',
+        'withinTolerance',
         eb.case().when('reviewedBy', '=', AUTO_APPROVER).then(1).else(0).end().as('auto'),
         eb.fn.countAll<number>().as('n'),
         eb.fn.sum<number>('compareMs').as('ms'),
       ])
       .where('buildId', 'in', ids)
-      .groupBy(['buildId', 'result', 'review', 'reviewReasonCode', 'auto'])
+      .groupBy(['buildId', 'result', 'review', 'reviewReasonCode', 'withinTolerance', 'auto'])
       .execute();
     for (const row of rows) {
       const t = out.get(keyOf.get(row.buildId) as string) as DayTotals;
@@ -318,8 +323,11 @@ async function computeTotals(deps: DbDeps, projectId: string, builds: BuildRow[]
       t.checks += n;
       t.compareMs += Number(row.ms ?? 0);
       if (result === 'error') t.errors += n;
-      if (result === 'unchanged' || auto) t.autoPassed += n;
-      else if (result === 'changed' || result === 'new') {
+      // An unchanged check a person reviewed or has to (within the tolerance) needed review too.
+      if ((result === 'unchanged' && review === 'none') || auto) {
+        t.autoPassed += n;
+        if (Number(row.withinTolerance) === 1) t.withinTolerance += n;
+      } else if (result !== 'error') {
         t.neededReview += n;
         needed.add(row.buildId);
       }

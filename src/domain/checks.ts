@@ -43,6 +43,11 @@ export interface CheckView {
   tolerancePercent: number;
   result: CheckResult;
   review: CheckReview;
+  /**
+   * Unchanged only because the diff is within the tolerance: some pixels differ (`diff.percent` of
+   * them, at most `tolerancePercent`). False for identical screenshots and for every other result.
+   */
+  withinTolerance: boolean;
   diff: DiffData | DiffErrorData | null;
   reviewedBy: string | null;
   reviewedAt: number | null;
@@ -70,6 +75,8 @@ export interface SubmitCheckInput {
 
 interface Outcome {
   result: CheckResult;
+  /** Unchanged, but some pixels differ: no more than the tolerance allows. */
+  withinTolerance: boolean;
   diff: DiffData | DiffErrorData | null;
   diffPng: Uint8Array | null;
   diffSize: Size | null;
@@ -85,12 +92,27 @@ type CheckWithJoins = CheckRow & {
   groupSize: number | string | null;
 };
 
-function initialReview(result: CheckResult): CheckReview {
-  return result === 'changed' || result === 'new' ? 'pending' : 'none';
+/**
+ * The review a check starts with: changed and new ones wait for a person, and so does one within
+ * the tolerance when the project or the SDK asks for it (`reviewWithinTolerance`).
+ */
+function initialReview(
+  outcome: Pick<Outcome, 'result' | 'withinTolerance'>,
+  reviewWithinTolerance: boolean,
+): CheckReview {
+  if (outcome.result === 'changed' || outcome.result === 'new') return 'pending';
+  return outcome.withinTolerance && reviewWithinTolerance ? 'pending' : 'none';
 }
 
 function errorOutcome(code: 'diff_timeout' | 'diff_failed', message: string): Outcome {
-  return { result: 'error', diff: { error: { code, message } }, diffPng: null, diffSize: null, changeKey: null };
+  return {
+    result: 'error',
+    withinTolerance: false,
+    diff: { error: { code, message } },
+    diffPng: null,
+    diffSize: null,
+    changeKey: null,
+  };
 }
 
 function buildFinalized(build: Build): AppError {
@@ -154,12 +176,13 @@ async function evaluate(
     const validated = await deps.runDiff({ ...job, baseline: null });
     if (validated.kind === 'invalid_image') throw invalidImage(validated.message);
     if (validated.kind === 'error') return errorOutcome(validated.code, validated.message);
-    return { result: 'new', diff: null, diffPng: null, diffSize: null, changeKey: null };
+    return { result: 'new', withinTolerance: false, diff: null, diffPng: null, diffSize: null, changeKey: null };
   }
 
   if (baseline.imageSha === imageSha) {
     return {
       result: 'unchanged',
+      withinTolerance: false,
       diff: {
         percent: 0,
         pixels: 0,
@@ -199,6 +222,7 @@ async function evaluate(
         : header;
       return {
         result: compared.result,
+        withinTolerance: compared.result === 'unchanged' && compared.diff.pixels > 0,
         diff: compared.diff,
         diffPng: compared.diffPng,
         diffSize,
@@ -249,10 +273,13 @@ function toCheckView(row: CheckWithJoins): CheckView {
     suggestedAt,
     changeKey,
     groupSize,
+    withinTolerance,
+    reviewWithinTolerance: _reviewWithinTolerance,
     ...rest
   } = row;
   return {
     ...rest,
+    withinTolerance: Number(withinTolerance) === 1,
     elementCount: elementCount === null ? null : Number(elementCount),
     suggestion:
       suggestion && suggestedBy
@@ -358,10 +385,11 @@ function tagPattern(key: string, value: string): string {
  * of the given values for every key named (values of one key add up, keys narrow).
  */
 /**
- * A check's status as its card says it: `passed` is unchanged or approved by the project's
- * auto-approve-new setting, `resolved` is approved by a person.
+ * A check's status as its card says it: `passed` is unchanged and not reviewed, or approved by the
+ * project's auto-approve-new setting; `resolved` is approved by a person; `tolerance` is within the
+ * tolerance (unchanged, some pixels differ), whatever its review.
  */
-export type CheckStatusFilter = 'passed' | 'resolved' | 'areas';
+export type CheckStatusFilter = 'passed' | 'resolved' | 'areas' | 'tolerance';
 
 /** What the build page and the API narrow a build's checks by. */
 export interface CheckFilters {
@@ -379,13 +407,18 @@ function filteredChecks(deps: Pick<Deps, 'db'>, buildId: string, filters: CheckF
   if (result) query = query.where('checks.result', '=', result);
   if (review) query = query.where('checks.review', '=', review);
   if (status === 'passed') {
+    // A check within the tolerance that a person reviewed (or has to) is not one that passed by itself.
     query = query.where((eb) =>
       eb.or([
-        eb('checks.result', '=', 'unchanged'),
+        eb.and([
+          eb('checks.result', '=', 'unchanged'),
+          eb.or([eb('checks.withinTolerance', '=', 0), eb('checks.review', '=', 'none')]),
+        ]),
         eb.and([eb('checks.review', '=', 'approved'), eb('checks.reviewedBy', '=', AUTO_APPROVER)]),
       ]),
     );
   }
+  if (status === 'tolerance') query = query.where('checks.withinTolerance', '=', 1);
   if (status === 'areas') {
     query = query.where(({ exists, selectFrom }) =>
       exists(
@@ -530,6 +563,7 @@ export async function submitCheck(
   const key = snapshotKey(meta.name, meta.variant);
   const colorThreshold = meta.colorThreshold ?? project.colorThreshold;
   const tolerancePercent = meta.tolerancePercent ?? project.tolerancePercent;
+  const reviewWithinTolerance = meta.reviewWithinTolerance ?? project.reviewWithinTolerance;
   const resolved = await resolveBaseline(deps.db, project.id, key, build.branch, build.baseBranch);
   const imageSha = sha256Hex(input.image);
   const elementsSha = await storeElements(deps.db, meta.elements);
@@ -552,7 +586,7 @@ export async function submitCheck(
 
   // A newer build of this branch may already have approved this screen (a late post to an
   // older, still open build): then this check is outdated from the start.
-  const initial = initialReview(outcome.result);
+  const initial = initialReview(outcome, reviewWithinTolerance);
   const newer =
     initial === 'pending'
       ? await supersedingCheck(deps.db, {
@@ -580,6 +614,8 @@ export async function submitCheck(
     supersededBy: newer?.id ?? null,
     diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
     changeKey: outcome.changeKey,
+    withinTolerance: outcome.withinTolerance ? 1 : 0,
+    reviewWithinTolerance: reviewWithinTolerance ? 1 : 0,
     reviewedBy: null,
     reviewedAt: null,
     reviewComment: null,
@@ -649,6 +685,11 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
     .where('id', '=', check.baseline.id)
     .executeTakeFirst();
   if (!baseline) return check;
+  const { reviewWithinTolerance } = await deps.db
+    .selectFrom('checks')
+    .select('reviewWithinTolerance')
+    .where('id', '=', checkId)
+    .executeTakeFirstOrThrow();
   const image = await loadImage(deps, check.imageSha);
   if (!image) return check;
   const header = readPngHeader(image, deps.limits);
@@ -676,7 +717,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
     }
     const diffImageSha =
       outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
-    const initial = initialReview(outcome.result);
+    const initial = initialReview(outcome, Number(reviewWithinTolerance) === 1);
     await deps.db
       .updateTable('checks')
       .set((eb) => ({
@@ -684,6 +725,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
         diff: outcome.diff ? JSON.stringify(outcome.diff) : null,
         diffImageSha,
         changeKey: outcome.changeKey,
+        withinTolerance: outcome.withinTolerance ? 1 : 0,
         // Decided in SQL, not from the read above: a review made while the comparison ran stays.
         review: eb
           .case()
@@ -715,27 +757,25 @@ export interface CheckNeighbors {
   nextPending: string | null;
 }
 
-/** Navigation within a build in the UI's order, newest first: `next` is the next older check. */
+/**
+ * Navigation within a build in the UI's order, newest first: `next` is the next older check. With
+ * `withinTolerance`, the checks a reviewer walks are those within the tolerance not yet decided
+ * (passed by themselves or pending), as under the build page's Within tolerance filter.
+ */
 export async function checkNeighbors(
   deps: Pick<Deps, 'db'>,
   check: { id: string; buildId: string },
+  options: { withinTolerance?: boolean } = {},
 ): Promise<CheckNeighbors> {
   const inBuild = deps.db.selectFrom('checks').select('id').where('buildId', '=', check.buildId);
+  const waiting = options.withinTolerance
+    ? inBuild.where('withinTolerance', '=', 1).where('review', 'in', ['none', 'pending'])
+    : inBuild.where('review', '=', 'pending');
   const [previous, next, pendingAfter, pendingFirst] = await Promise.all([
     inBuild.where('id', '>', check.id).orderBy('id', 'asc').limit(1).executeTakeFirst(),
     inBuild.where('id', '<', check.id).orderBy('id', 'desc').limit(1).executeTakeFirst(),
-    inBuild
-      .where('id', '<', check.id)
-      .where('review', '=', 'pending')
-      .orderBy('id', 'desc')
-      .limit(1)
-      .executeTakeFirst(),
-    inBuild
-      .where('id', '!=', check.id)
-      .where('review', '=', 'pending')
-      .orderBy('id', 'desc')
-      .limit(1)
-      .executeTakeFirst(),
+    waiting.where('id', '<', check.id).orderBy('id', 'desc').limit(1).executeTakeFirst(),
+    waiting.where('id', '!=', check.id).orderBy('id', 'desc').limit(1).executeTakeFirst(),
   ]);
   return {
     previous: previous?.id ?? null,
