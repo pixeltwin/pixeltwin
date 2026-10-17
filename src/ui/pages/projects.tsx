@@ -227,15 +227,23 @@ function Lane(props: {
   return (
     <article class="lane">
       <div class="lane-head">
-        <BuildDot build={build} />
-        <a class="lane-branch mono" href={ui.url(`/ui/p/${slug}/builds?branch=${encodeURIComponent(summary.branch)}`)}>
-          {summary.branch}
-        </a>
-        <a class="lane-number" href={ui.url(`/ui/builds/${build.id}`)}>{`#${build.number}`}</a>
-        {summary.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
-        <BuildStatus build={build} />
-        <span class="muted">
-          <Ago at={build.createdAt} />
+        <span class="lane-title">
+          <BuildDot build={build} />
+          <a
+            class="lane-branch mono"
+            href={ui.url(`/ui/p/${slug}/builds?branch=${encodeURIComponent(summary.branch)}`)}
+          >
+            {summary.branch}
+          </a>
+          <a class="lane-number" href={ui.url(`/ui/builds/${build.id}`)}>{`#${build.number}`}</a>
+          {summary.branch !== build.baseBranch && <span class="muted">vs {build.baseBranch}</span>}
+          <BuildStatus build={build} />
+          <span class="muted">
+            <Ago at={build.createdAt} />
+          </span>
+        </span>
+        <span class="lane-stats muted">
+          {build.counts.total === 0 ? 'no checks' : <ReviewStats counts={build.counts} />}
         </span>
         <span class="lane-meta">
           <ol class="history" aria-label="Recent builds, newest first">
@@ -266,15 +274,6 @@ function Lane(props: {
             </a>
           )}
         </span>
-      </div>
-      <div class="lane-body">
-        {build.counts.total === 0 ? (
-          <span class="muted">no checks</span>
-        ) : (
-          <span class="muted">
-            <ReviewStats counts={build.counts} />
-          </span>
-        )}
       </div>
     </article>
   );
