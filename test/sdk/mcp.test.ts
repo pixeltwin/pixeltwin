@@ -531,6 +531,26 @@ describe('pixeltwin mcp and the reasons screens were rejected', () => {
     expect(texts(none)).toEqual(['No rejections on feature/none.']);
   }, 60_000);
 
+  test('approving a group warns about its members rejected as not loaded', async () => {
+    step += 1;
+    const build = await rc.openBuild('learn', { branch: 'main' });
+    for (const name of ['home', 'pricing'])
+      await rc.postCheck(build.id, { name, image: headerPage(30 + step * 4, 100) });
+    const [group] = lastJson(await tool('list_changes', { buildId: build.id }, rpc)).groups;
+    expect(group.members.find((m: { name: string }) => m.name === 'home').rejectedBefore).toStartWith(
+      'Rejected 3× as not_loaded',
+    );
+    const done = await tool(
+      'review_group',
+      { buildId: build.id, groupId: group.groupId, action: 'approve', reason: 'The wider logo is intended.' },
+      rpc,
+    );
+    expect(texts(done)[0]).toStartWith('Applied: 2 checks approved.');
+    expect(texts(done)[1]).toBe(
+      'Careful: 1 screen of this group was rejected before as captured too early (home: 3×); make sure the change is not a loading artefact before you rely on this approval.',
+    );
+  }, 60_000);
+
   test('rejecting needs a reasonCode; approving a screen rejected as not loaded warns', async () => {
     const { checkId } = await changedAgain('home');
     const missing = await tool('reject_check', { checkId, reason: 'Looks wrong' }, rpc);
@@ -542,7 +562,7 @@ describe('pixeltwin mcp and the reasons screens were rejected', () => {
 
     const approved = await tool('approve_check', { checkId, reason: 'The wider logo is intended.' }, rpc);
     expect(texts(approved)[0]).toStartWith('Applied: the check is approved.');
-    expect(texts(approved)[0]).toContain(
+    expect(texts(approved)[1]).toStartWith(
       'Careful: this screen was rejected before as captured too early (3× not_loaded); make sure the change is not a loading artefact',
     );
 

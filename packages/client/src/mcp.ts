@@ -202,7 +202,7 @@ function tooEarlyWarning(screen: ScreenRejections | undefined): string {
   const early = TOO_EARLY.filter((code) => screen.byCategory[code])
     .map((code) => `${screen.byCategory[code]}× ${code}`)
     .join(', ');
-  return ` Careful: this screen was rejected before as captured too early (${early}); make sure the change is not a loading artefact (a blank image, a spinner, a missing font) before you rely on this approval.`;
+  return `Careful: this screen was rejected before as captured too early (${early}); make sure the change is not a loading artefact (a blank image, a spinner, a missing font) before you rely on this approval.`;
 }
 
 /** A check as list_changes shows it: summary, element changes, review state. */
@@ -590,16 +590,21 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
           const reasonCode = action === 'reject' ? reasonCodeOf(args, true) : undefined;
           const reviewed = await c.review(checkId, action, { reason, ...(reasonCode ? { reasonCode } : {}) });
           const done = action === 'approve' ? 'approved' : 'rejected';
-          let line =
+          const line =
             reviewed.outcome === 'suggested'
               ? `Recorded as a suggestion to ${action}: this project has a person decide on agents' reviews. The check stays ${reviewed.review} until someone accepts or dismisses it at ${checkUrl(reviewed)}.`
               : `Applied: the check is ${done}. ${checkUrl(reviewed)}`;
+          let warning = '';
           if (action === 'approve') {
             const patterns = await optional(c.rejectionPatterns(project, { snapshotKey: reviewed.snapshotKey }), null);
-            line += tooEarlyWarning(patterns?.screens.find((r) => r.snapshotKey === reviewed.snapshotKey));
+            warning = tooEarlyWarning(patterns?.screens.find((r) => r.snapshotKey === reviewed.snapshotKey));
           }
           return {
-            content: [text(line), json({ checkId: reviewed.id, outcome: reviewed.outcome, review: reviewed.review })],
+            content: [
+              text(line),
+              ...(warning ? [text(warning)] : []),
+              json({ checkId: reviewed.id, outcome: reviewed.outcome, review: reviewed.review }),
+            ],
           };
         },
       }),
@@ -674,12 +679,13 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
           );
         }
         lines.push(`The build's verdict is now ${result.verdict}.`);
+        const warnings: string[] = [];
         if (action === 'approve' && (result.changed.length || result.suggested.length)) {
           const decided = new Set([...result.changed, ...result.suggested]);
           const patterns = await optional(c.buildRejections(buildId), null);
           const early = (patterns?.screens ?? []).filter((r) => r.checkId && decided.has(r.checkId) && r.tooEarly > 0);
           if (early.length) {
-            lines.push(
+            warnings.push(
               `Careful: ${plural(early.length, 'screen')} of this group ${early.length === 1 ? 'was' : 'were'} rejected before as captured too early (${early.map((r) => `${r.name}: ${r.tooEarly}×`).join(', ')}); make sure the change is not a loading artefact before you rely on this approval.`,
             );
           }
@@ -687,6 +693,7 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
         return {
           content: [
             text(lines.join(' ')),
+            ...warnings.map(text),
             json({
               groupId: result.group.id,
               applied: result.changed,
