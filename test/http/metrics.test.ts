@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { openDatabase } from '../../src/db/database';
+import { refreshInsights } from '../../src/domain/insights';
+import { createProject } from '../../src/domain/projects';
 import { Metrics, metricsHandler } from '../../src/http/metrics';
+import { createTestDeps } from '../helpers/deps';
 
 describe('metrics', () => {
   test('histograms count into every bucket at or above the value', async () => {
@@ -39,5 +42,24 @@ describe('metrics', () => {
     const handler = metricsHandler(new Metrics(), { diffBacklog: () => 0, diffWorkers: 1 });
     expect((await handler(new Request('http://x/'))).status).toBe(404);
     expect((await handler(new Request('http://x/metrics', { method: 'POST' }))).status).toBe(405);
+  });
+});
+
+describe('insights metrics', () => {
+  test('the days of Insights waiting to be recomputed are a gauge', async () => {
+    const deps = await createTestDeps();
+    try {
+      const project = await createProject(deps, { slug: 'web', name: 'Web' });
+      await deps.db
+        .insertInto('insightMarks')
+        .values({ id: 'imk_1', projectId: project.id, branch: 'main', day: 20_000, createdAt: 0 })
+        .execute();
+      const sources = { diffBacklog: () => 0, diffWorkers: 1, db: deps.db };
+      expect(await new Metrics().render(sources)).toContain('pixeltwin_insight_marks_pending 1');
+      await refreshInsights(deps);
+      expect(await new Metrics().render(sources)).toContain('pixeltwin_insight_marks_pending 0');
+    } finally {
+      await deps.handle.close();
+    }
   });
 });

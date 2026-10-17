@@ -163,9 +163,15 @@ export class Metrics {
     ];
     if (sources.db) {
       let backlog: Array<[Labels, number]> = [];
+      let marks = 0;
       let up = 1;
       try {
         backlog = await outboxBacklog(sources.db);
+        const row = await sources.db
+          .selectFrom('insightMarks')
+          .select((eb) => eb.fn.countAll<number>().as('n'))
+          .executeTakeFirst();
+        marks = Number(row?.n ?? 0);
       } catch {
         up = 0;
       }
@@ -174,6 +180,11 @@ export class Metrics {
           'pixeltwin_outbox_pending',
           'Rows waiting to be sent, across all replicas (the same on every pod: use max, not sum).',
           backlog,
+        ),
+        ...gauge(
+          'pixeltwin_insight_marks_pending',
+          'Days of Insights marked out of date and not yet recomputed, across all replicas (use max).',
+          [[{}, marks]],
         ),
         ...gauge('pixeltwin_database_up', '1 when the last scrape could query the database.', [[{}, up]]),
       );
