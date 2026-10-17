@@ -211,6 +211,46 @@ describe('builds reach GitHub through the API', () => {
     const view = await (await t.request('GET', '/api/v1/projects/web/integration', { as: admin })).json();
     expect(view.lastSync).toMatchObject({ buildId: build.id, error: null });
   });
+
+  test("an agent's suggestion leaves the commit pending; a person accepting it in the UI turns it green", async () => {
+    const admin = await t.userAs('admin');
+    await t.request('POST', '/api/v1/projects', { as: admin, json: { slug: 'web', name: 'Web' } });
+    await t.request('PATCH', '/api/v1/projects/web', { as: admin, json: { agentReview: 'suggest' } });
+    await t.request('PATCH', '/api/v1/projects/web/integration', {
+      as: admin,
+      json: { baseUrl: gh.url, token: FAKE_TOKEN, repository: 'acme/shop' },
+    });
+    const { token } = await t.tokenAs('web', ['read', 'write', 'review']);
+    const build = await (
+      await t.request('POST', '/api/v1/projects/web/builds', {
+        as: { token },
+        json: { branch: 'feature/login', commitSha: 'c0ffee1', pullRequest: 43, repository: 'acme/shop' },
+      })
+    ).json();
+    const check = await (
+      await t.request('POST', `/api/v1/builds/${build.id}/checks`, {
+        as: { token },
+        json: { name: 'login', imageBase64: Buffer.from(changed).toString('base64') },
+      })
+    ).json();
+    await t.request('POST', `/api/v1/builds/${build.id}/finalize`, { as: { token } });
+    await t.notifier.drain();
+    const posted = gh.statuses.length;
+    expect(gh.statuses.at(-1)).toMatchObject({ sha: 'c0ffee1', state: 'pending' });
+
+    const suggested = await t.request('POST', `/api/v1/checks/${check.id}/approve`, {
+      as: { token },
+      json: { reason: 'The new login screen is intended.' },
+    });
+    expect(await suggested.json()).toMatchObject({ outcome: 'suggested', review: 'pending' });
+    await t.notifier.drain();
+    expect(gh.statuses).toHaveLength(posted);
+
+    const accepted = await t.request('POST', `/ui/checks/${check.id}/suggestion/accept`, { as: admin });
+    expect(accepted.status).toBe(303);
+    await t.notifier.drain();
+    expect(gh.statuses.at(-1)).toMatchObject({ sha: 'c0ffee1', state: 'success' });
+  });
 });
 
 describe('inbound code host webhooks (auto-promote)', () => {
