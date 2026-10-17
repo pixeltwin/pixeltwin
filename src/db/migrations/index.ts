@@ -16,7 +16,7 @@ import * as m0014 from './0014_project_members';
 import * as m0015 from './0015_mail_outbox';
 import * as m0016 from './0016_reject_reasons';
 import * as m0017 from './0017_insights';
-import * as m0019 from './0019_within_tolerance';
+import * as m0018 from './0018_within_tolerance';
 
 // Static list: a compiled binary has no migrations directory to scan.
 const migrations: Record<string, Migration> = {
@@ -37,7 +37,7 @@ const migrations: Record<string, Migration> = {
   '0015_mail_outbox': m0015,
   '0016_reject_reasons': m0016,
   '0017_insights': m0017,
-  '0019_within_tolerance': m0019,
+  '0018_within_tolerance': m0018,
 };
 
 export const migrationProvider: MigrationProvider = {

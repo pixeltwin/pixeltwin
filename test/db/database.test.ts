@@ -131,7 +131,7 @@ describe('openDatabase', () => {
         '0015_mail_outbox',
         '0016_reject_reasons',
         '0017_insights',
-        '0019_within_tolerance',
+        '0018_within_tolerance',
       ]);
       await handle.close();
     } finally {

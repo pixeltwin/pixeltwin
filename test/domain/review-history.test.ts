@@ -111,7 +111,7 @@ describe('review history', () => {
       '0015_mail_outbox',
       '0016_reject_reasons',
       '0017_insights',
-      '0019_within_tolerance',
+      '0018_within_tolerance',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([
@@ -151,7 +151,7 @@ describe('review history', () => {
       '0015_mail_outbox',
       '0016_reject_reasons',
       '0017_insights',
-      '0019_within_tolerance',
+      '0018_within_tolerance',
     ]);
 
     const kind = async (id: string) => (await listReviews(deps, id)).map((e) => [e.actorKind, e.actorName]);
