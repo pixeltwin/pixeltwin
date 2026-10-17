@@ -4,8 +4,20 @@ pixeltwin {{ .Chart.AppVersion }} is deployed as "{{ $full }}" in namespace "{{ 
 
   Storage:  {{ .Values.storage }}{{ if eq .Values.storage "local" }} (images on {{ if .Values.persistence.enabled }}the PVC {{ default (printf "%s-data" $full) .Values.persistence.existingClaim }}{{ else }}an emptyDir: DATA IS LOST WITH THE POD{{ end }}){{ end }}
   Database: {{ if or .Values.database.url .Values.existingSecret }}Postgres (DATABASE_URL from Secret {{ $secret }}){{ else }}SQLite on the volume{{ end }}
-  Replicas: {{ include "pixeltwin.replicas" . }}{{ if and (eq .Values.storage "local") (gt (int .Values.replicaCount) 1) }} (replicaCount={{ .Values.replicaCount }} ignored: local storage runs one replica; use storage=postgres to scale){{ end }}
+  Replicas: {{ include "pixeltwin.replicas" . }}
   URL:      {{ .Values.publicUrl }}
+  Mail:     {{ if or .Values.smtp.url .Values.existingSecret }}SMTP_URL from Secret {{ $secret }}{{ if .Values.existingSecret }} (if it has the {{ .Values.existingSecretKeys.smtpUrl }} key){{ end }}, From {{ .Values.smtp.from | default "(smtp.from unset)" }}{{ else }}off (invite and reset links are shown in the UI to copy){{ end }}
+  Outbound: {{ if .Values.outbound.blockPrivate }}webhooks and GitHub/GitLab calls may not reach private addresses (outbound.blockPrivate){{ else }}private addresses allowed (outbound.blockPrivate=false){{ end }}
+  Metrics:  {{ if .Values.metrics.enabled }}svc/{{ $full }}-metrics:{{ .Values.metrics.port }}/metrics{{ else }}off (metrics.enabled){{ end }}
+{{- if or (hasKey .Values "preStopSleepSeconds") (hasKey .Values "terminationGracePeriodSeconds") }}
+
+WARNING: preStopSleepSeconds and terminationGracePeriodSeconds at the top level are deprecated and
+still used; move them to shutdown.preStopSleepSeconds and shutdown.terminationGracePeriodSeconds.
+{{- end }}
+{{- if and .Values.smtp.url (not .Values.smtp.from) }}
+
+WARNING: smtp.url is set without smtp.from; the server refuses to start.
+{{- end }}
 
 1. Wait for it:
 
@@ -54,3 +66,12 @@ pixeltwin {{ .Chart.AppVersion }} is deployed as "{{ $full }}" in namespace "{{ 
 {{- end }}
 
    CI and agents: {{ .Values.publicUrl }}/llms.txt, API reference at {{ .Values.publicUrl }}/docs.
+
+4. Check it:
+
+     helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+5. Next steps: create a project and a token in the UI (or POST /api/v1/projects), add the token to
+   your CI as PIXELTWIN_TOKEN with PIXELTWIN_URL={{ .Values.publicUrl }}, and back up the Secret
+   {{ $secret }}: its SECRET_KEY is needed to read the integration tokens and webhook secrets in
+   any database backup.

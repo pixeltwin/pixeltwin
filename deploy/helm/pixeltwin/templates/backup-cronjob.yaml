@@ -1,0 +1,107 @@
+{{- if .Values.backup.enabled }}
+{{- $b := .Values.backup }}
+{{- $secret := include "pixeltwin.secretName" . }}
+{{- $claim := default (printf "%s-backup" (include "pixeltwin.fullname" .)) $b.persistence.existingClaim }}
+{{- if not $b.persistence.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claim }}
+  labels:
+    {{- include "pixeltwin.componentLabels" (list . "backup") | nindent 4 }}
+  annotations:
+    # Uninstalling the release keeps the dumps.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $b.persistence.storageClass }}
+  storageClassName: {{ if eq . "-" }}""{{ else }}{{ . | quote }}{{ end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $b.persistence.size | quote }}
+---
+{{- end }}
+# pg_dump -Fc of the whole database (in postgres mode: the images too) to the backup volume.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pixeltwin.fullname" . }}-backup
+  labels:
+    {{- include "pixeltwin.componentLabels" (list . "backup") | nindent 4 }}
+spec:
+  schedule: {{ $b.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "pixeltwin.componentLabels" (list . "backup") | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            # The postgres user of the official image.
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pg-dump
+              image: "{{ $b.image.repository }}:{{ $b.image.tag }}"
+              imagePullPolicy: {{ $b.image.pullPolicy }}
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  name="pixeltwin-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  pg_dump --format=custom --no-owner --file="/backup/.$name" "$DATABASE_URL"
+                  mv "/backup/.$name" "/backup/$name"
+                  echo "wrote /backup/$name ($(du -h "/backup/$name" | cut -f1))"
+                  ls -1 /backup/pixeltwin-*.dump | sort -r | tail -n +$((KEEP + 1)) | xargs -r rm -v
+              env:
+                - name: KEEP
+                  value: {{ int $b.keep | quote }}
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $secret }}
+                      key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.databaseUrl }}{{ else }}DATABASE_URL{{ end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml $b.resources | nindent 16 }}
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: {{ $claim }}
+            - name: tmp
+              emptyDir: {}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

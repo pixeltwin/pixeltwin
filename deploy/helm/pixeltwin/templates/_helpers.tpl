@@ -43,7 +43,73 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
 {{- end }}
 
-{{/* The Secret holding DATABASE_URL and SETUP_TOKEN: the user's own, or the chart's. */}}
+{{/*
+Labels of the chart's other pods (backup, helm test). Their app.kubernetes.io/name differs from the
+server's, so neither the Deployment's selector nor the Service's ever matches them.
+*/}}
+{{- define "pixeltwin.componentLabels" -}}
+{{- $ := index . 0 -}}
+helm.sh/chart: {{ include "pixeltwin.chart" $ }}
+app.kubernetes.io/name: {{ printf "%s-%s" (include "pixeltwin.name" $) (index . 1) }}
+app.kubernetes.io/instance: {{ $.Release.Name }}
+app.kubernetes.io/component: {{ index . 1 }}
+app.kubernetes.io/part-of: {{ include "pixeltwin.name" $ }}
+app.kubernetes.io/managed-by: {{ $.Release.Service }}
+{{- end }}
+
+{{/* Pods with this label set to "true" may reach the http port when networkPolicy is on. */}}
+{{- define "pixeltwin.clientLabel" -}}
+{{- printf "%s-client" (include "pixeltwin.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/* Whole CPUs, rounded up, of a Kubernetes quantity ("2", 2, "1500m", "0.5"); 0 when empty. */}}
+{{- define "pixeltwin.cpuCeil" -}}
+{{- $q := toString . }}
+{{- if or (eq $q "") (eq $q "<nil>") }}0
+{{- else if hasSuffix "m" $q }}{{ div (add (int (trimSuffix "m" $q)) 999) 1000 }}
+{{- else }}{{ int (ceil (float64 $q)) }}
+{{- end }}
+{{- end }}
+
+{{/*
+DIFF_WORKERS: diffWorkers, else the CPU limit (else the request) rounded up minus one, at least 1;
+empty when the pod has no CPU value at all (the server then reads its cgroup and the node's cores).
+*/}}
+{{- define "pixeltwin.diffWorkers" -}}
+{{- if ne (toString .Values.diffWorkers) "" }}
+{{- .Values.diffWorkers }}
+{{- else }}
+{{- $res := .Values.resources | default dict }}
+{{- $cpu := dig "limits" "cpu" "" $res }}
+{{- if eq (toString $cpu) "" }}{{ $cpu = dig "requests" "cpu" "" $res }}{{ end }}
+{{- $cores := int (include "pixeltwin.cpuCeil" $cpu) }}
+{{- if gt $cores 0 }}{{ max 1 (sub $cores 1) }}{{ end }}
+{{- end }}
+{{- end }}
+
+{{/* Shutdown settings; the old top-level preStopSleepSeconds / terminationGracePeriodSeconds still count. */}}
+{{- define "pixeltwin.preStopSleep" -}}
+{{- if hasKey .Values "preStopSleepSeconds" }}{{ int .Values.preStopSleepSeconds }}{{ else }}{{ int .Values.shutdown.preStopSleepSeconds }}{{ end }}
+{{- end }}
+
+{{- define "pixeltwin.terminationGrace" -}}
+{{- if hasKey .Values "terminationGracePeriodSeconds" }}{{ int .Values.terminationGracePeriodSeconds }}
+{{- else if ne (toString .Values.shutdown.terminationGracePeriodSeconds) "" }}{{ int .Values.shutdown.terminationGracePeriodSeconds }}
+{{- else }}{{ add (int (include "pixeltwin.preStopSleep" .)) (int .Values.shutdown.graceSeconds) 10 }}
+{{- end }}
+{{- end }}
+
+{{/*
+The largest request body the server accepts, in MiB rounded up: the image as base64 plus 1 MiB
+(Bun's maxRequestBodySize in src/server.ts), for the Ingress body size.
+*/}}
+{{- define "pixeltwin.bodySizeMiB" -}}
+{{- $bytes := int (default 10485760 .Values.config.maxImageBytes) }}
+{{- $limit := add (mul (div (add $bytes 2) 3) 4) 1048576 }}
+{{- div (add $limit 1048575) 1048576 }}
+{{- end }}
+
+{{/* The Secret holding DATABASE_URL, SETUP_TOKEN, SECRET_KEY and SMTP_URL: the user's own, or the chart's. */}}
 {{- define "pixeltwin.secretName" -}}
 {{- default (include "pixeltwin.fullname" .) .Values.existingSecret }}
 {{- end }}
@@ -103,6 +169,23 @@ it), else a new random one.
 {{- end }}
 {{- if and .Values.database.url (not (regexMatch "^postgres(ql)?://" .Values.database.url)) }}
 {{- fail "database.url must start with postgres:// or postgresql://" }}
+{{- end }}
+{{- if and .Values.smtp.url (not .Values.smtp.from) }}
+{{- fail "smtp.url needs smtp.from, the From of the mails, e.g. \"pixeltwin <pixeltwin@example.com>\"" }}
+{{- end }}
+{{- if and (eq .Values.storage "local") (gt (int .Values.replicaCount) 1) }}
+{{- fail "replicaCount > 1 needs storage=postgres: local mode is a ReadWriteOnce volume and SQLite, one replica only" }}
+{{- end }}
+{{- $grace := int (include "pixeltwin.terminationGrace" .) }}
+{{- $needed := add (int (include "pixeltwin.preStopSleep" .)) (int .Values.shutdown.graceSeconds) }}
+{{- if le $grace $needed }}
+{{- fail (printf "terminationGracePeriodSeconds (%d) must be above preStopSleepSeconds + shutdown.graceSeconds (%d), or the kubelet kills pods mid-drain" $grace $needed) }}
+{{- end }}
+{{- if and .Values.metrics.enabled (eq (int .Values.metrics.port) 8080) }}
+{{- fail "metrics.port must not be 8080, the http port" }}
+{{- end }}
+{{- if and .Values.backup.enabled (not .Values.database.url) (not .Values.existingSecret) }}
+{{- fail "backup.enabled dumps Postgres: set database.url or existingSecret" }}
 {{- end }}
 {{- if and (eq .Values.storage "postgres") (not .Values.database.url) (not .Values.existingSecret) }}
 {{- fail "storage=postgres keeps images in Postgres: set database.url, or existingSecret with a DATABASE_URL key" }}

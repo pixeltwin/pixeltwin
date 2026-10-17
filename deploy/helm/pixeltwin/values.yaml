@@ -1,5 +1,5 @@
 # pixeltwin Helm chart values. See README.md next to this file for the two storage modes,
-# upgrades and backups.
+# upgrades and backups. values.schema.json checks types and the combinations that cannot work.
 
 image:
   # The release workflow publishes amd64 and arm64 images here.
@@ -14,8 +14,8 @@ fullnameOverride: ""
 
 # REQUIRED. The URL people and CI use to reach pixeltwin, without a trailing slash, for example
 # https://pixeltwin.example.com (a path prefix is allowed). The server uses it for:
-#   - links: the setup link in the log, the CI snippets in the UI, /llms.txt, and the path prefix
-#     of every UI link and redirect;
+#   - links: the setup link in the log, the CI snippets in the UI, invite and reset mails,
+#     /llms.txt, and the path prefix of every UI link and redirect;
 #   - cookies: the session cookie gets the Secure flag when it starts with https://;
 #   - the CSRF check: browser requests authenticated by cookie (everything but GET/HEAD) must send
 #     an Origin header equal to this URL's origin, or they get 403 csrf_origin_mismatch.
@@ -23,7 +23,7 @@ fullnameOverride: ""
 # would work while every form and button in the UI failed the CSRF check.
 publicUrl: ""
 
-# Where screenshots, baselines and diff images are stored.
+# Where screenshots, baselines and diff images (and their thumbnails) are stored.
 #   local:    files on a PersistentVolumeClaim mounted at /data. One replica only (the volume is
 #             ReadWriteOnce and SQLite allows one writer), Recreate strategy. The database is SQLite
 #             on the same volume unless database.url (or existingSecret) gives a Postgres URL.
@@ -31,7 +31,9 @@ publicUrl: ""
 #             number of replicas, RollingUpdate. One `pg_dump` backs up everything.
 storage: local
 
-# Ignored in `local` mode, which always runs exactly one replica.
+# More than 1 needs storage=postgres (the schema refuses it otherwise). With several replicas the
+# webhook, code host and mail outboxes are shared through the database: each row is claimed with a
+# lease, so it is sent by one replica, and the hourly retention job takes an advisory lock.
 replicaCount: 1
 
 database:
@@ -39,7 +41,8 @@ database:
   # `local` mode (unset means SQLite on the volume). Written to the chart's Secret. Prefer
   # existingSecret in production so the password stays out of your values files.
   url: ""
-  # Connections per pod (DATABASE_POOL_MAX). Keep replicas × poolMax below Postgres' max_connections.
+  # Connections per pod (DATABASE_POOL_MAX). Keep replicas × poolMax (plus one more pod's worth
+  # during a rolling update, which surges by one) below Postgres' max_connections.
   poolMax: 20
 
 # First-run setup token (SETUP_TOKEN, at least 16 characters). While no user exists, POST it to
@@ -49,42 +52,85 @@ database:
 # replica accepts the same token (without one, each pod logs its own and only that pod accepts it).
 setupToken: ""
 
-# Encrypts the GitHub/GitLab token and webhook secrets pixeltwin stores (SECRET_KEY, at least 32
-# characters). Empty: the chart generates one and keeps it in its Secret across upgrades, so every
-# replica uses the same key. Losing or changing it means entering those tokens and secrets again.
+# Seals the secrets pixeltwin stores: the GitHub/GitLab token, webhook secrets, and mails while
+# they wait in the outbox (SECRET_KEY, at least 32 characters, AES-256-GCM). Empty: the chart
+# generates one and keeps it in its Secret across upgrades, so every replica uses the same key.
+# Losing or changing it means entering those tokens and secrets again. Back it up with the database.
 secretKey: ""
 
-# Use a Secret you manage instead of the one the chart creates. When set, database.url and
-# setupToken are ignored and these keys are read from it (each key is optional, except the
-# database URL in `postgres` mode).
+# Mail for invites, password resets and sign-up confirmations. They wait in a database outbox and
+# are sent in the background (with several replicas, by one of them). Without smtp.url no mail is
+# sent and the UI shows the links to copy instead.
+smtp:
+  # SMTP_URL: smtp://user:password@host:587 (STARTTLS) or smtps://user:password@host:465. It holds
+  # the credentials, so it goes into the chart's Secret (or set existingSecretKeys.smtpUrl in your
+  # existingSecret instead). URL-encode special characters in the password.
+  url: ""
+  # SMTP_FROM, required with smtp.url, e.g. "pixeltwin <pixeltwin@example.com>". Not a secret.
+  from: ""
+
+# Use a Secret you manage instead of the one the chart creates. When set, database.url, setupToken,
+# secretKey and smtp.url are ignored and these keys are read from it (each key is optional, except
+# the database URL in `postgres` mode).
 existingSecret: ""
 existingSecretKeys:
   databaseUrl: DATABASE_URL
   setupToken: SETUP_TOKEN
   secretKey: SECRET_KEY
+  smtpUrl: SMTP_URL
 
-# Parallel diff workers per pod (DIFF_WORKERS), each a thread comparing two images. Empty lets the
-# server pick: its CPU limit (resources.limits.cpu, rounded up) minus one, at least 1, because the
-# main thread parses every request and runs every query. With the default 2-CPU limit that is 1.
-# Set it when you want more parallel diffs per pod; each busy worker adds CPU and memory.
+outbound:
+  # OUTBOUND_BLOCK_PRIVATE. Webhooks and GitHub/GitLab calls go to URLs that project maintainers
+  # type in. true refuses loopback and private addresses (10/8, 172.16/12, 192.168/16, fc00::/7, …);
+  # link-local (169.254/16, cloud metadata) is refused either way.
+  # The chart defaults to true although the binary defaults to false: on a laptop or a VM, "private"
+  # is usually your own chat server or GitHub Enterprise, but inside a cluster it is the pod network,
+  # the Kubernetes API, the database and every internal Service, which a maintainer should not be
+  # able to make pixeltwin POST to. Set false when webhooks or a GitHub Enterprise / self-managed
+  # GitLab live on a private network you trust.
+  blockPrivate: true
+
+# Parallel diff workers per pod (DIFF_WORKERS), threads that compare images and make thumbnails.
+# Empty: the chart sets it from resources.limits.cpu (else requests.cpu), rounded up, minus one,
+# at least 1, because the main thread parses every request and runs every query. With the default
+# 2-CPU limit that is 1. Without any CPU value the server would count the node's cores, which on a
+# big node means many workers and a lot of memory. Set it when you want more parallel diffs per
+# pod; each busy worker adds CPU and memory.
 diffWorkers: ""
 
 # Further server settings; empty means the server's default (see the main README).
 config:
-  logLevel: info          # LOG_LEVEL: debug | info | warn | error
-  diffTimeoutMs: ""       # DIFF_TIMEOUT_MS, default 30000
-  diffQueueMax: ""        # DIFF_QUEUE_MAX, default diffWorkers × 20; 0 never answers 503 server_busy
-  maxImageBytes: ""       # MAX_IMAGE_BYTES, default 10485760 (10 MiB PNG, about 13.4 MB as base64 JSON)
+  logLevel: info          # LOG_LEVEL: debug | info | warn | error (probe requests log at debug)
+  diffTimeoutMs: ""       # DIFF_TIMEOUT_MS, default 30000: a diff taking longer fails the upload
+  diffQueueMax: ""        # DIFF_QUEUE_MAX, default diffWorkers × 20; above it uploads get 503 server_busy
+                          # with Retry-After (the SDKs retry); 0 never refuses
+  maxImageBytes: ""       # MAX_IMAGE_BYTES, default 10485760 (10 MiB PNG). Also sizes the Ingress body
+                          # limit (see ingress below)
   maxImagePixels: ""      # MAX_IMAGE_PIXELS, default 40000000
 
-# More environment variables for the container, e.g. [{ name: FOO, value: bar }].
+# Graceful shutdown. On SIGTERM the server stops taking connections and lets requests in flight
+# (an upload waiting for its diff) finish for up to graceSeconds (SHUTDOWN_GRACE_MS), then stops the
+# outboxes and the diff workers. A webhook or mail that is cut off is sent again by another replica
+# once its lease runs out.
+shutdown:
+  graceSeconds: 20
+  # Seconds a terminating pod keeps serving before it gets SIGTERM, so the Service and the Ingress
+  # controller stop sending it new requests first (lifecycle.preStop.sleep, Kubernetes 1.30+).
+  # 0 disables.
+  preStopSleepSeconds: 5
+  # Empty: preStopSleepSeconds + graceSeconds + 10 (the outboxes, workers and pool closing), so the
+  # kubelet never kills the pod while it is still draining. Set it only to give even more time.
+  terminationGracePeriodSeconds: ""
+
+# More environment variables for the container, e.g. [{ name: FOO, value: bar }]. Do not repeat a
+# variable the chart sets (use its value above): duplicate names are refused by server-side apply.
 extraEnv: []
 # envFrom sources, e.g. [{ secretRef: { name: more-settings } }].
 extraEnvFrom: []
 
 # Under load (many CI runs uploading at once, 10 diff workers) one pod uses about 1.5–2 GB of RAM;
 # see docs/load-testing.md. Fewer diff workers need less. Memory limits below ~1.5Gi risk OOM kills
-# during bursts.
+# during bursts. The CPU limit also sets diffWorkers (see above).
 resources:
   requests:
     cpu: 500m
@@ -99,7 +145,7 @@ persistence:
   enabled: true
   # Use a PVC you created yourself instead of creating one.
   existingClaim: ""
-  # Empty uses the cluster's default StorageClass.
+  # Empty uses the cluster's default StorageClass; "-" sets storageClassName: "".
   storageClass: ""
   size: 20Gi
   annotations: {}
@@ -107,40 +153,65 @@ persistence:
 service:
   type: ClusterIP
   port: 80
+  # Only with type NodePort (e.g. kind); empty lets Kubernetes pick.
+  nodePort: ""
   annotations: {}
 
 ingress:
   enabled: false
   className: ""
+  # nginx.ingress.kubernetes.io/proxy-body-size is added from config.maxImageBytes unless you set it
+  # here: the largest body the server accepts is the image as base64 plus 1 MiB for metadata and
+  # page elements (15m for the default 10 MiB). ingress-nginx refuses bodies over 1m by default.
+  # Other controllers need their own equivalent.
   annotations:
-    # A screenshot upload is up to MAX_IMAGE_BYTES (10 MiB) as multipart, or about 13.4 MB as base64
-    # in JSON. ingress-nginx refuses bodies over 1m by default with 413.
-    nginx.ingress.kubernetes.io/proxy-body-size: 20m
     # Uploads wait for their diff, up to DIFF_TIMEOUT_MS plus queueing.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # TLS from cert-manager, with tls below:
     # cert-manager.io/cluster-issuer: letsencrypt
   hosts:
     - host: pixeltwin.example.com
       paths:
         - path: /
           pathType: Prefix
+  # With TLS, publicUrl must start with https:// (the Secure cookie flag and the CSRF origin).
   tls: []
   #  - secretName: pixeltwin-tls
   #    hosts:
   #      - pixeltwin.example.com
 
-# Probes call GET /healthz, which checks the database and the storage.
+# Prometheus metrics (METRICS=1) on a port of their own, served by a separate Service
+# (<release>-pixeltwin-metrics) that the Ingress never routes to. No auth: restrict who reaches it
+# with networkPolicy.metrics. Requests by route and status with latency, checks by result,
+# finalized builds by verdict, diff queue depth, outbox backlog.
+metrics:
+  enabled: false
+  port: 9464
+  serviceMonitor:
+    # Needs the Prometheus Operator CRDs (monitoring.coreos.com/v1).
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    # Labels your Prometheus selects ServiceMonitors by, e.g. { release: kube-prometheus-stack }.
+    labels: {}
+
+# Probes call GET /healthz, which checks the database and the storage. The server only starts
+# listening once migrations are done, so no probe passes, and no Service sends traffic, before then.
 probes:
-  # Gives migrations at startup up to failureThreshold × periodSeconds before liveness takes over.
+  # Covers startup, including migrations (pods starting together wait in turn for the migration
+  # lock): up to failureThreshold × periodSeconds (10 minutes) before liveness takes over. A pod
+  # killed mid-migration loses nothing (Postgres migrations run in one transaction), but would start
+  # over, so keep this generous.
   startup:
     enabled: true
     periodSeconds: 2
     timeoutSeconds: 3
-    failureThreshold: 60
+    failureThreshold: 300
+  # Takes a pod out of the Service while its database or storage is failing.
   readiness:
     enabled: true
-    periodSeconds: 10
+    periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
   # Generous on purpose: /healthz also fails when the database is unreachable, and restarting
@@ -151,15 +222,20 @@ probes:
     timeoutSeconds: 5
     failureThreshold: 6
 
-# Seconds a terminating pod keeps serving before it gets SIGTERM, so load balancers and the
-# Service stop sending it new requests first (lifecycle.preStop.sleep, Kubernetes 1.30+). 0 disables.
-preStopSleepSeconds: 5
-terminationGracePeriodSeconds: 30
-
 # Only used in `postgres` mode with more than one replica.
 podDisruptionBudget:
   enabled: true
   maxUnavailable: 1
+
+# With more than one replica and no topologySpreadConstraints of your own, the chart spreads the
+# pods over nodes, as a preference (ScheduleAnyway), so a small cluster still schedules them.
+topologySpread:
+  enabled: true
+  # Also spread over zones (topology.kubernetes.io/zone). Turn it on only when every node has that
+  # label, as on managed clouds: the scheduler ignores spreading altogether for nodes without one
+  # of the keys, so on a cluster without zone labels this would undo the spread over nodes too.
+  zones: false
+topologySpreadConstraints: []
 
 serviceAccount:
   create: true
@@ -176,17 +252,86 @@ podSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
-# The root filesystem is read-only; /data and /tmp are writable volumes.
+# The root filesystem is read-only. The server writes only to /data (images and SQLite in local
+# mode; nothing in postgres mode) and /tmp (an emptyDir, for the runtime).
 securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
+  privileged: false
   capabilities:
     drop: ["ALL"]
+
+# A NetworkPolicy for the pixeltwin pods. Off by default: it only works with a CNI that enforces
+# NetworkPolicy (Calico, Cilium, …), and a wrong egress rule silently breaks webhooks or mail.
+networkPolicy:
+  enabled: false
+  ingress:
+    # Who may reach the http port: the ingress controller's namespace by default.
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+    # Pods in the release namespace labelled <release>-pixeltwin-client: "true" (the helm test pod
+    # has it) may connect too.
+    allowClientLabel: true
+  metrics:
+    # Who may reach the metrics port, e.g. the monitoring namespace.
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: monitoring
+  egress:
+    # DNS on port 53 to anywhere (kube-dns, or a node-local cache on a link-local address).
+    dns: true
+    # The database, as NetworkPolicy peers and ports, e.g. the example Postgres:
+    #   to: [{ podSelector: { matchLabels: { app: pixeltwin-postgres } } }]
+    # or a managed database: to: [{ ipBlock: { cidr: 10.20.0.0/16 } }]
+    database:
+      to: []
+      ports: [5432]
+    # Outbound to the internet: GitHub/GitLab APIs and webhooks (443), SMTP (465, 587). The private
+    # ranges are excluded to match outbound.blockPrivate; add rules to extra for an internal GitHub
+    # Enterprise, GitLab, chat server or SMTP relay.
+    internet:
+      enabled: true
+      cidrs: ["0.0.0.0/0"]
+      except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"]
+      ports: [443, 465, 587]
+    # More egress rules, as NetworkPolicyEgressRule objects.
+    extra: []
+
+# A nightly `pg_dump -Fc` to a PVC, for `postgres` mode (or `local` mode with database.url) when
+# your database has no backups of its own. With a managed database (RDS, Cloud SQL, …) or an
+# operator (CloudNativePG, …) prefer their snapshots and point-in-time recovery, and leave this off.
+# The dumps contain sealed secrets; SECRET_KEY is needed to use them, so back it up separately.
+backup:
+  enabled: false
+  schedule: "17 3 * * *"
+  # pg_dump must be at least the server's major version.
+  image:
+    repository: postgres
+    tag: "17"
+    pullPolicy: IfNotPresent
+  # Dumps kept on the volume; older ones are deleted after a successful dump.
+  keep: 7
+  persistence:
+    existingClaim: ""
+    storageClass: ""
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# `helm test <release>` runs the pixeltwin image with `healthcheck http://<service>/healthz`.
+tests:
+  enabled: true
 
 podAnnotations: {}
 podLabels: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-topologySpreadConstraints: []
 priorityClassName: ""
