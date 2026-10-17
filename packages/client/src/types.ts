@@ -158,6 +158,8 @@ export interface Check {
   /** Page elements sent with the screenshot; null when none. */
   elementCount: number | null;
   suggestion: Suggestion | null;
+  /** The change group: other checks of this build with exactly the same changes; null when none. */
+  groupId?: string | null;
   createdAt: number;
   updatedAt: number;
   /** Paths from the server root: API images and the review page. */
@@ -225,4 +227,73 @@ export interface Area extends Rect {
   kind: 'ignore' | 'compare';
   createdBy: string;
   createdAt: number;
+}
+
+/** Checks of one build with exactly the same changes (the same change on several screens). */
+export interface ChangeGroup {
+  /** The members' change key. */
+  id: string;
+  buildId: string;
+  /** Members (at least 2). */
+  size: number;
+  /** Members per review state. */
+  counts: Record<'pending' | 'approved' | 'rejected' | 'outdated', number>;
+  /** The changes, as found on the first member. */
+  regions: (Rect & { pixels: number; fingerprint?: string })[];
+  /** Members, newest first. */
+  checks: Array<{
+    id: string;
+    name: string;
+    variant: Variant;
+    review: CheckReview;
+    reviewedBy: string | null;
+    /** An agent's open suggestion for the check, if any. */
+    suggestion: 'approve' | 'reject' | null;
+    imageSha: string;
+    diffImageSha: string | null;
+    baselineImageSha: string | null;
+  }>;
+}
+
+/** What a group approve or reject did. */
+export interface GroupReview {
+  /** Checks this call reviewed. */
+  changed: string[];
+  /** Checks a token's review left as suggestions for a person (agent review policy). */
+  suggested: string[];
+  /** Members left as they were (already reviewed, outdated, or not in `checkIds`). */
+  skipped: Array<{ checkId: string; review: CheckReview }>;
+  group: ChangeGroup;
+  /** The build's verdict after the call. */
+  verdict: Verdict;
+}
+
+/** A screen that keeps flipping (a clock, an ad): its changes are likely noise. */
+export interface Flaky {
+  /** Flips per run in the history, 0 to 1. */
+  score: number;
+  flips: number;
+  /** Checks looked at: the last 20 of the screen on the branch. */
+  checks: number;
+  lastSeen: number;
+  /** Where it keeps changing (screenshot pixels). */
+  unstableArea: Rect | null;
+}
+
+/** A screen's last checks on a branch, newest first, and whether it is flaky. */
+export interface ScreenHistory {
+  snapshotKey: string;
+  name: string;
+  variant: Variant;
+  branch: string;
+  flaky: Flaky | null;
+  items: Array<{
+    checkId: string;
+    buildId: string;
+    buildNumber: number;
+    imageSha: string;
+    result: CheckResult;
+    review: CheckReview;
+    createdAt: number;
+  }>;
 }

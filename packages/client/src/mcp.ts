@@ -1,13 +1,13 @@
 // `pixeltwin mcp`: a Model Context Protocol server on stdio, so an agent (Claude Code, Cursor, …)
 // can read what changed in a build, look at the screenshots and approve or reject with a reason.
 // A small JSON-RPC 2.0 loop of its own instead of @modelcontextprotocol/sdk: this package has no
-// dependencies, and seven tools over stdio need only initialize, tools/list, tools/call and ping.
+// dependencies, and eight tools over stdio need only initialize, tools/list, tools/call and ping.
 import { createInterface } from 'node:readline';
 import { PixeltwinClient, SDK_VERSION } from './client.js';
 import { PixeltwinError, PixeltwinNetworkError } from './errors.js';
 import { crop, decodePng, encodePng, shrink } from './png-image.js';
 import { gitBranch } from './run.js';
-import type { Build, Check, Diff, ElementChange, Rect } from './types.js';
+import type { Build, ChangeGroup, Check, Diff, ElementChange, Flaky, Rect } from './types.js';
 
 type Env = Record<string, string | undefined>;
 type Json = Record<string, unknown>;
@@ -16,13 +16,20 @@ type Json = Record<string, unknown>;
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 /** An image's longest side after shrinking: what vision models take in without scaling it themselves. */
 const MAX_EDGE = 1568;
+/** Members of a change group listed by list_changes; the rest are counted. */
+const MAX_MEMBERS = 8;
+/** Element changes listed per check by list_changes. */
+const MAX_CHANGES = 10;
 
 const INSTRUCTIONS = `pixeltwin compares screenshots of a web app with approved baselines.
 Workflow after changing UI code: latest_build (your branch) → list_changes (what changed, element by
 element) → get_check or get_check_images (look closer; crop to a change to save tokens) → decide
 whether each change is what you meant to do → approve_check or reject_check with a reason. Reject or
-leave for a person anything you did not intend. A project may record your review as a suggestion
-that a person accepts; the answer says so.`;
+leave for a person anything you did not intend. list_changes lists a change group (the same change on
+several screens) once with one representative check: judge the representative and decide the whole
+group at once with review_group. A check marked flaky is on a screen that keeps flipping by itself, so
+its change is likely noise. A project may record your review as a suggestion that a person accepts;
+the answer says so.`;
 
 interface Content {
   type: 'text' | 'image';
@@ -47,6 +54,16 @@ class ToolError extends Error {}
 
 const text = (value: string): Content => ({ type: 'text', text: value });
 const json = (value: unknown): Content => text(JSON.stringify(value, null, 2));
+
+/** Groups and flaky screens are newer than the rest of the API: an older server answers 404. */
+async function optional<T>(call: Promise<T>, missing: T): Promise<T> {
+  try {
+    return await call;
+  } catch (err) {
+    if (err instanceof PixeltwinError && err.status === 404) return missing;
+    throw err;
+  }
+}
 
 const rectSchema = {
   type: 'object',
@@ -126,6 +143,30 @@ function grow(rect: Rect, by: number): Rect {
   };
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** A check as list_changes shows it: summary, element changes, review state. */
+function changeItem(check: Check, url: string, flaky: Flaky | undefined) {
+  const diff = diffOf(check);
+  return {
+    checkId: check.id,
+    name: `${check.name}${variantText(check.variant)}`,
+    result: check.result,
+    review: check.review,
+    ...(flaky ? { flakyScore: flaky.score } : {}),
+    ...(diff ? { percent: diff.percent, summary: diff.summary } : {}),
+    ...(diff?.changes
+      ? {
+          changes: diff.changes.slice(0, MAX_CHANGES).map(changeView),
+          ...(diff.changes.length > MAX_CHANGES || diff.changesTruncated ? { moreChanges: true } : {}),
+        }
+      : {}),
+    ...(diff ? { regions: diff.regions.length } : {}),
+    ...(check.suggestion ? { suggestion: check.suggestion } : {}),
+    url,
+  };
+}
+
 function errorText(err: unknown): string {
   if (err instanceof ToolError || err instanceof PixeltwinError || err instanceof PixeltwinNetworkError)
     return err.message;
@@ -196,7 +237,7 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
     {
       name: 'list_changes',
       description:
-        "The checks of a build that differ from their baselines (changed) or have none yet (new), each with its one-sentence summary and its element changes (moved, resized, text, style, added, removed, with the element's key such as [data-testid=submit] and its boxes in screenshot pixels), its review state and any agent suggestion. Defaults to the latest build of the branch.",
+        "What changed in a build: the checks that differ from their baselines (changed) or have none yet (new), each with its one-sentence summary and its element changes (moved, resized, text, style, added, removed, with the element's key such as [data-testid=submit] and its boxes in screenshot pixels), its review state and any agent suggestion. Checks with exactly the same changes (a header changed on 40 screens) come once as a change group: its members by name (with their review state unless pending) and one representative check with the summary and changes they share; judge the representative and decide the group with review_group. `flakyScore` (0 to 1) marks a check whose screen keeps flipping by itself: its change is likely noise. Defaults to the latest build of the branch.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -225,33 +266,69 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
             cursor = page.nextCursor ?? undefined;
           } while (cursor);
         }
-        const items = checks.map((check) => {
-          const diff = diffOf(check);
-          return {
-            checkId: check.id,
-            name: `${check.name}${variantText(check.variant)}`,
-            result: check.result,
-            review: check.review,
-            ...(diff ? { percent: diff.percent, summary: diff.summary } : {}),
-            ...(diff?.changes
-              ? {
-                  changes: diff.changes.slice(0, 10).map(changeView),
-                  ...(diff.changes.length > 10 || diff.changesTruncated ? { moreChanges: true } : {}),
-                }
-              : {}),
-            ...(diff ? { regions: diff.regions.length } : {}),
-            ...(check.suggestion ? { suggestion: check.suggestion } : {}),
-            url: checkUrl(check),
-          };
+        const [groups, noisy] = await Promise.all([
+          optional(c.listGroups(buildId), []),
+          optional(c.noisyScreens(project), []),
+        ]);
+        const flakyByScreen = new Map(
+          noisy.filter((n) => n.branch === build.branch && n.flaky).map((n) => [n.snapshotKey, n.flaky as Flaky]),
+        );
+        const byId = new Map(checks.map((check) => [check.id, check]));
+        const flakyOf = (id: string) => {
+          const check = byId.get(id);
+          return check ? flakyByScreen.get(check.snapshotKey) : undefined;
+        };
+        const grouped = new Set<string>();
+        const groupItems = groups.flatMap((group: ChangeGroup) => {
+          const members = group.checks.filter((m) => byId.has(m.id));
+          if (members.length < 2) return [];
+          for (const m of members) grouped.add(m.id);
+          // The representative: a member that still waits for review, else the newest one.
+          const representative = byId.get(
+            (members.find((m) => m.review === 'pending') ?? members[0])?.id ?? '',
+          ) as Check;
+          const shown = members.slice(0, MAX_MEMBERS);
+          return [
+            {
+              groupId: group.id,
+              size: members.length,
+              review: Object.fromEntries(Object.entries(group.counts).filter(([, n]) => n > 0)),
+              members: shown.map((m) => {
+                const flaky = flakyOf(m.id);
+                return {
+                  checkId: m.id,
+                  name: `${m.name}${variantText(m.variant)}`,
+                  // Pending is what the group's counts say of most members; only the others say so.
+                  ...(m.review === 'pending' ? {} : { review: m.review }),
+                  ...(flaky ? { flakyScore: flaky.score } : {}),
+                  ...(m.suggestion ? { suggestion: m.suggestion } : {}),
+                };
+              }),
+              ...(members.length > shown.length ? { moreMembers: `+${members.length - shown.length} more` } : {}),
+              representative: changeItem(representative, checkUrl(representative), flakyOf(representative.id)),
+            },
+          ];
         });
-        const head = `Build #${build.number} on ${build.branch}: verdict ${build.verdict}; ${items.length} changed or new check${items.length === 1 ? '' : 's'}.`;
-        return { content: [text([note, head].filter(Boolean).join(' ')), json(items)] };
+        const single = checks
+          .filter((check) => !grouped.has(check.id))
+          .map((check) => changeItem(check, checkUrl(check), flakyByScreen.get(check.snapshotKey)));
+        const flakyCount = checks.filter((check) => flakyByScreen.has(check.snapshotKey)).length;
+        const head = [
+          `Build #${build.number} on ${build.branch}: verdict ${build.verdict}; ${plural(checks.length, 'changed or new check')}`,
+          groupItems.length
+            ? `: ${plural(groupItems.length, 'change group')} of ${plural(grouped.size, 'check')} (each member has the same changes as its representative: judge it once, decide with review_group) and ${single.length} on ${single.length === 1 ? 'its' : 'their'} own.`
+            : '.',
+          flakyCount ? ` ${plural(flakyCount, 'check')} on flaky screens (flakyScore): likely noise.` : '',
+        ].join('');
+        return {
+          content: [text([note, head].filter(Boolean).join(' ')), json({ groups: groupItems, checks: single })],
+        };
       },
     },
     {
       name: 'get_check',
       description:
-        'Everything about one check: result, review state, diff percent and summary, every element change, the changed regions (boxes in screenshot pixels), any agent suggestion, the review history (who approved or rejected, and why) and links to the images and the review page.',
+        'Everything about one check: result, review state, diff percent and summary, every element change, the changed regions (boxes in screenshot pixels), any agent suggestion, its change group (id and size), whether its screen is flaky (score, flips, the unstable area: likely noise), the review history (who approved or rejected, and why) and links to the images and the review page.',
       inputSchema: {
         type: 'object',
         properties: { checkId: { type: 'string', description: 'A check id (chk_…)' } },
@@ -261,7 +338,12 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
       async run(args) {
         const c = need();
         const check = await c.getCheck(str(args, 'checkId', true));
-        const history = await c.listReviews(check.id);
+        const [history, screen, groups] = await Promise.all([
+          c.listReviews(check.id),
+          optional(c.checkHistory(check.id), null),
+          check.groupId ? optional(c.listGroups(check.buildId), []) : Promise.resolve([]),
+        ]);
+        const group = groups.find((g) => g.id === check.groupId);
         const diff = diffOf(check);
         return {
           content: [
@@ -286,6 +368,10 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
               elementCount: check.elementCount,
               suggestion: check.suggestion,
               reviewComment: check.reviewComment,
+              group: group ? { groupId: group.id, size: group.size } : null,
+              flaky: screen?.flaky
+                ? { score: screen.flaky.score, flips: screen.flaky.flips, unstableArea: screen.flaky.unstableArea }
+                : null,
               history: history.slice(0, 20).map((e) => ({
                 action: e.action,
                 by:
@@ -406,7 +492,7 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
           const done = action === 'approve' ? 'approved' : 'rejected';
           const line =
             reviewed.outcome === 'suggested'
-              ? `Recorded as a suggestion to ${action}: this project has a person decide on agents' reviews. The check stays ${reviewed.review} until someone accepts or dismisses it at ${checkUrl(reviewed)}`
+              ? `Recorded as a suggestion to ${action}: this project has a person decide on agents' reviews. The check stays ${reviewed.review} until someone accepts or dismisses it at ${checkUrl(reviewed)}.`
               : `Applied: the check is ${done}. ${checkUrl(reviewed)}`;
           return {
             content: [text(line), json({ checkId: reviewed.id, outcome: reviewed.outcome, review: reviewed.review })],
@@ -414,6 +500,80 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
         },
       }),
     ),
+    {
+      name: 'review_group',
+      description:
+        "Approve or reject a whole change group at once (a groupId from list_changes): every member that waits for review, or only `checkIds`. The members share exactly the same change, so looking at one representative (get_check, get_check_images) is enough. Give a reason (what you changed and why it is intended, or what is wrong); it is kept on each review. Members already reviewed or outdated are skipped. If the project reviews agents' decisions, some or all members are recorded as suggestions that a person accepts or dismisses; the answer says which applied, which became suggestions and the build's new verdict.",
+      inputSchema: {
+        type: 'object',
+        properties: {
+          buildId: { type: 'string', description: 'The build id (bld_…)' },
+          groupId: { type: 'string', description: 'The change group id, from list_changes or get_check' },
+          action: { type: 'string', enum: ['approve', 'reject'] },
+          reason: { type: 'string', minLength: 1, maxLength: 1000, description: 'Why, in a sentence or two' },
+          checkIds: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+            description: 'Only these members (check ids); default all',
+          },
+        },
+        required: ['buildId', 'groupId', 'action', 'reason'],
+        additionalProperties: false,
+      },
+      async run(args) {
+        const c = need();
+        const buildId = str(args, 'buildId', true);
+        const groupId = str(args, 'groupId', true);
+        const action = str(args, 'action', true);
+        if (action !== 'approve' && action !== 'reject') throw new ToolError('"action" is approve or reject.');
+        const reason = str(args, 'reason', true);
+        const checkIds =
+          Array.isArray(args.checkIds) && args.checkIds.length > 0 ? args.checkIds.map(String) : undefined;
+        const result = await c.reviewGroup(buildId, groupId, action, { reason, ...(checkIds ? { checkIds } : {}) });
+        const done = action === 'approve' ? 'approved' : 'rejected';
+        const asked = checkIds ? new Set(checkIds) : null;
+        const left = result.skipped.filter((s) => !asked || asked.has(s.checkId));
+        const notAsked = result.skipped.length - left.length;
+        const lines: string[] = [];
+        if (result.changed.length) lines.push(`Applied: ${plural(result.changed.length, 'check')} ${done}.`);
+        if (result.suggested.length) {
+          const one = result.suggested.length === 1;
+          lines.push(
+            `Recorded as a suggestion to ${action} for ${plural(result.suggested.length, 'check')}: this project has a person decide on agents' reviews. ${one ? 'It stays' : 'They stay'} pending until someone accepts or dismisses ${one ? 'it' : 'them'} at ${c.buildUrl(buildId)}.`,
+          );
+        }
+        if (!result.changed.length && !result.suggested.length) {
+          lines.push('Nothing changed: no member asked for waits for review.');
+        }
+        if (left.length) {
+          const states = new Map<string, number>();
+          for (const s of left) states.set(s.review, (states.get(s.review) ?? 0) + 1);
+          const counts = [...states].map(([state, n]) => `${n} ${state}`).join(', ');
+          lines.push(
+            `Skipped ${plural(left.length, 'check')}, left as ${left.length === 1 ? 'it was' : 'they were'} (${counts}).`,
+          );
+        }
+        if (notAsked) {
+          lines.push(
+            `${plural(notAsked, 'other member')} not in checkIds left as ${notAsked === 1 ? 'it was' : 'they were'}.`,
+          );
+        }
+        lines.push(`The build's verdict is now ${result.verdict}.`);
+        return {
+          content: [
+            text(lines.join(' ')),
+            json({
+              groupId: result.group.id,
+              applied: result.changed,
+              suggested: result.suggested,
+              skipped: left,
+              verdict: result.verdict,
+            }),
+          ],
+        };
+      },
+    },
     {
       name: 'add_ignore_area',
       description:

@@ -87,7 +87,9 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server on stdin/stdo
 (Claude Code, Cursor, …), configured by `PIXELTWIN_URL`, `PIXELTWIN_TOKEN` and `PIXELTWIN_PROJECT`
 (and `PIXELTWIN_BRANCH`, else the checked-out branch). Tools: `latest_build`, `list_changes`,
 `get_check`, `get_check_images` (cropped to an element change or a rectangle, shrunk to 1568 px at
-most), `approve_check` and `reject_check` (with a `reason`) and `add_ignore_area`. See the
+most), `approve_check` and `reject_check` (with a `reason`), `review_group` (a change group, the
+same change on several screens, decided at once) and `add_ignore_area`. `list_changes` shows each
+change group once with a representative check and marks checks on flaky screens. See the
 [main README](../../README.md#agents-pixeltwin-mcp) for a `.mcp.json`. It is a small JSON-RPC loop of
 its own: the package keeps no dependencies.
 
