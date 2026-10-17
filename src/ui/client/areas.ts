@@ -4,6 +4,7 @@
 // strip removes one. Alt+drag an area, or Cmd/Ctrl+D (Duplicate) on the picked one, adds a copy
 // of the same size. Without JavaScript only Delete works (a plain form).
 import { api } from './api.ts';
+import { confirmDialog } from './dialog.ts';
 import { hint } from './keys.ts';
 import { copyPlace, dragged, type Handle, MIN_SIZE, type Rect, type Size, same } from './rects.ts';
 import { toast } from './toast.ts';
@@ -644,13 +645,16 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     });
   }
 
-  // Delete all areas: one call, then the check is compared again (the button asks first).
+  // Delete all areas: asks first, then one call, then the check is compared again. The question is
+  // asked here (data-ask), not by the page-wide data-confirm, whose submit listener runs after this one.
   for (const form of root.querySelectorAll<HTMLFormElement>('form[data-areas-delete-all]')) {
     listen(form, 'submit', (e) => {
       e.preventDefault();
-      const button = form.querySelector('button');
-      if (button) button.disabled = true;
+      const button = form.querySelector<HTMLButtonElement>('button');
       void (async () => {
+        const question = button?.dataset.ask;
+        if (question && !(await confirmDialog(question, { confirmLabel: 'Delete all', danger: true }))) return;
+        if (button) button.disabled = true;
         try {
           const { deleted } = await api<{ deleted: number }>('DELETE', `/checks/${checkId}/areas`);
           lastCopy = null;

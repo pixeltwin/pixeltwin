@@ -156,7 +156,7 @@ describe('UI areas', () => {
     const body = await page(`/ui/checks/${check.id}?filter=all`);
     expect(body).toContain(`action="/ui/checks/${check.id}/areas/delete-all" data-areas-delete-all="true"`);
     expect(body).toContain('Delete all 2 areas');
-    expect(body).toContain('data-confirm-label="Delete all"');
+    expect(body).toContain('data-ask="Delete all 2 areas of this snapshot?');
     expect(await page(`/ui/checks/${check.id}`, viewer)).not.toContain('data-areas-delete-all');
 
     expect((await postForm(t, `/ui/checks/${check.id}/areas/delete-all`, {}, viewer)).status).toBe(403);
