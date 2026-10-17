@@ -1,12 +1,14 @@
 // The build page in pages: fitted to the window, paged in place with the keyboard and history,
 // reviewed in place on any page, and thumbnails that appear whole once decoded.
 import type { Page } from '@playwright/test';
-import { Api, expect, open, type Sessions, screenshot, test } from './fixtures';
+import { Api, expect, open, REVIEWER, type Sessions, screenshot, test } from './fixtures';
 
 /** A build of `count` new screenshots (s00 oldest … newest first on the page). */
 async function seedMany(admin: Api, count = 44): Promise<{ buildId: string; ids: string[] }> {
   const slug = `e2e-${Math.random().toString(36).slice(2, 10)}`;
   await admin.call('POST', '/projects', { slug, name: `Many ${slug.slice(4)}` });
+  // New projects are members only: the reviewer some tests log in as is added.
+  await admin.call('POST', `/projects/${slug}/members`, { email: REVIEWER, role: 'reviewer' });
   const { token } = await admin.call<{ token: string }>('POST', `/projects/${slug}/tokens`, {
     name: 'e2e',
     scopes: ['read', 'write'],
