@@ -305,6 +305,20 @@
               "null"
             ]
           },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name` of the repository the commit is in; the SDK fills it in from CI"
+          },
+          "pullRequest": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The pull (merge) request CI ran for; the GitHub integration comments on it"
+          },
           "state": {
             "type": "string",
             "enum": [
@@ -453,6 +467,8 @@
           "baseBranch",
           "externalId",
           "commitSha",
+          "repository",
+          "pullRequest",
           "state",
           "createdAt",
           "finalizedAt",
@@ -1110,6 +1126,352 @@
           "branchImageSha",
           "mainImageSha",
           "approvedAt"
+        ]
+      },
+      "Integration": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "False until the integration is first saved"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "github",
+              "gitlab"
+            ]
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "GitHub owner/name or GitLab group/sub/project; used when a build names none, and to match webhooks"
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "GitHub's API URL or the GitLab instance URL"
+          },
+          "tokenSet": {
+            "type": "boolean"
+          },
+          "tokenLast4": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The token's last four characters; the token is never returned"
+          },
+          "commitStatus": {
+            "type": "boolean",
+            "description": "Post the pixeltwin/<slug> commit status"
+          },
+          "prComment": {
+            "type": "boolean",
+            "description": "Keep one pull/merge request comment per build up to date"
+          },
+          "autoPromote": {
+            "type": "boolean",
+            "description": "A merged pull/merge request promotes its branch into the branch it was merged into"
+          },
+          "webhookSecretSet": {
+            "type": "boolean"
+          },
+          "webhookUrl": {
+            "type": "string",
+            "description": "Where the code host's webhook sends merge events (auto-promote)"
+          },
+          "encrypted": {
+            "type": "boolean",
+            "description": "Secrets are encrypted at rest (SECRET_KEY is set)"
+          },
+          "lastSync": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "buildId": {
+                "type": "string"
+              },
+              "at": {
+                "type": "integer"
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "buildId",
+              "at",
+              "error"
+            ],
+            "description": "The last report to the code host, and its error if it failed"
+          },
+          "lastMerge": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "repository": {
+                "type": "string"
+              },
+              "pullRequest": {
+                "type": "integer"
+              },
+              "headBranch": {
+                "type": "string"
+              },
+              "baseBranch": {
+                "type": "string"
+              },
+              "mergedBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "promoted": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "at": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "repository",
+              "pullRequest",
+              "headBranch",
+              "baseBranch",
+              "mergedBy",
+              "promoted",
+              "at"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "configured",
+          "provider",
+          "repository",
+          "baseUrl",
+          "tokenSet",
+          "tokenLast4",
+          "commitStatus",
+          "prComment",
+          "autoPromote",
+          "webhookSecretSet",
+          "webhookUrl",
+          "encrypted",
+          "lastSync",
+          "lastMerge",
+          "updatedAt"
+        ]
+      },
+      "Webhook": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "build.finalized",
+                "build.verdict_changed",
+                "check.reviewed"
+              ]
+            }
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "slack"
+            ],
+            "description": "json: pixeltwin's payload; slack: a Slack-compatible { text, blocks }"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "secretLast4": {
+            "type": "string",
+            "description": "The signing secret's last four characters; the secret is never returned"
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "lastDelivery": {
+            "$ref": "#/components/schemas/Delivery"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "url",
+          "events",
+          "format",
+          "enabled",
+          "secretLast4",
+          "createdAt",
+          "updatedAt",
+          "lastDelivery"
+        ]
+      },
+      "Delivery": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Also sent as X-Pixeltwin-Delivery; the same on every retry"
+          },
+          "event": {
+            "type": "string",
+            "description": "A webhook event, or ping for Send test"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivered",
+              "failed"
+            ]
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "statusCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "finishedAt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "state",
+          "attempts",
+          "statusCode",
+          "error",
+          "durationMs",
+          "createdAt",
+          "finishedAt"
+        ]
+      },
+      "CreatedWebhook": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Webhook"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "secret": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The generated signing secret, shown only in this response; null when you chose it"
+              }
+            },
+            "required": [
+              "secret"
+            ]
+          }
+        ]
+      },
+      "InboundWebhookResult": {
+        "type": "object",
+        "properties": {
+          "handled": {
+            "type": "boolean",
+            "description": "False for events other than a merged pull/merge request"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "promoted",
+                    "already_promoted",
+                    "auto_promote_off",
+                    "same_branch"
+                  ]
+                },
+                "promoted": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "project",
+                "outcome",
+                "promoted"
+              ]
+            }
+          }
+        },
+        "required": [
+          "handled",
+          "detail",
+          "results"
         ]
       }
     },
@@ -2592,6 +2954,16 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "repository": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9_.-]+(\\/[A-Za-z0-9_.-]+)+$"
+                  },
+                  "pullRequest": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
                   },
                   "parallelTotal": {
                     "type": "integer",
@@ -4949,6 +5321,1024 @@
             }
           },
           "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/integration": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "The project's code host integration (GitHub or GitLab); the token is never returned",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The integration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Set up or change the code host integration: commit status, pull/merge request comment, auto-promote",
+        "description": "Omitted fields stay. `token: null` and `webhookSecret: null` remove them. Switching `provider` clears the token, the webhook secret and the URL. Auto-promote needs `repository` and `webhookSecret`.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "github",
+                      "gitlab"
+                    ]
+                  },
+                  "repository": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9_.-]+(\\/[A-Za-z0-9_.-]+)+$"
+                  },
+                  "baseUrl": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 500
+                  },
+                  "token": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "commitStatus": {
+                    "type": "boolean"
+                  },
+                  "prComment": {
+                    "type": "boolean"
+                  },
+                  "autoPromote": {
+                    "type": "boolean"
+                  },
+                  "webhookSecret": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 16,
+                    "maxLength": 200
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The integration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Remove the code host integration with its token and secret",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/webhooks": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "The project's outgoing webhooks (never their secrets)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Webhook"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Add a webhook: build.finalized, build.verdict_changed and check.reviewed, signed with its secret",
+        "description": "Each delivery is a POST with `X-Pixeltwin-Event`, `X-Pixeltwin-Delivery` (the same on retries) and `X-Pixeltwin-Signature: sha256=<HMAC-SHA256 of the body with the secret>`. Without `secret` one is generated and returned once. Failed deliveries (network, timeout, 5xx, 429) are retried with backoff for about five hours.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "secret": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 200
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "build.finalized",
+                        "build.verdict_changed",
+                        "check.reviewed"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "slack"
+                    ],
+                    "default": "json"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "required": [
+                  "url",
+                  "events"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedWebhook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/webhooks/{id}": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Get a webhook",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Change a webhook (a new secret replaces the old one at once)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "secret": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 200
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "build.finalized",
+                        "build.verdict_changed",
+                        "check.reviewed"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "json",
+                      "slack"
+                    ]
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delete a webhook with its deliveries",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/webhooks/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "A webhook's last 20 deliveries, newest first: status code, error, duration",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deliveries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Delivery"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/webhooks/{id}/test": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Send test: a ping delivery sent now (once, no retries); the answer is its outcome",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/github/webhook": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "GitHub repository webhook: a merged pull request promotes its branch (auto-promote)",
+        "description": "Point the repository webhook here (content type application/json, the \"Pull requests\" event, the secret from the project's integration settings). Verified with X-Hub-Signature-256; the project is the one whose integration has this repository. A merged pull request promotes its head branch into its base branch, once.",
+        "x-permission": "public",
+        "responses": {
+          "200": {
+            "description": "What was done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboundWebhookResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/gitlab/webhook": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "GitLab project webhook: a merged merge request promotes its branch (auto-promote)",
+        "description": "Point the project webhook here (\"Merge request events\", the secret token from the integration settings). Verified with X-Gitlab-Token; the project is the one whose integration has this project path. A merged merge request promotes its source branch into its target branch, once.",
+        "x-permission": "public",
+        "responses": {
+          "200": {
+            "description": "What was done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboundWebhookResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

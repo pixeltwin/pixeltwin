@@ -83,6 +83,12 @@ export const NOTICES: Record<string, string> = {
   'user-deleted': 'User deleted.',
   'project-deleted': 'Project deleted.',
   'builds-deleted': 'Builds deleted.',
+  'integration-saved': 'Pull request settings saved.',
+  'integration-removed': 'Integration removed.',
+  'webhook-saved': 'Webhook saved.',
+  'webhook-deleted': 'Webhook deleted.',
+  'webhook-test-ok': 'Test delivered.',
+  'webhook-test-failed': 'The test was not delivered; see Deliveries.',
 };
 
 export function noticeOf(c: Context<AppEnv>): string | undefined {

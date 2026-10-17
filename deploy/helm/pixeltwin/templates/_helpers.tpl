@@ -70,6 +70,20 @@ it), else a new random one.
 {{- end }}
 {{- end }}
 
+{{/* SECRET_KEY: secretKey, else the one already in the chart's Secret, else a new random one (kept across upgrades). */}}
+{{- define "pixeltwin.secretKey" -}}
+{{- if .Values.secretKey }}
+{{- .Values.secretKey }}
+{{- else }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "pixeltwin.fullname" .) }}
+{{- if and $existing $existing.data (hasKey $existing.data "SECRET_KEY") }}
+{{- index $existing.data "SECRET_KEY" | b64dec }}
+{{- else }}
+{{- randAlphaNum 48 }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{/* Fails the install or upgrade on settings that cannot work. */}}
 {{- define "pixeltwin.validate" -}}
 {{- if not .Values.publicUrl }}
@@ -80,6 +94,9 @@ it), else a new random one.
 {{- end }}
 {{- if and .Values.setupToken (lt (len .Values.setupToken) 16) }}
 {{- fail "setupToken must be at least 16 characters (or leave it empty and the chart generates one)" }}
+{{- end }}
+{{- if and .Values.secretKey (lt (len .Values.secretKey) 32) }}
+{{- fail "secretKey must be at least 32 characters (or leave it empty and the chart generates one)" }}
 {{- end }}
 {{- if not (has .Values.storage (list "local" "postgres")) }}
 {{- fail (printf "storage must be \"local\" or \"postgres\", got %q" .Values.storage) }}

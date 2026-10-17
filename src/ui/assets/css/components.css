@@ -167,6 +167,7 @@ input[type="email"],
 input[type="password"],
 input[type="number"],
 input[type="search"],
+input[type="url"],
 textarea {
   width: 100%;
 }

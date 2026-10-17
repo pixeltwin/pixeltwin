@@ -51,6 +51,15 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ SETUP_TOKEN: 'short' })).toThrow(ConfigError);
   });
 
+  test('SECRET_KEY encrypts integration secrets (at least 32 characters); private networks are allowed by default', () => {
+    expect(loadConfig({}).secretKey).toBeNull();
+    expect(loadConfig({ SECRET_KEY: 's'.repeat(32) }).secretKey).toBe('s'.repeat(32));
+    expect(() => loadConfig({ SECRET_KEY: 'short' })).toThrow(ConfigError);
+    expect(loadConfig({}).outboundBlockPrivate).toBe(false);
+    expect(loadConfig({ OUTBOUND_BLOCK_PRIVATE: '1' }).outboundBlockPrivate).toBe(true);
+    expect(loadConfig({ OUTBOUND_BLOCK_PRIVATE: 'false' }).outboundBlockPrivate).toBe(false);
+  });
+
   test('diff workers follow the container CPU limit, not the machine', () => {
     expect(cpuLimitFrom({ 'cpu.max': 'max 100000' })).toBeNull();
     expect(cpuLimitFrom({ 'cpu.max': '200000 100000' })).toBe(2);

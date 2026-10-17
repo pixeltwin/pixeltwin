@@ -55,7 +55,19 @@ Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens 
 6. After merging a branch, promote it so main does not ask to review the same screens again:
    GET ${api}/projects/<slug>/branches/<branch>/promote lists the screens that differ from main;
    POST the same URL (optionally {"snapshotKeys":[…]} to pick some) copies their baselines to
-   main. URL-encode the branch (feature%2Flogin). Needs the write scope.
+   main. URL-encode the branch (feature%2Flogin). Needs the write scope. A project whose GitHub
+   or GitLab integration has "promote on merge" does this by itself when the pull request merges.
+
+## Pull requests
+
+Send "commitSha", "repository" (owner/name; GitLab: group/sub/project) and "pullRequest" (the
+number; GitLab: the merge request IID) when opening a build, and a project with a GitHub or GitLab
+integration posts the commit status pixeltwin/<slug> (pending while screenshots wait for review,
+success when passed, failure when rejected or an error) and one comment per build on the pull
+request. Approving updates them, so CI need not run again. Admins set it up with
+PATCH ${api}/projects/<slug>/integration and add webhooks (build.finalized,
+build.verdict_changed, check.reviewed; signed X-Pixeltwin-Signature: sha256=<HMAC>) with
+POST ${api}/projects/<slug>/webhooks.
 
 ## Values
 

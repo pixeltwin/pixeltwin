@@ -117,6 +117,59 @@ describe('settings', () => {
     expect(ciInfo({ CI_RUN_ID: 'run-9' })).toEqual({ runId: 'run-9' });
   });
 
+  test('CI detection: the commit, repository and pull request a build reports on', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pixeltwin-event-'));
+    try {
+      // On a pull_request event GITHUB_SHA is a merge commit nobody pushed: the head commit is in the event.
+      const event = join(dir, 'event.json');
+      writeFileSync(event, JSON.stringify({ pull_request: { number: 42, head: { sha: 'head-sha' } } }));
+      const github = {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_EVENT_PATH: event,
+        GITHUB_SHA: 'merge-sha',
+        GITHUB_REPOSITORY: 'acme/shop',
+        GITHUB_HEAD_REF: 'feature/login',
+        GITHUB_BASE_REF: 'main',
+      };
+      expect(ciInfo(github)).toMatchObject({ commitSha: 'head-sha', repository: 'acme/shop', pullRequest: 42 });
+      // A push: GITHUB_SHA is the commit, there is no pull request.
+      expect(ciInfo({ ...github, GITHUB_EVENT_NAME: 'push' })).toMatchObject({
+        commitSha: 'merge-sha',
+        repository: 'acme/shop',
+        pullRequest: undefined,
+      });
+      // An unreadable event file still gives the commit and the number from refs/pull/<n>/merge.
+      expect(
+        ciInfo({ ...github, GITHUB_EVENT_PATH: join(dir, 'missing.json'), GITHUB_REF: 'refs/pull/17/merge' }),
+      ).toMatchObject({ commitSha: 'merge-sha', pullRequest: 17 });
+      expect(
+        ciInfo({
+          GITLAB_CI: 'true',
+          CI_COMMIT_SHA: 'gl-sha',
+          CI_MERGE_REQUEST_IID: '9',
+          CI_PROJECT_PATH: 'group/sub/shop',
+        }),
+      ).toMatchObject({ commitSha: 'gl-sha', repository: 'group/sub/shop', pullRequest: 9 });
+
+      // Explicit options and PIXELTWIN_* variables win over CI.
+      expect(resolveSettings({}, github)).toMatchObject({ repository: 'acme/shop', pullRequest: 42 });
+      expect(
+        resolveSettings({}, { ...github, PIXELTWIN_REPOSITORY: 'acme/web', PIXELTWIN_PULL_REQUEST: '43' }),
+      ).toMatchObject({ repository: 'acme/web', pullRequest: 43 });
+      expect(resolveSettings({ repository: 'x/y', pullRequest: 5 }, github)).toMatchObject({
+        repository: 'x/y',
+        pullRequest: 5,
+      });
+      expect(optionsToEnv({ repository: 'x/y', pullRequest: 5 })).toEqual({
+        PIXELTWIN_REPOSITORY: 'x/y',
+        PIXELTWIN_PULL_REQUEST: '5',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('externalId: explicit, shared by shards, unique otherwise', () => {
     const gh = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1' };
     expect(externalIdFor({ externalId: 'mine' }, gh, true)).toBe('mine');
@@ -206,6 +259,19 @@ describe('run lifecycle against a real server', () => {
 
   const settingsFor = (env: Record<string, string | undefined>, options = {}) =>
     resolveSettings({ url: server.url, token: server.token, project: 'run', branch: 'main', ...options }, env);
+
+  test('the build opened for a run carries its commit, repository and pull request', async () => {
+    const env: Record<string, string | undefined> = {};
+    const settings = settingsFor(env, {
+      branch: 'feature/pr',
+      commitSha: 'c0ffee1',
+      repository: 'acme/shop',
+      pullRequest: 42,
+    });
+    const started = await startRun(settings, { env, log: () => {} });
+    expect(started.build).toMatchObject({ commitSha: 'c0ffee1', repository: 'acme/shop', pullRequest: 42 });
+    started.restoreEnv();
+  });
 
   test('start publishes the build id; finish finalizes, prints the summary and gates', async () => {
     const env: Record<string, string | undefined> = {};

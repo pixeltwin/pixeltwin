@@ -3,6 +3,7 @@ import type { Child } from 'hono/jsx';
 import type { Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
+import { actorName } from '../../domain/actors';
 import { type Area, aroundChange, createArea, deleteArea, ignoreChanges, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
 import { baselineHistory } from '../../domain/baselines';
@@ -10,7 +11,7 @@ import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, compareWithoutAreas, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
-import { AUTO_APPROVER, approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
+import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
@@ -22,13 +23,9 @@ function isDiffData(diff: CheckView['diff']): diff is DiffData {
   return diff !== null && !('error' in diff);
 }
 
-/** Who reviewed: a user's email, or the name of the project token that did it. */
-async function reviewerName(s: Services, id: string): Promise<string> {
-  if (id === AUTO_APPROVER) return 'auto-approve (project setting)';
-  const user = await s.deps.db.selectFrom('users').select('email').where('id', '=', id).executeTakeFirst();
-  if (user) return user.email;
-  const token = await s.deps.db.selectFrom('projectTokens').select('name').where('id', '=', id).executeTakeFirst();
-  return token ? `token “${token.name}”` : 'a deleted account';
+/** Who reviewed: a user's email, the name of the project token that did it, auto-approve or a GitHub merge. */
+function reviewerName(s: Services, id: string): Promise<string> {
+  return actorName(s.deps, id);
 }
 
 /** A screenshot with its change regions (boxes that light up from the info strip) and areas. */

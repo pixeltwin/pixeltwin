@@ -7,6 +7,7 @@ import { createApp } from '../../src/http/app';
 import type { AppEnv } from '../../src/http/env';
 import { LoginLimiter } from '../../src/http/rate-limit';
 import { type Logger, silentLogger } from '../../src/log';
+import { Notifier } from '../../src/notify/notifier';
 import { createTestDeps, type TestDeps } from './deps';
 
 export const PUBLIC_URL = 'http://pixeltwin.test';
@@ -18,6 +19,8 @@ export type As = { cookie: string } | { token: string } | null;
 export interface TestApp {
   app: OpenAPIHono<AppEnv>;
   deps: TestDeps;
+  /** Never sends on its own: call `notifier.drain()` to deliver what is queued. */
+  notifier: Notifier;
   setup: SetupState;
   close(): Promise<void>;
   /** Sends a request; JSON bodies are serialized, cookie requests get the right Origin header. */
@@ -47,8 +50,18 @@ export async function createTestApp(
 ): Promise<TestApp> {
   const deps = await createTestDeps();
   const setup = new SetupState(options.setupToken ?? null);
+  const notifier = new Notifier({
+    deps,
+    publicUrl: PUBLIC_URL,
+    logger: silentLogger,
+    blockPrivate: false,
+    autoDeliver: false,
+    codeHost: { sleep: async () => {} },
+  });
+  deps.events = notifier;
   const app = createApp({
     deps,
+    notifier,
     config: {
       publicUrl: PUBLIC_URL,
       maxImageBytes: options.maxImageBytes ?? deps.limits.maxImageBytes,
@@ -79,6 +92,7 @@ export async function createTestApp(
   return {
     app,
     deps,
+    notifier,
     setup,
     close: () => deps.handle.close(),
     request,

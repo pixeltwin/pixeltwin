@@ -33,13 +33,14 @@ export async function supersedingCheck(db: Db, screen: Screen): Promise<{ id: st
 /**
  * After `by` (in build `buildNumber`) became the baseline: the screen's pending checks in older
  * builds are outdated; with `buildNumber: null`, in every build of the branch (a promotion).
+ * Returns the builds whose checks changed.
  */
 export async function outdateOlder(
   db: Db,
   screen: Omit<Screen, 'buildNumber'> & { buildNumber: number | null },
   by: string,
-): Promise<void> {
-  await db
+): Promise<string[]> {
+  const rows = await db
     .updateTable('checks')
     .set({ review: 'outdated', supersededBy: by, updatedAt: Date.now() })
     .where('projectId', '=', screen.projectId)
@@ -53,18 +54,20 @@ export async function outdateOlder(
         .where('branch', '=', screen.branch);
       return screen.buildNumber === null ? builds : builds.where('number', '<', screen.buildNumber);
     })
+    .returning('buildId')
     .execute();
+  return [...new Set(rows.map((r) => r.buildId))];
 }
 
 /**
  * After the approval of `checkId` was undone (its baseline is gone): the checks it outdated wait
- * for review again, unless another newer approval still stands for them.
+ * for review again, unless another newer approval still stands for them. Returns their builds.
  */
-export async function restoreOutdated(db: Db, checkId: string): Promise<void> {
+export async function restoreOutdated(db: Db, checkId: string): Promise<string[]> {
   const rows = await db
     .selectFrom('checks')
     .innerJoin('builds', 'builds.id', 'checks.buildId')
-    .select(['checks.id', 'checks.projectId', 'checks.snapshotKey', 'builds.branch', 'builds.number'])
+    .select(['checks.id', 'checks.buildId', 'checks.projectId', 'checks.snapshotKey', 'builds.branch', 'builds.number'])
     .where('checks.supersededBy', '=', checkId)
     .execute();
   for (const row of rows) {
@@ -79,6 +82,7 @@ export async function restoreOutdated(db: Db, checkId: string): Promise<void> {
       .where('id', '=', row.id)
       .execute();
   }
+  return [...new Set(rows.map((r) => r.buildId))];
 }
 
 /** 409 for a review of an outdated check, naming both builds. */

@@ -121,7 +121,9 @@ async function sumCompareMs(deps: DbDeps, buildIds: string[]): Promise<Map<strin
 }
 
 function toView(build: Build, counts: BuildCounts, partsFinished: number, compareMs: number): BuildView {
-  const { timingChecks, timingScreenshotMs, timingUploadMs, timingRetakes, ...row } = build;
+  // Rows read with selectAll carry the internal notifiedVerdict too; it never leaves the domain.
+  const { timingChecks, timingScreenshotMs, timingUploadMs, timingRetakes, ...rest } = build;
+  const { notifiedVerdict: _notified, ...row } = rest as typeof rest & { notifiedVerdict?: unknown };
   return {
     ...row,
     verdict: deriveVerdict(counts),
@@ -186,6 +188,15 @@ export async function createBuild(
         .where('id', '=', existing.id)
         .execute();
     }
+    // A later part (or a retry) may know the commit or pull request the first one did not.
+    const fill = {
+      ...(existing.commitSha === null && data.commitSha ? { commitSha: data.commitSha } : {}),
+      ...(existing.repository === null && data.repository ? { repository: data.repository } : {}),
+      ...(existing.pullRequest === null && data.pullRequest ? { pullRequest: data.pullRequest } : {}),
+    };
+    if (Object.keys(fill).length > 0) {
+      await deps.db.updateTable('builds').set(fill).where('id', '=', existing.id).execute();
+    }
     if (existing.parallelTotal === null && data.parallelTotal !== undefined) {
       await deps.db
         .updateTable('builds')
@@ -221,6 +232,8 @@ export async function createBuild(
         baseBranch: data.baseBranch ?? project.mainBranch,
         externalId: data.externalId ?? null,
         commitSha: data.commitSha ?? null,
+        repository: data.repository ?? null,
+        pullRequest: data.pullRequest ?? null,
         state: 'open',
         createdAt: Date.now(),
         finalizedAt: null,
@@ -269,7 +282,11 @@ export async function listBuilds(
  * build (`{ part }`) is counted once; the build closes when every part has finalized it. Without a
  * part it closes at once (a CI job that never ran, or an admin).
  */
-export async function finalizeBuild(deps: DbDeps, id: string, input: unknown = {}): Promise<BuildView> {
+export async function finalizeBuild(
+  deps: Pick<Deps, 'db' | 'events'>,
+  id: string,
+  input: unknown = {},
+): Promise<BuildView> {
   const { part } = parseInput(finalizeBuildSchema, input);
   const build = await getBuildRow(deps, id);
   if (build.state === 'open' && build.parallelTotal !== null && part) {
@@ -282,12 +299,14 @@ export async function finalizeBuild(deps: DbDeps, id: string, input: unknown = {
     const finished = (await countParts(deps, [build])).get(id) ?? 0;
     if (finished < build.parallelTotal) return getBuild(deps, id);
   }
-  await deps.db
+  const closed = await deps.db
     .updateTable('builds')
     .set({ state: 'finalized', finalizedAt: Date.now() })
     .where('id', '=', id)
     .where('state', '=', 'open')
-    .execute();
+    .executeTakeFirst();
+  // Only the call that closed it announces it (not a repeated finalize).
+  if (Number(closed.numUpdatedRows) === 1) await deps.events?.buildFinalized(id);
   return getBuild(deps, id);
 }
 

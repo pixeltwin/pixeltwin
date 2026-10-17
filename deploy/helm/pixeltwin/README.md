@@ -90,8 +90,9 @@ The full list with comments is in [`values.yaml`](values.yaml). The main ones:
 | `replicaCount` | `1` | `postgres` mode only |
 | `database.url` | | `postgres://…`; written to the chart's Secret |
 | `database.poolMax` | `20` | `DATABASE_POOL_MAX` per pod |
-| `existingSecret` | | your own Secret with `DATABASE_URL` and/or `SETUP_TOKEN` (key names in `existingSecretKeys`) |
+| `existingSecret` | | your own Secret with `DATABASE_URL`, `SETUP_TOKEN` and/or `SECRET_KEY` (key names in `existingSecretKeys`) |
 | `setupToken` | generated | first-run setup token, ≥ 16 characters |
+| `secretKey` | generated, kept across upgrades | `SECRET_KEY`, ≥ 32 characters: encrypts the GitHub/GitLab token and webhook secrets at rest |
 | `diffWorkers` | server default | `DIFF_WORKERS`; the server uses the pod's CPU limit − 1 (at least 1) |
 | `config.*` | server defaults | `logLevel`, `diffTimeoutMs`, `diffQueueMax`, `maxImageBytes`, `maxImagePixels` |
 | `resources` | requests 500m / 2Gi, limits 2 CPU / 2560Mi | |
@@ -131,7 +132,7 @@ nothing left to do. During a rolling update, old pods keep serving against the m
 until they are replaced. Rolling the image back does not undo migrations, so take a backup before
 an upgrade.
 
-Changing `database.url` or `setupToken` restarts the pods. Changes inside an `existingSecret` do
+Changing `database.url`, `setupToken` or `secretKey` restarts the pods. Changes inside an `existingSecret` do
 not restart them, so run `kubectl rollout restart deployment/pixeltwin` yourself.
 
 Switching an existing install between `local` and `postgres` does not move the images. Images

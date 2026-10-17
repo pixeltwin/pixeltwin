@@ -127,10 +127,11 @@ async function candidatesOf(
   db: Db,
   project: Project,
   branch: string,
+  into: string = project.mainBranch,
 ): Promise<Array<PromotionCandidate & { baseline: Baseline }>> {
   const out: Array<PromotionCandidate & { baseline: Baseline }> = [];
   for (const baseline of await latestBranchBaselines(db, project.id, branch)) {
-    const main = await findCurrentBaseline(db, project.id, baseline.snapshotKey, project.mainBranch);
+    const main = await findCurrentBaseline(db, project.id, baseline.snapshotKey, into);
     if (main?.imageSha === baseline.imageSha) continue;
     out.push({
       snapshotKey: baseline.snapshotKey,
@@ -145,9 +146,10 @@ async function candidatesOf(
   return out.sort((a, b) => a.name.localeCompare(b.name) || a.snapshotKey.localeCompare(b.snapshotKey));
 }
 
-function assertPromotable(project: Project, branch: string): void {
-  if (branch === project.mainBranch) {
-    throw new AppError('invalid_promotion', 400, `Branch "${branch}" is the main branch; there is nothing to promote.`);
+function assertPromotable(project: Project, branch: string, into: string = project.mainBranch): void {
+  if (branch === into) {
+    const what = into === project.mainBranch ? 'the main branch' : 'the branch it would be promoted into';
+    throw new AppError('invalid_promotion', 400, `Branch "${branch}" is ${what}; there is nothing to promote.`);
   }
 }
 
@@ -165,18 +167,21 @@ export async function promotionCandidates(
 /**
  * Copies the branch's current baselines to the main branch (after merging), all of them or only
  * `snapshotKeys`. Screens main already has unchanged are skipped. Every main check of a promoted
- * screen that still waits for review becomes outdated: main has decided that screen now.
+ * screen that still waits for review becomes outdated: main has decided that screen now. `into`
+ * promotes into another branch instead (a pull request merged into a branch other than main).
  */
 export async function promoteBranch(
-  deps: Pick<Deps, 'db'>,
+  deps: Pick<Deps, 'db' | 'events'>,
   projectSlug: string,
   branch: string,
   actor: string,
-  options: { snapshotKeys?: string[] } = {},
+  options: { snapshotKeys?: string[]; into?: string } = {},
 ): Promise<{ promoted: number }> {
   const project = await getProjectBySlug(deps, projectSlug);
-  assertPromotable(project, branch);
-  return deps.db.transaction().execute(async (tx) => {
+  const into = options.into ?? project.mainBranch;
+  assertPromotable(project, branch, into);
+  const outdated: string[] = [];
+  const result = await deps.db.transaction().execute(async (tx) => {
     // Lock the project row (a no-op update) so concurrent promotions run one after another;
     // each then sees the main baselines the previous one appended.
     await tx
@@ -184,7 +189,7 @@ export async function promoteBranch(
       .set((eb) => ({ slug: eb.ref('slug') }))
       .where('id', '=', project.id)
       .execute();
-    let chosen = await candidatesOf(tx, project, branch);
+    let chosen = await candidatesOf(tx, project, branch, into);
     if (options.snapshotKeys) {
       const onBranch = new Set((await latestBranchBaselines(tx, project.id, branch)).map((b) => b.snapshotKey));
       const missing = options.snapshotKeys.filter((key) => !onBranch.has(key));
@@ -204,7 +209,7 @@ export async function promoteBranch(
         snapshotKey: baseline.snapshotKey,
         name: baseline.name,
         variant: baseline.variant,
-        branch: project.mainBranch,
+        branch: into,
         imageSha: baseline.imageSha,
         sourceCheckId: baseline.sourceCheckId,
         approvedBy: actor,
@@ -212,18 +217,16 @@ export async function promoteBranch(
       // Every main build that still waits on this screen is decided by the promotion, also those
       // made after the branch build (a run right after the merge).
       if (baseline.sourceCheckId) {
-        await outdateOlder(
+        const builds = await outdateOlder(
           tx,
-          {
-            projectId: project.id,
-            snapshotKey: baseline.snapshotKey,
-            branch: project.mainBranch,
-            buildNumber: null,
-          },
+          { projectId: project.id, snapshotKey: baseline.snapshotKey, branch: into, buildNumber: null },
           baseline.sourceCheckId,
         );
+        outdated.push(...builds);
       }
     }
     return { promoted: chosen.length };
   });
+  if (outdated.length > 0) await deps.events?.buildsChanged(outdated);
+  return result;
 }

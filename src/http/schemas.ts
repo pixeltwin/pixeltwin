@@ -1,5 +1,16 @@
 import { z } from '@hono/zod-openapi';
-import { AREA_KINDS, BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
+import {
+  AREA_KINDS,
+  BUILD_STATES,
+  CHECK_RESULTS,
+  CHECK_REVIEWS,
+  DELIVERY_STATES,
+  PROVIDERS,
+  REVIEW_ACTIONS,
+  USER_ROLES,
+  WEBHOOK_EVENTS,
+  WEBHOOK_FORMATS,
+} from '../db/schema';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
 // Response schemas. They document the API in openapi.json and type-check every handler's output.
@@ -65,6 +76,15 @@ export const BuildSchema = z
     baseBranch: z.string(),
     externalId: z.string().nullable(),
     commitSha: z.string().nullable(),
+    repository: z
+      .string()
+      .nullable()
+      .openapi({ description: '`owner/name` of the repository the commit is in; the SDK fills it in from CI' }),
+    pullRequest: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'The pull (merge) request CI ran for; the GitHub integration comments on it' }),
     state: z.enum(BUILD_STATES),
     createdAt: z.number().int(),
     finalizedAt: z.number().int().nullable(),
@@ -226,6 +246,100 @@ export const BaselineSchema = z
     createdAt: z.number().int(),
   })
   .openapi('Baseline');
+
+export const IntegrationSchema = z
+  .object({
+    configured: z.boolean().openapi({ description: 'False until the integration is first saved' }),
+    provider: z.enum(PROVIDERS),
+    repository: z.string().nullable().openapi({
+      description: 'GitHub owner/name or GitLab group/sub/project; used when a build names none, and to match webhooks',
+    }),
+    baseUrl: z.string().openapi({ description: "GitHub's API URL or the GitLab instance URL" }),
+    tokenSet: z.boolean(),
+    tokenLast4: z
+      .string()
+      .nullable()
+      .openapi({ description: "The token's last four characters; the token is never returned" }),
+    commitStatus: z.boolean().openapi({ description: 'Post the pixeltwin/<slug> commit status' }),
+    prComment: z.boolean().openapi({ description: 'Keep one pull/merge request comment per build up to date' }),
+    autoPromote: z
+      .boolean()
+      .openapi({ description: 'A merged pull/merge request promotes its branch into the branch it was merged into' }),
+    webhookSecretSet: z.boolean(),
+    webhookUrl: z.string().openapi({ description: "Where the code host's webhook sends merge events (auto-promote)" }),
+    encrypted: z.boolean().openapi({ description: 'Secrets are encrypted at rest (SECRET_KEY is set)' }),
+    lastSync: z
+      .object({ buildId: z.string(), at: z.number().int(), error: z.string().nullable() })
+      .nullable()
+      .openapi({ description: 'The last report to the code host, and its error if it failed' }),
+    lastMerge: z
+      .object({
+        repository: z.string(),
+        pullRequest: z.number().int(),
+        headBranch: z.string(),
+        baseBranch: z.string(),
+        mergedBy: z.string().nullable(),
+        promoted: z.number().int().nullable(),
+        at: z.number().int(),
+      })
+      .nullable(),
+    updatedAt: z.number().int().nullable(),
+  })
+  .openapi('Integration');
+
+export const DeliverySchema = z
+  .object({
+    id: z.string().openapi({ description: 'Also sent as X-Pixeltwin-Delivery; the same on every retry' }),
+    event: z.string().openapi({ description: 'A webhook event, or ping for Send test' }),
+    state: z.enum(DELIVERY_STATES),
+    attempts: z.number().int(),
+    statusCode: z.number().int().nullable(),
+    error: z.string().nullable(),
+    durationMs: z.number().int().nullable(),
+    createdAt: z.number().int(),
+    finishedAt: z.number().int().nullable(),
+  })
+  .openapi('Delivery');
+
+export const WebhookSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    url: z.string(),
+    events: z.array(z.enum(WEBHOOK_EVENTS)),
+    format: z
+      .enum(WEBHOOK_FORMATS)
+      .openapi({ description: "json: pixeltwin's payload; slack: a Slack-compatible { text, blocks }" }),
+    enabled: z.boolean(),
+    secretLast4: z
+      .string()
+      .openapi({ description: "The signing secret's last four characters; the secret is never returned" }),
+    createdAt: z.number().int(),
+    updatedAt: z.number().int(),
+    lastDelivery: DeliverySchema.nullable(),
+  })
+  .openapi('Webhook');
+
+export const CreatedWebhookSchema = WebhookSchema.extend({
+  secret: z
+    .string()
+    .nullable()
+    .openapi({ description: 'The generated signing secret, shown only in this response; null when you chose it' }),
+}).openapi('CreatedWebhook');
+
+export const InboundResultSchema = z
+  .object({
+    handled: z.boolean().openapi({ description: 'False for events other than a merged pull/merge request' }),
+    detail: z.string(),
+    results: z.array(
+      z.object({
+        project: z.string(),
+        outcome: z.enum(['promoted', 'already_promoted', 'auto_promote_off', 'same_branch']),
+        promoted: z.number().int(),
+      }),
+    ),
+  })
+  .openapi('InboundWebhookResult');
 
 export function pageOf<T extends z.ZodType>(item: T, name: string) {
   return z.object({ items: z.array(item), nextCursor: z.string().nullable() }).openapi(name);
