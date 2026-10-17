@@ -210,15 +210,18 @@ export class Notifier implements DomainEvents {
     });
   }
 
-  async checkReviewed(event: { checkId: string; action: 'approved' | 'rejected' | 'reset'; actor: string }) {
-    if (event.actor === AUTO_APPROVER) return;
+  async checkReviewed(event: Parameters<DomainEvents['checkReviewed']>[0]) {
+    if (event.actorKind === 'auto' || event.actor === AUTO_APPROVER) return;
     await this.#safely('check.reviewed', async () => {
       const check = await getCheck({ db: this.#db }, event.checkId);
       if (!(await this.#subscribers(check.projectId, 'check.reviewed')).length) return;
       const [build, project, name] = await Promise.all([
         getBuild({ db: this.#db }, check.buildId),
         getProjectById({ db: this.#db }, check.projectId),
-        actorName({ db: this.#db }, event.actor),
+        // A token's name as it was when it acted (the token may be gone by now).
+        event.actorKind === 'token' && event.actorName
+          ? `token “${event.actorName}”`
+          : actorName({ db: this.#db }, event.actor),
       ]);
       await this.#queueWebhooks(project, 'check.reviewed', () => ({
         build: buildPayload(build, this.#o.publicUrl),
@@ -230,7 +233,11 @@ export class Notifier implements DomainEvents {
           review: check.review,
           url: checkUrl(this.#o.publicUrl, check.id),
         },
-        review: { action: event.action, actor: { id: event.actor, name } },
+        review: {
+          action: event.action,
+          reason: event.reason,
+          actor: { id: event.actor, kind: event.actorKind, name },
+        },
       }));
     });
   }

@@ -58,6 +58,14 @@ function CheckCard(props: { ui: Ui; check: CheckView; size?: Size; filter: Check
             {check.result === 'changed' && check.review !== 'rejected' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}
+            {check.suggestion && (
+              <span
+                class="badge-agent"
+                title={`Agent suggests ${check.suggestion.action === 'approve' ? 'approving' : 'rejecting'}${check.suggestion.reason ? `: ${check.suggestion.reason}` : ''}`}
+              >
+                {check.suggestion.action === 'approve' ? 'agent: approve' : 'agent: reject'}
+              </span>
+            )}
           </span>
         </div>
       </a>

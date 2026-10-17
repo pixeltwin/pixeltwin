@@ -3,17 +3,56 @@ import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
 import { createArea, deleteArea, ignoreChanges, listAreas, updateArea } from '../../domain/areas';
 import { getBuildRow } from '../../domain/builds';
-import { type CheckView, getCheck, listChecks, submitCheck } from '../../domain/checks';
-import { approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
+import { type CheckView, checkElements, getCheck, listChecks, submitCheck } from '../../domain/checks';
+import { getProjectById } from '../../domain/projects';
+import {
+  acceptSuggestion,
+  actorFromPrincipal,
+  dismissSuggestion,
+  listReviews,
+  resetReview,
+  reviewCheck,
+} from '../../domain/reviews';
 import { areaInputSchema, areaUpdateSchema, checkMetaSchema, reviewInputSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
 import { defineRoute } from '../route';
-import { AreaSchema, CheckSchema, json, PageQuerySchema, pageOf, problems, ReviewEventSchema } from '../schemas';
+import {
+  AreaSchema,
+  CheckSchema,
+  json,
+  PageQuerySchema,
+  pageOf,
+  problems,
+  ReviewEventSchema,
+  SnapshotElementSchema,
+} from '../schemas';
 
 const CheckPageSchema = pageOf(CheckSchema, 'CheckPage');
+const ReviewedCheckSchema = CheckSchema.extend({
+  outcome: z.enum(['applied', 'suggested']).openapi({
+    description:
+      "applied: the check is approved or rejected. suggested: the project's agent review policy recorded a token's " +
+      'review as a suggestion; the check stays pending until a person accepts or dismisses it',
+  }),
+}).openapi('ReviewedCheck');
 const idParam = z.object({ id: z.string() });
+
+/**
+ * Under an agent review policy a token may not change areas: an ignore area over a change would
+ * pass the check without the review the policy asks for.
+ */
+async function allowAreaChange(c: Context<AppEnv>, s: Services, projectId: string): Promise<void> {
+  if (principalOf(c).kind !== 'token') return;
+  const project = await getProjectById(s.deps, projectId);
+  if (project.agentReview === 'off') return;
+  throw new AppError(
+    'agent_review_policy',
+    403,
+    `Project "${project.slug}" reviews agents' decisions (agent review policy "${project.agentReview}"), so a token cannot change areas. Suggest approving with a reason instead, or ask a person to add the area.`,
+  );
+}
 
 const jsonUploadSchema = checkMetaSchema.extend({
   imageBase64: z.string().min(1).openapi({ description: 'PNG bytes, base64' }),
@@ -184,21 +223,82 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       method: 'post',
       path: `${API}/checks/{id}/${action}`,
       tags: ['reviews'],
-      summary: action === 'approve' ? 'Approve a check; its image becomes the baseline' : 'Reject a check',
+      summary:
+        action === 'approve'
+          ? "Approve a check; its image becomes the baseline. A token's approval may be recorded as a suggestion (see outcome)"
+          : "Reject a check. A token's rejection may be recorded as a suggestion (see outcome)",
       request: {
         params: idParam,
         body: { required: false, content: { 'application/json': { schema: reviewInputSchema } } },
       },
-      responses: { 200: json(CheckSchema, 'The reviewed check'), ...problems(401, 403, 404, 409, 422) },
+      responses: {
+        200: json(ReviewedCheckSchema, 'The check, and whether the review applied or became a suggestion'),
+        ...problems(401, 403, 404, 409, 422),
+      },
     });
     app.openapi(route, async (c) => {
       const { id } = c.req.valid('param');
       allowProject(c, (await getCheck(s.deps, id)).projectId);
       const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
-      const review = action === 'approve' ? approveCheck : rejectCheck;
-      return c.json(withLinks(await review(s.deps, id, principalOf(c).id, input)), 200);
+      const { check, outcome } = await reviewCheck(s.deps, id, action, actorFromPrincipal(principalOf(c)), input);
+      return c.json({ ...withLinks(check), outcome }, 200);
     });
   }
+
+  const accept = defineRoute('check.review', {
+    method: 'post',
+    path: `${API}/checks/{id}/suggestion/accept`,
+    tags: ['reviews'],
+    summary: "Accept an agent's suggestion: approve or reject as it suggested, with its reason (people only)",
+    request: { params: idParam },
+    responses: { 200: json(CheckSchema, 'The reviewed check'), ...problems(401, 403, 404, 409) },
+  });
+  app.openapi(accept, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    return c.json(withLinks(await acceptSuggestion(s.deps, id, actorFromPrincipal(principalOf(c)))), 200);
+  });
+
+  const dismiss = defineRoute('check.review', {
+    method: 'post',
+    path: `${API}/checks/{id}/suggestion/dismiss`,
+    tags: ['reviews'],
+    summary: "Dismiss an agent's suggestion; the check keeps waiting for a review",
+    request: {
+      params: idParam,
+      body: { required: false, content: { 'application/json': { schema: reviewInputSchema } } },
+    },
+    responses: { 200: json(CheckSchema, 'The check, without the suggestion'), ...problems(401, 403, 404, 409, 422) },
+  });
+  app.openapi(dismiss, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
+    return c.json(withLinks(await dismissSuggestion(s.deps, id, actorFromPrincipal(principalOf(c)), input)), 200);
+  });
+
+  const elements = defineRoute('project.read', {
+    method: 'get',
+    path: `${API}/checks/{id}/elements`,
+    tags: ['checks'],
+    summary: 'The page elements sent with the check and with the baseline it was compared with',
+    request: { params: idParam },
+    responses: {
+      200: json(
+        z.object({
+          current: z.array(SnapshotElementSchema).nullable(),
+          baseline: z.array(SnapshotElementSchema).nullable(),
+        }),
+        'Elements (boxes in screenshot pixels); null where the SDK sent none',
+      ),
+      ...problems(401, 403, 404),
+    },
+  });
+  app.openapi(elements, async (c) => {
+    const { id } = c.req.valid('param');
+    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    return c.json(await checkElements(s.deps, id), 200);
+  });
 
   const reset = defineRoute('check.review', {
     method: 'post',
@@ -212,7 +312,7 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   app.openapi(reset, async (c) => {
     const { id } = c.req.valid('param');
     allowProject(c, (await getCheck(s.deps, id)).projectId);
-    return c.json(withLinks(await resetReview(s.deps, id, principalOf(c).id)), 200);
+    return c.json(withLinks(await resetReview(s.deps, id, actorFromPrincipal(principalOf(c)))), 200);
   });
 
   const areasList = defineRoute('project.read', {
@@ -245,7 +345,9 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(areaCreate, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const { projectId } = await getCheck(s.deps, id);
+    allowProject(c, projectId);
+    await allowAreaChange(c, s, projectId);
     const { area, check } = await createArea(s.deps, id, principalOf(c).id, c.req.valid('json'));
     return c.json({ area, check: withLinks(check) }, 201);
   });
@@ -263,7 +365,9 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(areaIgnoreChanges, async (c) => {
     const { id } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const { projectId } = await getCheck(s.deps, id);
+    allowProject(c, projectId);
+    await allowAreaChange(c, s, projectId);
     const { areas, check } = await ignoreChanges(s.deps, id, principalOf(c).id);
     return c.json({ areas, check: withLinks(check) }, 201);
   });
@@ -284,7 +388,9 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   });
   app.openapi(areaUpdate, async (c) => {
     const { id, areaId } = c.req.valid('param');
-    allowProject(c, (await getCheck(s.deps, id)).projectId);
+    const { projectId } = await getCheck(s.deps, id);
+    allowProject(c, projectId);
+    await allowAreaChange(c, s, projectId);
     const { area, check } = await updateArea(s.deps, id, areaId, c.req.valid('json'));
     return c.json({ area, check: withLinks(check) }, 200);
   });

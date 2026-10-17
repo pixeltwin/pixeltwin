@@ -1,5 +1,12 @@
 export { type ClientOptions, PixeltwinClient, SDK_VERSION } from './client.js';
 export {
+  type CollectOptions,
+  collectElements,
+  elementsToPixels,
+  MAX_ELEMENTS,
+  type RawElement,
+} from './elements.js';
+export {
   type FieldError,
   failsOnChange,
   PixeltwinCheckError,
@@ -18,18 +25,25 @@ export {
   timingLine,
 } from './timing.js';
 export type {
+  Area,
   Build,
   BuildCounts,
+  ChangeKind,
   Check,
   CheckInput,
   CheckResult,
   CheckReview,
   Diff,
   DiffError,
+  ElementChange,
   OpenBuildInput,
   Page,
+  PageElement,
   PromotionCandidate,
   Rect,
+  ReviewEvent,
+  ReviewOutcome,
+  Suggestion,
   Variant,
   Verdict,
 } from './types.js';

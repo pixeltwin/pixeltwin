@@ -13,6 +13,11 @@ export interface PixeltwinFixtures {
   pixeltwinAttachImages: boolean;
   /** Called after every check (and its retakes), e.g. to send its images to another report. */
   pixeltwinOnResult: ((result: CheckResultInfo) => void | Promise<void>) | undefined;
+  /**
+   * Send the visible elements' boxes (test ids, roles, text) with each screenshot so the diff names
+   * what changed. Default true; `PIXELTWIN_ELEMENTS=0` turns it off for the run.
+   */
+  pixeltwinElements: boolean;
 }
 
 export interface PixeltwinWorkerFixtures {
@@ -27,6 +32,7 @@ export const test = base.extend<PixeltwinFixtures, PixeltwinWorkerFixtures>({
   pixeltwinVariant: [{}, { option: true }],
   pixeltwinAttachImages: [true, { option: true }],
   pixeltwinOnResult: [undefined, { option: true }],
+  pixeltwinElements: [true, { option: true }],
 
   pixeltwinClient: [
     // biome-ignore lint/correctness/noEmptyPattern: Playwright reads fixture dependencies from this pattern.
@@ -51,13 +57,22 @@ export const test = base.extend<PixeltwinFixtures, PixeltwinWorkerFixtures>({
   ],
 
   pixeltwin: async (
-    { pixeltwinClient, pixeltwinTimings, pixeltwinVariant, pixeltwinAttachImages, pixeltwinOnResult, browserName },
+    {
+      pixeltwinClient,
+      pixeltwinTimings,
+      pixeltwinVariant,
+      pixeltwinAttachImages,
+      pixeltwinOnResult,
+      pixeltwinElements,
+      browserName,
+    },
     use,
     testInfo,
   ) => {
+    const settings = resolveSettings();
     await use(
       new Pixeltwin(pixeltwinClient, testInfo, browserName, pixeltwinVariant, {
-        settings: resolveSettings(),
+        settings: { ...settings, elements: settings.elements && pixeltwinElements },
         attachImages: pixeltwinAttachImages,
         onResult: pixeltwinOnResult,
         timings: pixeltwinTimings,

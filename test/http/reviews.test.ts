@@ -113,7 +113,7 @@ describe('review, baseline, promotion and image routes', () => {
   test('approve all reports how many it approved', async () => {
     const { buildId } = await check('main', white, 'a');
     const res = await t.request('POST', `/api/v1/builds/${buildId}/approve`, { as: reviewer });
-    expect(await res.json()).toEqual({ approved: 1 });
+    expect(await res.json()).toEqual({ approved: 1, suggested: 0 });
   });
 
   test('promotion of a branch with a slash, then baseline history', async () => {

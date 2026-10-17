@@ -29,7 +29,7 @@ describe('project tokens', () => {
     expect(token.startsWith(view.prefix)).toBe(true);
 
     const resolved = await resolveProjectToken(deps, token);
-    expect(resolved).toEqual({ id: view.id, projectId: view.projectId, scopes: ['read', 'write'] });
+    expect(resolved).toEqual({ id: view.id, projectId: view.projectId, name: 'CI', scopes: ['read', 'write'] });
     const [listed] = await listProjectTokens(deps, 'web');
     expect(listed?.lastUsedAt).toBeNumber();
     expect(JSON.stringify(listed)).not.toContain(token.slice(12));

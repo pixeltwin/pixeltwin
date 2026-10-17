@@ -127,6 +127,16 @@ A project can approve new screenshots automatically (Settings, or `"autoApproveN
 `PATCH /api/v1/projects/{slug}`): a screen with no baseline yet becomes one as soon as it arrives,
 recorded in its review history as approved by auto-approve, and only changes wait for review.
 
+Agents review too. A token with the `review` scope approves and rejects with a reason
+(`{"reason": "…"}`), kept in the review history with an "agent" badge. The project's agent review
+policy (Settings, or `"agentReview"` on `PATCH /api/v1/projects/{slug}`) decides what that does:
+`off` (default: it applies), `suggest` (it becomes a suggestion with the agent's reason; the check
+waits until a person clicks Accept or Dismiss) or `auto-below` (approvals of a diff up to
+`agentMaxDiffPercent` apply, larger ones become suggestions). Unless `off`, a token must give a
+reason and cannot change areas. A suggestion changes neither the pull request's
+status nor the build's verdict and sends no `check.reviewed`; accepting it does, as the person's
+review with the agent's reason.
+
 ### Pull requests: GitHub and GitLab
 
 A project can report every build on its pull (merge) request. In **Settings → Pull requests**
@@ -186,7 +196,8 @@ secret (GitHub's `X-Hub-Signature-256`, GitLab's `X-Gitlab-Token`).
 ```
 
 `check.reviewed` adds `check` (`id`, `name`, `variant`, `result`, `review`, `url`) and `review`
-(`action`: approved, rejected or reset; `actor`: `id` and `name`). Format *Slack* posts a
+(`action`: approved, rejected or reset; `reason`; `actor`: `id`, `kind` (`user` or `token`) and
+`name`). Format *Slack* posts a
 Slack-compatible `{ text, blocks }` instead, for an incoming webhook URL. Sending happens in the
 background and never slows or fails the request that caused it; a failed delivery (network,
 timeout, 5xx, 429) is retried with backoff for about five hours, a 4xx is not. Deliveries wait in
@@ -276,10 +287,51 @@ npm install -D $R/pixeltwin-client-0.1.0.tgz $R/pixeltwin-playwright-0.1.0.tgz  
 
 `bun scripts/build-sdk.ts pack <dir>` builds the same tarballs from a checkout.
 
+**Element-aware diffs.** Both SDKs send the boxes of the visible elements with each screenshot
+(test ids, roles, a short text, a few styles; at most 300, never what was typed into a field).
+When the baseline has them too, the diff says what changed: `diff.changes` lists elements that
+moved, resized, changed text or style, appeared or disappeared, and the summary reads
+"`button[data-testid=submit]` moved 4 px down; heading text changed from "Sign in" to "Log in"".
+`PIXELTWIN_ELEMENTS=0` turns it off.
+
 **Examples** to copy: [`examples/playwright`](examples/playwright/README.md) (full page, element,
 ignored clock, Chromium and Firefox on desktop and a phone, sharding with `npx pixeltwin finalize`)
 and [`examples/wdio`](examples/wdio/README.md) (a real Chrome through WebdriverIO, desktop and a
 phone). Each ships a tiny demo site and a GitHub Actions snippet.
+
+## Agents: `pixeltwin mcp`
+
+`npx pixeltwin mcp` (in `@pixeltwin/client`) is a [Model Context Protocol](https://modelcontextprotocol.io)
+server on stdio, so an agent that just changed your UI can check its own work: read what changed,
+element by element, look at the screenshots, and approve what it meant to do with a reason. Its
+tools: `latest_build` (by branch; the checked-out one by default), `list_changes` (changed and new
+checks with their summary and element changes), `get_check`, `get_check_images` (baseline, new
+and diff as images, cropped to a change to save tokens), `approve_check` and `reject_check` (with
+a `reason`; the answer says whether it applied or was recorded as a suggestion) and
+`add_ignore_area`. For Claude Code, a `.mcp.json` in the repository:
+
+```json
+{
+  "mcpServers": {
+    "pixeltwin": {
+      "command": "npx",
+      "args": ["-y", "--package=@pixeltwin/client", "pixeltwin", "mcp"],
+      "env": {
+        "PIXELTWIN_URL": "http://localhost:8080",
+        "PIXELTWIN_TOKEN": "${PIXELTWIN_TOKEN}",
+        "PIXELTWIN_PROJECT": "web"
+      }
+    }
+  }
+}
+```
+
+The token needs `read` (and `review` to approve or reject); Claude Code fills `${PIXELTWIN_TOKEN}`
+from your environment, so the token stays out of the repository. With the client installed in the
+project (`npm install -D @pixeltwin/client`, see above for the release tarballs), plain
+`"command": "npx", "args": ["pixeltwin", "mcp"]` runs that copy.
+To let an agent work without approving anything itself, give its token only `read`, or set the
+project's agent review policy to `suggest`.
 
 ## Development
 

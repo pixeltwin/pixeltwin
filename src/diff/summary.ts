@@ -1,4 +1,5 @@
-import type { Dimensions, Region } from './types';
+import { describeChanges } from './elements';
+import type { Dimensions, ElementChange, Region } from './types';
 
 export const IDENTICAL_SUMMARY = 'Identical to baseline.';
 
@@ -30,14 +31,22 @@ export interface SummaryInput {
   dimensions: Dimensions | null;
   withinTolerance: boolean;
   tolerancePercent: number;
+  /** Element changes (when both screenshots had elements); without any, the summary names regions. */
+  changes?: { items: ElementChange[]; truncated: boolean; explained: number } | undefined;
 }
 
 /** Deterministic one-paragraph description of a diff. */
 export function summarize(input: SummaryInput): string {
   const parts: string[] = [];
   const largest = input.regions[0];
+  const changes = input.changes;
   if (input.pixels === 0 || !largest) {
     parts.push('No visible changes.');
+  } else if (changes && changes.items.length > 0) {
+    parts.push(describeChanges(changes.items, changes.truncated));
+    const others = input.regionCount - changes.explained;
+    if (others > 0) parts.push(`${others} other changed region${others === 1 ? '' : 's'}.`);
+    parts.push(`${formatPercent(input.percent, input.pixels)} of pixels changed.`);
   } else {
     const n = input.regionCount;
     const position = positionOf(largest, input.width, input.height);

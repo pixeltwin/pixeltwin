@@ -1,5 +1,6 @@
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
+import { elementChanges } from './elements';
 import { extractRegions } from './regions';
 import { summarize } from './summary';
 import type { DiffJob, DiffJobResult, Rect } from './types';
@@ -178,6 +179,11 @@ export function compareImages(job: DiffJob): DiffJobResult {
       }
     : null;
   const regions = extractRegions(mask, width, height);
+  // Element changes only when both screenshots came with elements; otherwise the diff is as before.
+  const elements =
+    job.elements && pixels > 0
+      ? elementChanges(job.elements.baseline, job.elements.current, regions.cells, regions.regions)
+      : null;
   const summary = summarize({
     regions: regions.regions,
     regionCount: regions.total,
@@ -188,6 +194,9 @@ export function compareImages(job: DiffJob): DiffJobResult {
     dimensions,
     withinTolerance: result === 'unchanged',
     tolerancePercent: job.tolerancePercent,
+    changes: elements
+      ? { items: elements.changes, truncated: elements.truncated, explained: elements.explained }
+      : undefined,
   });
 
   return {
@@ -202,6 +211,7 @@ export function compareImages(job: DiffJob): DiffJobResult {
       regions: regions.regions,
       regionsTruncated: regions.truncated,
       summary,
+      ...(job.elements ? { changes: elements?.changes ?? [], changesTruncated: elements?.truncated ?? false } : {}),
     },
     diffPng: pixels > 0 ? encode(width, height, diffImage) : null,
   };

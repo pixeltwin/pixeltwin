@@ -3,13 +3,18 @@ import {
   type CheckInput,
   CheckTimer,
   type CheckTiming,
+  type CollectOptions,
   type CssToPixels,
+  collectElements,
   cssBoxToPixels,
+  elementsToPixels,
   failsOnChange,
+  MAX_ELEMENTS,
   PixeltwinCheckError,
   type PixeltwinClient,
   pngSize,
   postWithRetakes,
+  type RawElement,
   type Rect,
   type TimingTotals,
   timingLine,
@@ -44,6 +49,11 @@ export interface CheckOptions {
   /** Override `retakes` and `failOnChange` (options or PIXELTWIN_* variables) for this check. */
   retakes?: number;
   failOnChange?: boolean;
+  /**
+   * Send the boxes of the visible elements (test ids, roles, text) with the screenshot, so the diff
+   * names what changed. Default: on (`PIXELTWIN_ELEMENTS=0` or the `elements` option turns it off).
+   */
+  elements?: boolean;
 }
 
 /** The images of a compared check, PNG bytes; `baseline` and `diff` are null when there is none. */
@@ -66,7 +76,7 @@ export interface CheckResultInfo {
 
 /** How the fixture behaves: from the run's settings and the `pixeltwin*` options. */
 export interface PixeltwinBehaviour {
-  settings: Pick<Settings, 'retakes' | 'retakeIntervalMs' | 'failOnChange'>;
+  settings: Pick<Settings, 'retakes' | 'retakeIntervalMs' | 'failOnChange'> & { elements?: boolean };
   /** Attach expected, actual and diff to the test when a check is not unchanged. Default true. */
   attachImages: boolean;
   onResult?: ((result: CheckResultInfo) => void | Promise<void>) | undefined;
@@ -134,6 +144,19 @@ function fullPageScale(
   if (!size || !(width > 0) || !(height > 0)) return { x: assumed, y: assumed };
   const agrees = Math.abs(size.width - width * assumed) <= 1 && Math.abs(size.height - height * assumed) <= 1;
   return agrees ? { x: assumed, y: assumed } : { x: size.width / width, y: size.height / height };
+}
+
+/** The page's elements in the captured area; none (with a warning) when the page does not let us measure. */
+async function elementsOf(page: Page, clip: Rect | null, name: string): Promise<RawElement[]> {
+  try {
+    const options: CollectOptions = { clip, max: MAX_ELEMENTS };
+    return await page.evaluate(collectElements, options);
+  } catch (err) {
+    console.warn(
+      `pixeltwin: "${name}": could not measure the page's elements, sending the screenshot without them: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return [];
+  }
 }
 
 async function boxesOf(locators: Locator[]): Promise<Rect[]> {
@@ -233,9 +256,23 @@ export class Pixeltwin {
     const metrics = await metricsOf(page);
     const boxes = await boxesOf(locators);
     const assumed = shot.scale === 'css' ? 1 : metrics.dpr;
+    const wantElements = options.elements ?? this.#behaviour.settings.elements ?? true;
+    let raw: RawElement[] = [];
     let image: Uint8Array;
     let mapping: CssToPixels;
     if (isPage(target)) {
+      if (wantElements) {
+        // The captured area in viewport CSS pixels, as getBoundingClientRect() measures.
+        const clip = options.fullPage
+          ? {
+              x: -metrics.scrollX + (shot.clip?.x ?? 0),
+              y: -metrics.scrollY + (shot.clip?.y ?? 0),
+              width: shot.clip?.width ?? metrics.docWidth,
+              height: shot.clip?.height ?? metrics.docHeight,
+            }
+          : (shot.clip ?? null);
+        raw = await elementsOf(page, clip, name);
+      }
       image = await target.screenshot({ ...shot, fullPage: options.fullPage ?? false });
       const size = pngSize(image);
       if (options.fullPage) {
@@ -258,6 +295,7 @@ export class Pixeltwin {
       const { clip: _clip, ...locatorShot } = shot;
       const own = await target.boundingBox();
       if (!own) throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
+      if (wantElements) raw = await elementsOf(page, own, name);
       image = await target.screenshot(locatorShot);
       const measured = (pngSize(image)?.width ?? 0) / own.width;
       mapping = { origin: { x: own.x, y: own.y }, scale: measured || assumed };
@@ -283,6 +321,7 @@ export class Pixeltwin {
       ignoreRegions,
       colorThreshold: options.colorThreshold,
       tolerancePercent: options.tolerancePercent,
+      ...(wantElements ? { elements: elementsToPixels(raw, mapping, size) } : {}),
     };
   }
 

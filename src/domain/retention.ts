@@ -13,6 +13,7 @@ const BATCH = 500;
 export interface RetentionResult {
   buildsDeleted: number;
   imagesDeleted: number;
+  elementSetsDeleted: number;
 }
 
 /**
@@ -103,9 +104,60 @@ export async function deleteUnusedImages(deps: Pick<Deps, 'db' | 'storage'>, now
   return deleted;
 }
 
+/**
+ * Deletes element sets that no check or baseline points at and that were not stored or re-used
+ * for IMAGE_GRACE_MS (a check about to point at one refreshes it first). One statement per batch:
+ * every condition is on the row itself, so a set re-used meanwhile is kept.
+ */
+export async function deleteUnusedElementSets(deps: Pick<Deps, 'db'>, now: number): Promise<number> {
+  const cutoff = now - IMAGE_GRACE_MS;
+  const unreferenced = (eb: ExpressionBuilder<DB, 'elementSets'>) =>
+    eb.and([
+      eb.not(
+        eb.exists(
+          eb.selectFrom('checks').select('checks.id').where('checks.elementsSha', '=', eb.ref('elementSets.sha')),
+        ),
+      ),
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom('baselines')
+            .select('baselines.id')
+            .where('baselines.elementsSha', '=', eb.ref('elementSets.sha')),
+        ),
+      ),
+    ]);
+  let deleted = 0;
+  for (;;) {
+    const unused = await deps.db
+      .selectFrom('elementSets')
+      .select('elementSets.sha')
+      .where('elementSets.createdAt', '<', cutoff)
+      .where(unreferenced)
+      .limit(BATCH)
+      .execute();
+    if (unused.length === 0) break;
+    const result = await deps.db
+      .deleteFrom('elementSets')
+      .where(
+        'elementSets.sha',
+        'in',
+        unused.map((u) => u.sha),
+      )
+      .where('elementSets.createdAt', '<', cutoff)
+      .where(unreferenced)
+      .executeTakeFirst();
+    const removed = Number(result.numDeletedRows);
+    deleted += removed;
+    if (unused.length < BATCH || removed === 0) break;
+  }
+  return deleted;
+}
+
 /** Spec §9: one retention pass. Safe to run concurrently with uploads and reviews. */
 export async function runRetention(deps: Pick<Deps, 'db' | 'storage'>, now = Date.now()): Promise<RetentionResult> {
   const buildsDeleted = await deleteExpiredBuilds(deps, now);
   const imagesDeleted = await deleteUnusedImages(deps, now);
-  return { buildsDeleted, imagesDeleted };
+  const elementSetsDeleted = await deleteUnusedElementSets(deps, now);
+  return { buildsDeleted, imagesDeleted, elementSetsDeleted };
 }

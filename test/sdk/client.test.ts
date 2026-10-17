@@ -52,7 +52,7 @@ describe('PixeltwinClient against a real server', () => {
     expect(fresh.review).toBe('pending');
     expect(client.checkUrl(fresh)).toBe(`${server.url}/ui/checks/${fresh.id}`);
     expect((await client.finalize(one.id)).verdict).toBe('pending');
-    expect(await client.approveBuild(one.id)).toEqual({ approved: 1 });
+    expect(await client.approveBuild(one.id)).toEqual({ approved: 1, suggested: 0 });
     expect((await client.getBuild(one.id)).verdict).toBe('passed');
 
     const two = await client.openBuild('client', { branch: 'main' });

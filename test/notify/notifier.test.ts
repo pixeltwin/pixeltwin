@@ -254,7 +254,7 @@ describe('notifications', () => {
     expect(byEvent['build.verdict_changed'].build).toMatchObject({ verdict: 'passed', previousVerdict: 'pending' });
     expect(byEvent['check.reviewed']).toMatchObject({
       check: { id: checkId, review: 'approved', url: `${PUBLIC_URL}/ui/checks/${checkId}` },
-      review: { action: 'approved', actor: { id: 'usr_1', name: 'a deleted account' } },
+      review: { action: 'approved', reason: null, actor: { id: 'usr_1', kind: 'user', name: 'a deleted account' } },
     });
     const deliveries = await listDeliveries(deps, 'web', webhook.id);
     expect(deliveries.map((d) => d.state)).toEqual(['delivered', 'delivered', 'delivered']);

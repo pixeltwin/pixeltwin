@@ -90,11 +90,11 @@ describe('reviews', () => {
     await submit(deps, buildId, withSquare, { name: 'a' });
     await submit(deps, buildId, withSquare, { name: 'b' });
     await finalizeBuild(deps, buildId);
-    expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 2 });
+    expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 2, suggested: 0 });
     const build = await getBuild(deps, buildId);
     expect(build.verdict).toBe('passed');
     expect(build.counts.review).toMatchObject({ approved: 2, none: 1, pending: 0 });
-    expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 0 });
+    expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 0, suggested: 0 });
   });
 
   test('concurrent approve-all calls approve each pending check once', async () => {

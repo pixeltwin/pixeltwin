@@ -3,11 +3,21 @@ import type { Region } from './types';
 export const CELL_SIZE = 8;
 export const MAX_REGIONS = 50;
 
+/** Changed pixels per `size`×`size` cell of the mask, row by row. */
+export interface CellGrid {
+  size: number;
+  cols: number;
+  rows: number;
+  counts: Uint32Array;
+}
+
 export interface RegionResult {
   regions: Region[];
   /** Number of regions found before truncation. */
   total: number;
   truncated: boolean;
+  /** The grid the regions were grown on (element changes count changed pixels with it). */
+  cells: CellGrid;
 }
 
 /**
@@ -81,5 +91,10 @@ export function extractRegions(
   }
 
   regions.sort((a, b) => b.pixels - a.pixels || a.y - b.y || a.x - b.x);
-  return { regions: regions.slice(0, maxRegions), total: regions.length, truncated: regions.length > maxRegions };
+  return {
+    regions: regions.slice(0, maxRegions),
+    total: regions.length,
+    truncated: regions.length > maxRegions,
+    cells: { size: cellSize, cols, rows, counts: cellPixels },
+  };
 }

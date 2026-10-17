@@ -1,6 +1,6 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import type { Project } from '../../db/schema';
+import { AGENT_REVIEW_POLICIES, type AgentReviewPolicy, type Project } from '../../db/schema';
 import { hasPermission } from '../../domain/auth/policy';
 import { createProjectToken, deleteProjectToken, listProjectTokens, type TokenView } from '../../domain/auth/tokens';
 import { getIntegration, type IntegrationView } from '../../domain/integrations';
@@ -20,6 +20,25 @@ function requireProjectAdmin(c: Context<AppEnv>): void {
 }
 
 const NUMBER_FIELDS = ['colorThreshold', 'tolerancePercent', 'retentionDays'] as const;
+
+/** The agent review policies as Settings offers them. */
+const AGENT_POLICIES: Array<[AgentReviewPolicy, string, string]> = [
+  [
+    'off',
+    'Apply',
+    'A token with the review scope approves and rejects like a person; the history marks it as an agent.',
+  ],
+  [
+    'suggest',
+    'Suggest',
+    "A token's approve or reject is a suggestion with its reason; the check waits until a person accepts or dismisses it.",
+  ],
+  [
+    'auto-below',
+    'Apply small changes',
+    'A token approves a diff up to the percentage below itself; larger changes and new screenshots become suggestions.',
+  ],
+];
 
 interface SettingField {
   name: 'name' | 'mainBranch' | (typeof NUMBER_FIELDS)[number];
@@ -74,6 +93,7 @@ function SettingsPage(props: {
   const errors = props.errors ?? {};
   const base = `/ui/p/${project.slug}/settings`;
   const valueFor = (name: SettingField['name']) => props.values?.[name] ?? String(project[name]);
+  const agentPolicy = props.values?.agentReview ?? project.agentReview;
   return (
     <Layout
       ui={ui}
@@ -129,6 +149,43 @@ function SettingsPage(props: {
               </span>
             </span>
           </label>
+          <fieldset class="agent-policy">
+            <legend class="agent-policy-title">Agent reviews</legend>
+            <p class="muted">
+              What a project token (an agent such as Claude Code, or CI) does when it approves or rejects. Unless it
+              applies, a token must give a reason.
+            </p>
+            {AGENT_POLICIES.map(([value, label, hint]) => (
+              <label class="option">
+                <input type="radio" name="agentReview" value={value} checked={agentPolicy === value} />
+                <span>
+                  <strong>{label}</strong> <span class="muted">{hint}</span>
+                </span>
+              </label>
+            ))}
+            <div class="form-grid">
+              <Field
+                id="settings-agentMaxDiffPercent"
+                label="Largest diff a token approves itself (%)"
+                hint="With “Apply small changes”."
+                error={errors.agentMaxDiffPercent}
+              >
+                <input
+                  name="agentMaxDiffPercent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="any"
+                  value={props.values?.agentMaxDiffPercent ?? String(project.agentMaxDiffPercent)}
+                  {...describedBy(
+                    'settings-agentMaxDiffPercent',
+                    'With “Apply small changes”.',
+                    errors.agentMaxDiffPercent,
+                  )}
+                />
+              </Field>
+            </div>
+          </fieldset>
           <div class="form-actions">
             <button class="primary" type="submit">
               Save settings
@@ -290,12 +347,18 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
     for (const f of FIELDS) values[f.name] = field(form, f.name) ?? '';
     // An unticked checkbox is not sent at all.
     values.autoApproveNew = field(form, 'autoApproveNew') === 'on' ? 'on' : '';
+    values.agentReview = field(form, 'agentReview') ?? '';
+    values.agentMaxDiffPercent = field(form, 'agentMaxDiffPercent') ?? '';
     const input: Record<string, unknown> = {
       name: values.name,
       mainBranch: values.mainBranch,
       autoApproveNew: values.autoApproveNew === 'on',
     };
     for (const name of NUMBER_FIELDS) if (values[name]) input[name] = Number(values[name]);
+    // An older form without the agent fields leaves the policy as it is.
+    if ((AGENT_REVIEW_POLICIES as readonly string[]).includes(values.agentReview))
+      input.agentReview = values.agentReview;
+    if (values.agentMaxDiffPercent) input.agentMaxDiffPercent = Number(values.agentMaxDiffPercent);
     try {
       await updateProject(s.deps, slug, input);
       return c.redirect(uiOf(c, s).url(`/ui/p/${slug}/settings?done=project-saved`), 303);

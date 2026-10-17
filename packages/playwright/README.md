@@ -71,6 +71,14 @@ the test and added as a `pixeltwin` annotation (visible in the HTML report).
 | `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
 | `screenshot` | other Playwright screenshot options (`animations` defaults to `disabled`, `caret` to `hide`) |
 | `retakes`, `failOnChange` | override the run's settings (below) for this check |
+| `elements` | `false`: send no page elements with this screenshot (see below) |
+
+**Elements.** With each screenshot the fixture sends the boxes of the visible elements in it (at
+most 300: test ids first, then stable ids, roles such as buttons, links and headings, then text),
+with a short text snippet and a few computed styles, never what was typed into a field. When the
+baseline has them too, the check's diff names what changed: "`button[data-testid=buy]` moved
+4 px down", "Heading "Welcome" colour changed from #222222 to #d1242f". Turn it off with
+`use: { pixeltwinElements: false }` or `PIXELTWIN_ELEMENTS=0`.
 
 **Retakes.** With `retakes` (or `PIXELTWIN_RETAKES`), a check that comes back `changed` is
 screenshotted again, `retakeIntervalMs` apart, until it is unchanged or the retakes run out: a page
@@ -121,6 +129,7 @@ export default withPixeltwin(defineConfig({ /* … */ }), { project: 'shop', gat
 | `PIXELTWIN_RETAKES` | `retakes` | `0`; screenshots again while a check comes back `changed` |
 | `PIXELTWIN_RETAKE_INTERVAL_MS` | `retakeIntervalMs` | `1000` |
 | `PIXELTWIN_FAIL_ON_CHANGE=1` | `failOnChange` | off; a check that is not unchanged throws `PixeltwinCheckError` |
+| `PIXELTWIN_ELEMENTS=0` | `elements` | on; sends the visible elements' boxes with each screenshot |
 | `PIXELTWIN_ALLOW_OFFLINE=1` | `allowOffline` | off: a build that cannot be opened stops the run; on: the tests run and each check fails with the reason |
 
 Requests are retried (network errors, timeouts, 429, 5xx) with backoff; errors from the server are

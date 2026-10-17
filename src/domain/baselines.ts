@@ -8,12 +8,13 @@ import { type Page, toPage } from './pagination';
 import { getProjectBySlug } from './projects';
 import { type PageInput, pageInputSchema, parseInput } from './schemas';
 
-export interface BaselineView extends Omit<Baseline, 'variant'> {
+export interface BaselineView extends Omit<Baseline, 'variant' | 'elementsSha'> {
   variant: Record<string, string>;
 }
 
 export function toBaselineView(row: Baseline): BaselineView {
-  return { ...row, variant: JSON.parse(row.variant) as Record<string, string> };
+  const { elementsSha: _elementsSha, ...rest } = row;
+  return { ...rest, variant: JSON.parse(row.variant) as Record<string, string> };
 }
 
 /** Latest baseline for the snapshot on exactly this branch. Accepts a transaction. */
@@ -62,11 +63,18 @@ export interface NewBaseline {
   imageSha: string;
   sourceCheckId: string | null;
   approvedBy: string;
+  /** The page elements of the screenshot (`element_sets.sha`), when the SDK sent them. */
+  elementsSha?: string | null;
 }
 
 /** Appends to the history; the newest row becomes current. Accepts a transaction. */
 export async function appendBaseline(db: Db, input: NewBaseline): Promise<Baseline> {
-  const baseline: Baseline = { id: newId('bln'), ...input, createdAt: Date.now() };
+  const baseline: Baseline = {
+    id: newId('bln'),
+    ...input,
+    elementsSha: input.elementsSha ?? null,
+    createdAt: Date.now(),
+  };
   await db.insertInto('baselines').values(baseline).execute();
   return baseline;
 }
@@ -213,6 +221,7 @@ export async function promoteBranch(
         imageSha: baseline.imageSha,
         sourceCheckId: baseline.sourceCheckId,
         approvedBy: actor,
+        elementsSha: baseline.elementsSha,
       });
       // Every main build that still waits on this screen is decided by the promotion, also those
       // made after the branch build (a run right after the merge).

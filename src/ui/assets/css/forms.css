@@ -197,3 +197,21 @@ pre.command {
 .advanced[open] summary {
   margin-bottom: var(--space-3);
 }
+/* Agent reviews in project settings: a group of options under its own heading. */
+fieldset.agent-policy {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.agent-policy-title {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-weight: 600;
+}
+.agent-policy > p {
+  margin: 0;
+}

@@ -62,7 +62,7 @@ describe('retention job', () => {
     expect(lines.find((l) => l.msg === 'retention failed')).toMatchObject({ error: 'storage unavailable' });
 
     fail = false;
-    expect(await job.runNow()).toEqual({ buildsDeleted: 0, imagesDeleted: 1 });
+    expect(await job.runNow()).toEqual({ buildsDeleted: 0, imagesDeleted: 1, elementSetsDeleted: 0 });
     expect(await deps.storage.exists(imageKey(sha))).toBe(false);
   });
 
@@ -109,7 +109,7 @@ describe('retention job', () => {
       const first = a.runNow();
       await Bun.sleep(100);
       expect(await b.runNow()).toBeNull();
-      expect(await first).toEqual({ buildsDeleted: 0, imagesDeleted: 1 });
+      expect(await first).toEqual({ buildsDeleted: 0, imagesDeleted: 1, elementSetsDeleted: 0 });
     } finally {
       await a.stop();
       await b.stop();

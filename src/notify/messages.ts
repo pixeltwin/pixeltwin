@@ -1,4 +1,4 @@
-import type { CheckResult, CheckReview, Project } from '../db/schema';
+import type { ActorKind, CheckResult, CheckReview, Project } from '../db/schema';
 import type { BuildView } from '../domain/builds';
 import type { Verdict } from '../domain/verdict';
 import type { StatusUpdate } from './http';
@@ -205,7 +205,13 @@ export interface WebhookPayload {
   project: ProjectRef;
   build?: BuildPayload;
   check?: CheckPayload;
-  review?: { action: 'approved' | 'rejected' | 'reset'; actor: { id: string; name: string } };
+  review?: {
+    action: 'approved' | 'rejected' | 'reset';
+    /** Why, as the reviewer said (for an accepted agent suggestion, the agent's reason); null without. */
+    reason: string | null;
+    /** `kind`: `user` (a person) or `token` (a project token: an agent or CI). */
+    actor: { id: string; kind: ActorKind; name: string };
+  };
 }
 
 export function buildPayload(build: BuildView, publicUrl: string): BuildPayload {
@@ -279,6 +285,7 @@ export function slackMessage(payload: WebhookPayload): { text: string; blocks: u
     const by = `${action} by ${slack(payload.review.actor.name)}`;
     text = `pixeltwin · ${project}: ${slack(payload.check.name)}${variant} ${by} in ${where}`;
     reviewed = `<${payload.check.url}|${slack(payload.check.name)}>${variant} ${by}`;
+    if (payload.review.reason) reviewed += `\n>${slack(payload.review.reason).replace(/\n/g, '\n>')}`;
   }
   const context = [
     `pixeltwin · ${project}`,

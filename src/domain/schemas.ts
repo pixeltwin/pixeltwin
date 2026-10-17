@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AREA_KINDS } from '../db/schema';
+import { AGENT_REVIEW_POLICIES, AREA_KINDS } from '../db/schema';
 import { validationError } from '../errors';
 
 // Input schemas shared by the domain and (in Plan 2) the HTTP layer. Objects are strict:
@@ -43,6 +43,10 @@ const projectSettings = {
   retentionDays: z.number().int().min(1).max(3650),
   /** A new screenshot (no baseline yet) is approved as soon as it arrives. */
   autoApproveNew: z.boolean(),
+  /** What a project token's approve or reject does: apply it (off) or record a suggestion. */
+  agentReview: z.enum(AGENT_REVIEW_POLICIES),
+  /** With `auto-below`: the largest diff percent a token may approve itself. */
+  agentMaxDiffPercent: z.number().min(0).max(100),
 };
 
 export const createProjectSchema = z.strictObject({
@@ -55,6 +59,8 @@ export const createProjectSchema = z.strictObject({
   // CI often runs several times a day; baselines are kept whatever the retention.
   retentionDays: projectSettings.retentionDays.default(5),
   autoApproveNew: projectSettings.autoApproveNew.default(false),
+  agentReview: projectSettings.agentReview.default('off'),
+  agentMaxDiffPercent: projectSettings.agentMaxDiffPercent.default(1),
 });
 
 export const updateProjectSchema = z.strictObject(projectSettings).partial();
@@ -85,12 +91,37 @@ export const finalizeBuildSchema = z.strictObject({
   part: z.string().trim().min(1).max(200).optional(),
 });
 
+/** At most this many elements per screenshot (the SDKs send the most telling ones first). */
+export const MAX_ELEMENTS = 300;
+
+const shortText = (max: number) => z.string().max(max).optional();
+
+/**
+ * A page element measured with the screenshot (box in screenshot pixels). Unlike the rest of the
+ * metadata, unknown keys are dropped rather than refused, so a newer SDK can send more.
+ */
+export const snapshotElementSchema = z.object({
+  key: z.string().min(1).max(300),
+  path: shortText(300),
+  tag: z.string().min(1).max(40),
+  role: shortText(40),
+  name: shortText(120),
+  text: shortText(120),
+  x: coordinate.min(0),
+  y: coordinate.min(0),
+  width: coordinate.min(1),
+  height: coordinate.min(1),
+  style: z.object({ color: shortText(40), background: shortText(40), fontSize: shortText(20) }).optional(),
+});
+
 export const checkMetaSchema = z.strictObject({
   name: z.string().trim().min(1).max(200),
   variant: variantSchema.default({}),
   ignoreRegions: z.array(rectSchema).max(100).default([]),
   colorThreshold: colorThreshold.optional(),
   tolerancePercent: tolerancePercent.optional(),
+  /** The page elements in the screenshot; with them the diff lists element changes. */
+  elements: z.array(snapshotElementSchema).max(MAX_ELEMENTS).optional(),
 });
 
 /** An ignore or compare area drawn on a snapshot (Plan 6). */
@@ -100,6 +131,9 @@ export const areaInputSchema = rectSchema.extend({ kind: z.enum(AREA_KINDS) });
 export const areaUpdateSchema = rectSchema;
 
 export const reviewInputSchema = z.strictObject({
+  /** Why: kept in the review history. A token must give one when the project's agent review policy is not `off`. */
+  reason: z.string().trim().max(1000).optional(),
+  /** The older name of `reason`. */
   comment: z.string().trim().max(1000).optional(),
 });
 

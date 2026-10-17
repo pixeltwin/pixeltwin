@@ -191,9 +191,14 @@ describe('webhook payloads', () => {
         review: 'approved',
         url: `${URL}/ui/checks/chk_1`,
       },
-      review: { action: 'approved', actor: { id: 'usr_1', name: 'alice@example.com' } },
+      review: {
+        action: 'approved',
+        reason: 'The new <Sign in> button is intended',
+        actor: { id: 'usr_1', kind: 'user', name: 'alice@example.com' },
+      },
     });
     expect(reviewed.text).toContain('login (chromium) approved by alice@example.com');
+    expect(JSON.stringify(reviewed.blocks)).toContain('\\n>The new &lt;Sign in&gt; button is intended');
     expect(slackMessage({ id: 'dlv_3', event: 'ping', createdAt: 0, project }).text).toContain('test');
   });
 });

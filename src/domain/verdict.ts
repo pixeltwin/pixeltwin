@@ -10,6 +10,8 @@ export interface BuildCounts {
   autoApproved: number;
   /** Checks whose snapshot has drawn ignore or compare areas. */
   withAreas: number;
+  /** Checks with an agent's open suggestion (agent review policy), waiting for a person. */
+  suggested: number;
 }
 
 export function emptyCounts(): BuildCounts {
@@ -19,6 +21,7 @@ export function emptyCounts(): BuildCounts {
     review: Object.fromEntries(CHECK_REVIEWS.map((r) => [r, 0])) as Record<CheckReview, number>,
     autoApproved: 0,
     withAreas: 0,
+    suggested: 0,
   };
 }
 

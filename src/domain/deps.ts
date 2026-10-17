@@ -1,4 +1,5 @@
 import type { Db } from '../db/database';
+import type { ActorKind } from '../db/schema';
 import type { DiffRunner } from '../diff/types';
 import type { Storage } from '../storage/storage';
 import type { SecretBox } from './secrets';
@@ -17,8 +18,19 @@ export interface DomainEvents {
   buildFinalized(buildId: string): Promise<void>;
   /** Reviews, areas or a promotion may have changed these builds' verdicts or counts. */
   buildsChanged(buildIds: string[]): Promise<void>;
-  /** A person or token approved, rejected or undid the review of a check (not auto-approve). */
-  checkReviewed(event: { checkId: string; action: 'approved' | 'rejected' | 'reset'; actor: string }): Promise<void>;
+  /**
+   * A person or token approved, rejected or undid the review of a check (not auto-approve, and
+   * not an agent's suggestion, which leaves the check as it was). `actorName` is a token's name
+   * at the time; `reason` is why (for an accepted suggestion, the agent's reason).
+   */
+  checkReviewed(event: {
+    checkId: string;
+    action: 'approved' | 'rejected' | 'reset';
+    actor: string;
+    actorKind: ActorKind;
+    actorName: string | null;
+    reason: string | null;
+  }): Promise<void>;
 }
 
 /** Everything domain functions need. Built once in main.ts; built per test in test/helpers. */

@@ -26,11 +26,13 @@ if (done.verdict !== 'passed') process.exitCode = 1;  // empty | error | rejecte
 | Method | |
 |---|---|
 | `openBuild(project, { branch?, baseBranch?, commitSha?, repository?, pullRequest?, externalId?, parallelTotal? })` | the same `externalId` returns the same build (`created: false`); one is generated when missing. `parallelTotal`: that many parts (CI jobs) finalize it |
-| `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent? })` | answers after the comparison; the same name + variant again replaces the check |
-| `getBuild(id)`, `listChecks(buildId, { result?, review?, limit?, cursor? })` | |
+| `postCheck(buildId, { name, image, variant?, ignoreRegions?, colorThreshold?, tolerancePercent?, elements? })` | answers after the comparison; the same name + variant again replaces the check. `elements`: the page's elements in screenshot pixels (`collectElements` in the page, then `elementsToPixels`); with them the diff names what changed |
+| `getBuild(id)`, `listBuilds(project, { branch?, limit? })`, `listChecks(buildId, { result?, review?, limit?, cursor? })`, `getCheck(id)`, `checkElements(id)`, `listReviews(id)` | |
+| `review(checkId, 'approve' \| 'reject', { reason? })` | needs the `review` scope; `outcome` says whether it applied or the project's agent review policy recorded it as a suggestion |
+| `addIgnoreArea(checkId, { x, y, width, height })` | an ignore area on the check's snapshot; the check is compared again |
 | `finalize(buildId, { part? })` | idempotent; a part of a parallel build is counted once, and the build stays open until every part has finalized it |
 | `waitForVerdict(buildId, { timeoutMs, intervalMs? })` | polls while the verdict is `pending` |
-| `approveBuild(buildId)` | needs the `review` scope |
+| `approveBuild(buildId, { reason? })` | needs the `review` scope; `suggested` counts what became suggestions |
 | `promotionCandidates(project, branch)` | the branch's screens whose baseline differs from main's |
 | `promote(project, branch, snapshotKeys?)` | copies them to main, all or some; needs the `write` scope |
 | `buildUrl(id)`, `checkUrl(check)` | links into the web UI |
@@ -78,6 +80,16 @@ npx @pixeltwin/client promote feature/login --only <snapshot key> --only <snapsh
 ```
 
 Admins can do the same in the web UI: Promote on the branch's lane, with a checkbox per screen.
+
+## `pixeltwin mcp`
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server on stdin/stdout for agents
+(Claude Code, Cursor, …), configured by `PIXELTWIN_URL`, `PIXELTWIN_TOKEN` and `PIXELTWIN_PROJECT`
+(and `PIXELTWIN_BRANCH`, else the checked-out branch). Tools: `latest_build`, `list_changes`,
+`get_check`, `get_check_images` (cropped to an element change or a rectangle, shrunk to 1568 px at
+most), `approve_check` and `reject_check` (with a `reason`) and `add_ignore_area`. See the
+[main README](../../README.md#agents-pixeltwin-mcp) for a `.mcp.json`. It is a small JSON-RPC loop of
+its own: the package keeps no dependencies.
 
 `@pixeltwin/client/run` exports the run lifecycle the integrations share (`resolveSettings`,
 `startRun`, `finishRun`, `summaryLines`), for wiring pixeltwin into another runner.
