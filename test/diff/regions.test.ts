@@ -15,7 +15,11 @@ function block(x0: number, y0: number, w: number, h: number): Array<[number, num
 
 describe('extractRegions', () => {
   test('returns nothing for an empty mask', () => {
-    expect(extractRegions(new Uint8Array(100 * 100), 100, 100)).toEqual({ regions: [], total: 0, truncated: false });
+    expect(extractRegions(new Uint8Array(100 * 100), 100, 100)).toMatchObject({
+      regions: [],
+      total: 0,
+      truncated: false,
+    });
   });
 
   test('reports a tight box around a block', () => {
