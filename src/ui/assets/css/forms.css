@@ -116,6 +116,16 @@ pre.command {
   font-size: var(--text-xs);
 }
 
+/* Pending invites under the members; Resend and Revoke side by side. */
+.pending-invites h3 {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--text-base, 1rem);
+}
+.row-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
 /* A user's projects, each with its role. */
 .user-projects {
   display: flex;
@@ -165,6 +175,9 @@ pre.command {
 }
 .combobox-list li[aria-selected="true"] {
   background: var(--surface-2);
+}
+.combobox-list .combobox-invite {
+  font-weight: 600;
 }
 .combobox-list .combobox-empty {
   color: var(--text-muted);

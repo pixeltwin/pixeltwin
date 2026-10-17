@@ -100,6 +100,15 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   app.use('*', requestContext(services));
   app.use(`${API}/*`, cors());
   app.use(`${API}/*`, bodyLimits(services.config.maxImageBytes));
+  // The public one-time link pages take a password, nothing more.
+  const linkBody = bodyLimit({
+    maxSize: 16 * 1024,
+    onError: () => {
+      throw new AppError('payload_too_large', 413, 'The form is too large.');
+    },
+  });
+  for (const kind of ['invite', 'reset', 'verify']) app.use(`/ui/${kind}/*`, linkBody);
+  app.use(`${API}/links/*`, linkBody);
   // UI forms are small; refuse big bodies before parsing (spec §7.4), including the public login form.
   app.use(
     '/ui/*',

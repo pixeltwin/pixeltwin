@@ -20,6 +20,9 @@ function setup(input: HTMLInputElement): void {
   input.setAttribute('aria-expanded', 'false');
 
   let items: Candidate[] = [];
+  /** No user matches a whole email: the one option is to invite it. */
+  let invite: string | null = null;
+  const options = () => (invite ? 1 : items.length);
   let active = -1;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let asked = '';
@@ -33,12 +36,20 @@ function setup(input: HTMLInputElement): void {
 
   const mark = (index: number) => {
     active = index;
-    for (const [i, li] of [...list.children].entries()) li.setAttribute('aria-selected', String(i === index));
-    const current = list.children[index];
+    const all = [...list.querySelectorAll('[role="option"]')];
+    for (const [i, li] of all.entries()) li.setAttribute('aria-selected', String(i === index));
+    const current = all[index];
     if (current) {
       input.setAttribute('aria-activedescendant', current.id);
       current.scrollIntoView({ block: 'nearest' });
     } else input.removeAttribute('aria-activedescendant');
+  };
+
+  const inviteNow = (email: string) => {
+    input.value = email;
+    close();
+    const button = input.form?.querySelector<HTMLButtonElement>('[data-invite-submit]');
+    if (button) input.form?.requestSubmit(button);
   };
 
   const pick = (candidate: Candidate) => {
@@ -54,10 +65,23 @@ function setup(input: HTMLInputElement): void {
       empty.className = 'combobox-empty';
       empty.setAttribute('aria-disabled', 'true');
       empty.textContent = 'No users match';
-      empty.dataset.query = query;
       list.append(empty);
-      list.dispatchEvent(new CustomEvent('member-empty', { bubbles: true, detail: { query, item: empty } }));
-    }
+      invite = /^[^\s@]+@[^\s@]+$/.test(query) ? query : null;
+      if (invite) {
+        const email = invite;
+        const li = document.createElement('li');
+        li.id = `${list.id}-0`;
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
+        li.className = 'combobox-invite';
+        li.textContent = `Invite ${email}`;
+        li.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          inviteNow(email);
+        });
+        list.append(li);
+      }
+    } else invite = null;
     for (const [i, candidate] of items.entries()) {
       const li = document.createElement('li');
       li.id = `${list.id}-${i}`;
@@ -116,12 +140,15 @@ function setup(input: HTMLInputElement): void {
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      if (items.length === 0) return;
+      if (options() === 0) return;
       const step = event.key === 'ArrowDown' ? 1 : -1;
-      mark((active + step + items.length) % items.length);
+      mark((active + step + options()) % options());
     } else if (event.key === 'Enter') {
       const candidate = items[active];
-      if (candidate) {
+      if (invite && active === 0) {
+        event.preventDefault();
+        inviteNow(invite);
+      } else if (candidate) {
         event.preventDefault();
         pick(candidate);
       }

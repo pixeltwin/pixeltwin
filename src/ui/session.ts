@@ -10,6 +10,8 @@ export const UI_CSP =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'";
 
 const PUBLIC_PAGES = /^\/ui\/(login|setup|assets\/)/;
+/** One-time links: public, never with a session (a link opened in a logged-in browser stays about its own email). */
+const LINK_PAGES = /^\/ui\/(invite|reset|verify)\//;
 /** Pages of one project, build or check: each must check the user's access to its project. */
 const PROJECT_PAGES = /^\/ui\/(p|builds|checks)\//;
 
@@ -30,6 +32,23 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
     c.set('permission', null);
     c.set('projectChecked', false);
     c.set('deps', s.deps);
+    if (LINK_PAGES.test(c.req.path)) {
+      // With `Referrer-Policy: no-referrer` browsers send `Origin: null` on the page's own form;
+      // Sec-Fetch-Site (which no page can set) then says whether it came from this site.
+      const origin = c.req.header('origin');
+      const sameSite =
+        origin === allowedOrigin || (origin === 'null' && c.req.header('sec-fetch-site') === 'same-origin');
+      if (c.req.method === 'POST' && !sameSite) {
+        throw new AppError('csrf_origin_mismatch', 403, `Forms must be submitted from ${allowedOrigin}.`);
+      }
+      await next();
+      c.res.headers.set('content-security-policy', UI_CSP);
+      // The token is in the URL: no other site may see it in a Referer, no cache may keep the page.
+      c.res.headers.set('referrer-policy', 'no-referrer');
+      c.res.headers.set('cache-control', 'no-store');
+      c.res.headers.set('x-frame-options', 'DENY');
+      return;
+    }
     const cookie = getCookie(c, SESSION_COOKIE);
     const session = cookie ? await resolveSession(s.deps, cookie) : null;
     const user = session?.user ?? null;

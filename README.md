@@ -128,6 +128,15 @@ Each user has a server role, and every non-admin user sees only the projects the
 - A project can be **visible to everyone on this server** (a setting, off for new projects): then
   every user opens it with their server role, `viewer` or `reviewer`. A membership can give more.
 
+**Inviting.** Instead of creating users with a password, invite them by email: Settings → Members
+→ Invite by email (admins and the project's maintainers), or Users → Invite user (admins, with a
+server role and an optional project). An email that already has an account just becomes a member.
+Anyone else gets a one-time link (7 days; inviting again or Resend replaces it; Revoke ends it)
+where they choose a password and land in the project. With `SMTP_URL` and `SMTP_FROM` set the link
+is also mailed; without them it is shown once to copy. Admins get a one-time **reset link** (1 hour)
+for any user under Users (the `admin reset-password` command still works too). Links are never
+logged and their pages send no Referer.
+
 The server role of a non-admin is also their default role when they are added to a project. A user
 outside a project gets 404 for it and everything in it, as if it did not exist. Project tokens are
 unchanged: each one belongs to one project. Upgrading keeps everyone's access: every existing
@@ -182,6 +191,8 @@ it out.
 | `MAX_IMAGE_BYTES` | `10485760` |
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |
+| `SMTP_URL` | unset → no mail (links are shown to copy); `smtp://user:pass@host:587` (STARTTLS when offered; credentials only over TLS, except to localhost) or `smtps://…:465` |
+| `SMTP_FROM` | needed with `SMTP_URL`, e.g. `pixeltwin <pixeltwin@example.com>` |
 
 ## Post screenshots from your tests: the JavaScript SDK
 

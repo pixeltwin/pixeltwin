@@ -1,13 +1,21 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import { type ProjectRole, USER_ROLES, type UserRole } from '../../db/schema';
+import { PROJECT_ROLES, type Project, type ProjectRole, USER_ROLES, type UserRole } from '../../db/schema';
+import { linkUrl } from '../../domain/auth/links';
 import { hasPermission } from '../../domain/auth/policy';
+import { createResetLink } from '../../domain/auth/resets';
 import { createUser, deleteUser, listUsers, type UserView, updateUser } from '../../domain/auth/users';
+import { type InviteView, inviteToServer, listInvites, resendInvite, revokeInvite } from '../../domain/invites';
 import { membershipsOf } from '../../domain/members';
+import { listProjects } from '../../domain/projects';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
+import { sendInvite } from '../../http/routes/invites';
+import { resetMail } from '../../mail/messages';
+import { deliver } from '../../mail/smtp';
 import { Ago, describedBy, Field, formErrors, PasswordField, Pill } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { LinkCreated, PendingInvites } from '../invite-forms';
 import { Layout } from '../layout';
 
 function requireUserAdmin(c: Context<AppEnv>): void {
@@ -111,16 +119,106 @@ function NewUserForm({
   );
 }
 
+type InviteValues = {
+  email?: string | undefined;
+  role?: string | undefined;
+  project?: string | undefined;
+  projectRole?: string | undefined;
+};
+
+/** Invites someone to the server: a global role, and optionally a project with a role. */
+function InviteUserForm({
+  ui,
+  projects,
+  values = {},
+  errors = {},
+  inDialog,
+}: {
+  ui: Ui;
+  projects: Project[];
+  values?: InviteValues;
+  errors?: Record<string, string>;
+  inDialog: boolean;
+}) {
+  const chosenRole: UserRole = USER_ROLES.find((r) => r === values.role) ?? 'viewer';
+  const projectHint = 'Optional. Admins have every project.';
+  return (
+    <form method="post" action={ui.url('/ui/admin/invites')}>
+      {errors._form && <p class="flash error">{errors._form}</p>}
+      <Field id="invite-email" label="Email" error={errors.email}>
+        <input
+          name="email"
+          type="email"
+          required
+          autocomplete="off"
+          value={values.email ?? ''}
+          {...describedBy('invite-email', undefined, errors.email)}
+        />
+      </Field>
+      <Field id="invite-role" label="Role" hint={ROLE_HINTS[chosenRole]} error={errors.role}>
+        <select name="role" data-hint-from-option {...describedBy('invite-role', ROLE_HINTS[chosenRole], errors.role)}>
+          {USER_ROLES.map((r) => (
+            <option value={r} data-hint={ROLE_HINTS[r]} selected={r === chosenRole}>
+              {r}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <div class="form-grid">
+        <Field id="invite-project" label="Project" hint={projectHint} error={errors.project}>
+          <select name="project" {...describedBy('invite-project', projectHint, errors.project)}>
+            <option value="">no project</option>
+            {projects.map((p) => (
+              <option value={p.slug} selected={p.slug === values.project}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field id="invite-project-role" label="Role in the project" error={errors.projectRole}>
+          <select name="projectRole" {...describedBy('invite-project-role', undefined, errors.projectRole)}>
+            {PROJECT_ROLES.map((r) => (
+              <option value={r} selected={r === (values.projectRole ?? 'viewer')}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div class="dialog-actions">
+        {inDialog ? (
+          <button type="button" data-dialog-close>
+            Cancel
+          </button>
+        ) : (
+          <a class="button" href={ui.url('/ui/admin/users')}>
+            Cancel
+          </a>
+        )}
+        <button class="primary" type="submit">
+          Invite
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function UsersPage({
   ui,
   users,
   memberships,
+  projects,
+  invites,
+  newLink,
   notice,
   error,
 }: {
   ui: Ui;
   users: UserView[];
   memberships: Memberships;
+  projects: Project[];
+  invites: InviteView[];
+  newLink?: { title: string; email: string; link: string; mailed: boolean; note: string } | undefined;
   notice?: string;
   error?: string;
 }) {
@@ -132,11 +230,19 @@ function UsersPage({
           <p class="sub">{ROLE_HELP}</p>
         </div>
         <div class="page-actions">
-          <a class="button primary" href={ui.url('/ui/admin/users/new')} data-dialog-open="new-user">
+          <a class="button" href={ui.url('/ui/admin/users/new')} data-dialog-open="new-user">
             Add user
+          </a>
+          <a class="button primary" href={ui.url('/ui/admin/invites/new')} data-dialog-open="invite-user">
+            Invite user
           </a>
         </div>
       </div>
+      {newLink && (
+        <section class="panel">
+          <LinkCreated {...newLink} />
+        </section>
+      )}
       <table class="stack-on-phone">
         <thead>
           <tr>
@@ -183,25 +289,63 @@ function UsersPage({
                 <Ago at={u.createdAt} />
               </td>
               <td>
-                <form method="post" action={ui.url(`/ui/admin/users/${u.id}/delete`)}>
-                  <button
-                    class="danger small"
-                    type="submit"
-                    data-confirm={`Delete ${u.email}? They can no longer log in.`}
-                    data-confirm-label="Delete"
-                  >
-                    Delete
-                  </button>
-                </form>
+                <span class="row-actions">
+                  <form method="post" action={ui.url(`/ui/admin/users/${u.id}/reset-link`)}>
+                    <button class="small" type="submit" title="A one-time link to set a new password, for an hour">
+                      Reset link
+                    </button>
+                  </form>
+                  <form method="post" action={ui.url(`/ui/admin/users/${u.id}/delete`)}>
+                    <button
+                      class="danger small"
+                      type="submit"
+                      data-confirm={`Delete ${u.email}? They can no longer log in.`}
+                      data-confirm-label="Delete"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                </span>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <PendingInvites ui={ui} invites={invites} base="/ui/admin/invites" showProject />
       <dialog id="new-user" aria-labelledby="new-user-title">
         <h2 id="new-user-title">Add user</h2>
         <NewUserForm ui={ui} inDialog />
       </dialog>
+      <dialog id="invite-user" aria-labelledby="invite-user-title">
+        <h2 id="invite-user-title">Invite user</h2>
+        <InviteUserForm ui={ui} projects={projects} inDialog />
+      </dialog>
+    </Layout>
+  );
+}
+
+function InviteUserPage(props: {
+  ui: Ui;
+  projects: Project[];
+  values?: InviteValues;
+  errors?: Record<string, string>;
+}) {
+  return (
+    <Layout
+      ui={props.ui}
+      title="Invite user"
+      crumbs={[{ label: 'Users', href: props.ui.url('/ui/admin/users') }, { label: 'Invite user' }]}
+    >
+      <div class="panel narrow">
+        <h1>Invite user</h1>
+        <InviteUserForm
+          ui={props.ui}
+          projects={props.projects}
+          values={props.values}
+          errors={props.errors}
+          inDialog={false}
+        />
+      </div>
     </Layout>
   );
 }
@@ -231,18 +375,94 @@ function statusOf(err: unknown): 400 | 403 | 404 | 409 | 422 {
 }
 
 export function registerUserPages(app: OpenAPIHono<AppEnv>, s: Services): void {
-  const list = async (c: Context<AppEnv>, error?: string) => {
-    const [users, memberships] = await Promise.all([listUsers(s.deps), membershipsOf(s.deps)]);
+  const list = async (
+    c: Context<AppEnv>,
+    error?: string,
+    newLink?: { title: string; email: string; link: string; mailed: boolean; note: string },
+  ) => {
+    const [users, memberships, projects, invites] = await Promise.all([
+      listUsers(s.deps),
+      membershipsOf(s.deps),
+      listProjects(s.deps),
+      listInvites(s.deps, null),
+    ]);
     return (
       <UsersPage
         ui={uiOf(c, s)}
         users={users}
         memberships={memberships}
+        projects={projects}
+        invites={invites}
+        newLink={newLink}
         notice={noticeOf(c)}
         {...(error ? { error } : {})}
       />
     );
   };
+
+  const inviteLink = (invite: InviteView, token: string) => ({
+    title: `Invite for ${invite.email}`,
+    email: invite.email,
+    note: 'It works once, for 7 days, and creates their account.',
+    ...sendInvite(s, invite, token),
+  });
+
+  app.get('/ui/admin/invites/new', async (c) => {
+    requireUserAdmin(c);
+    return c.html(<InviteUserPage ui={uiOf(c, s)} projects={await listProjects(s.deps)} />);
+  });
+
+  app.post('/ui/admin/invites', async (c) => {
+    requireUserAdmin(c);
+    const form = await c.req.parseBody();
+    const values = {
+      email: field(form, 'email'),
+      role: field(form, 'role'),
+      project: field(form, 'project') || undefined,
+      projectRole: field(form, 'projectRole') || undefined,
+    };
+    try {
+      const input = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
+      const result = await inviteToServer(s.deps, input, userOf(c).id);
+      if (result.kind === 'member') return c.redirect(uiOf(c, s).url('/ui/admin/users?done=member-had-account'), 303);
+      return c.html(await list(c, undefined, inviteLink(result.invite, result.token)), 201);
+    } catch (err) {
+      if (!(err instanceof AppError) || err.status >= 500) throw err;
+      return c.html(
+        <InviteUserPage
+          ui={uiOf(c, s)}
+          projects={await listProjects(s.deps)}
+          values={values}
+          errors={formErrors(err)}
+        />,
+        statusOf(err),
+      );
+    }
+  });
+
+  app.post('/ui/admin/invites/:id/resend', async (c) => {
+    requireUserAdmin(c);
+    const { invite, token } = await resendInvite(s.deps, c.req.param('id'));
+    return c.html(await list(c, undefined, inviteLink(invite, token)), 201);
+  });
+
+  app.post('/ui/admin/invites/:id/delete', async (c) => {
+    requireUserAdmin(c);
+    await revokeInvite(s.deps, c.req.param('id'));
+    return c.redirect(uiOf(c, s).url('/ui/admin/users?done=invite-revoked'), 303);
+  });
+
+  app.post('/ui/admin/users/:id/reset-link', async (c) => {
+    requireUserAdmin(c);
+    const { token, email } = await createResetLink(s.deps, c.req.param('id'), userOf(c).id);
+    const link = linkUrl(s.config.publicUrl, 'password_reset', token);
+    void deliver(s.mailer, resetMail(email, link), s.logger.warn, 'password reset');
+    const note = 'It works once, for an hour, and ends their other sessions.';
+    return c.html(
+      await list(c, undefined, { title: `Reset link for ${email}`, email, link, mailed: !!s.mailer, note }),
+      201,
+    );
+  });
 
   app.get('/ui/admin/users', async (c) => {
     requireUserAdmin(c);

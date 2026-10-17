@@ -2,13 +2,23 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { PROJECT_ROLES, type Project } from '../../db/schema';
 import { createProjectToken, deleteProjectToken, listProjectTokens, type TokenView } from '../../domain/auth/tokens';
+import {
+  type InviteView,
+  inviteProjectId,
+  inviteToProject,
+  listInvites,
+  resendInvite,
+  revokeInvite,
+} from '../../domain/invites';
 import { addMember, listMembers, type MemberView, removeMember, updateMember } from '../../domain/members';
 import { deleteProject, updateProject } from '../../domain/projects';
 import { AppError } from '../../errors';
 import { type ProjectAccess, visibleProject } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
+import { sendInvite } from '../../http/routes/invites';
 import { Ago, describedBy, Field, formErrors, Pill, ProjectTabs } from '../components';
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { LinkCreated, PendingInvites } from '../invite-forms';
 import { Layout } from '../layout';
 import { NewTokenButton, NewTokenDialog, NewTokenForm, TokenCreated } from '../token-forms';
 
@@ -61,7 +71,9 @@ function MembersSection(props: {
   ui: Ui;
   project: Project;
   members: MemberView[];
+  invites: InviteView[];
   values?: { email?: string | undefined; role?: string | undefined } | undefined;
+  newInvite?: { email: string; link: string; mailed: boolean } | undefined;
 }) {
   const { ui, project, members } = props;
   const base = `/ui/p/${project.slug}/settings/members`;
@@ -108,7 +120,28 @@ function MembersSection(props: {
           <button class="primary" type="submit">
             Add member
           </button>
+          {/* Someone without an account yet: the same email and role, as an invite link. */}
+          <button type="submit" formaction={ui.url(`/ui/p/${project.slug}/settings/invites`)} data-invite-submit>
+            Invite by email
+          </button>
         </form>
+        {props.newInvite && (
+          <section class="panel">
+            <LinkCreated
+              title={`Invite for ${props.newInvite.email}`}
+              email={props.newInvite.email}
+              link={props.newInvite.link}
+              mailed={props.newInvite.mailed}
+              note="It works once, for 7 days, and creates their account in this project."
+            />
+          </section>
+        )}
+        <PendingInvites
+          ui={ui}
+          invites={props.invites}
+          base={`/ui/p/${project.slug}/settings/invites`}
+          showProject={false}
+        />
         {members.length === 0 ? (
           <div class="empty">
             <p>
@@ -199,6 +232,8 @@ function SettingsPage(props: {
   values?: Record<string, string>;
   errors?: Record<string, string>;
   memberValues?: { email?: string | undefined; role?: string | undefined };
+  invites: InviteView[];
+  newInvite?: { email: string; link: string; mailed: boolean };
   newToken?: { name: string; scopes: string[]; token: string };
   notice?: string | undefined;
   error?: string | undefined;
@@ -346,7 +381,14 @@ function SettingsPage(props: {
         <NewTokenDialog ui={ui} slug={project.slug} />
       </section>
 
-      <MembersSection ui={ui} project={project} members={props.members} values={props.memberValues} />
+      <MembersSection
+        ui={ui}
+        project={project}
+        members={props.members}
+        invites={props.invites}
+        values={props.memberValues}
+        newInvite={props.newInvite}
+      />
 
       {props.access.can('server.admin') && (
         <section class="settings-section danger-zone" aria-labelledby="danger-title">
@@ -398,9 +440,10 @@ function NewTokenPage(props: {
 export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   const page = async (c: Context<AppEnv>, extra: Partial<Parameters<typeof SettingsPage>[0]> = {}) => {
     const { project, access } = await managed(c, s);
-    const [tokens, members] = await Promise.all([
+    const [tokens, members, invites] = await Promise.all([
       listProjectTokens(s.deps, project.slug),
       listMembers(s.deps, project.slug),
+      listInvites(s.deps, project.id),
     ]);
     return (
       <SettingsPage
@@ -409,6 +452,7 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
         access={access}
         tokens={tokens}
         members={members}
+        invites={invites}
         notice={noticeOf(c)}
         {...extra}
       />
@@ -518,5 +562,45 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
     } catch (err) {
       return membersPage(c, err);
     }
+  });
+
+  // Invites: the email has no account yet (one that has becomes a member at once).
+  const invited = async (c: Context<AppEnv>, invite: InviteView, token: string) =>
+    c.html(await page(c, { newInvite: { email: invite.email, ...sendInvite(s, invite, token) } }), 201);
+
+  /** The invite must be of this project; any other is as if it did not exist. */
+  const ownInvite = async (c: Context<AppEnv>, projectId: string) => {
+    const id = c.req.param('id') ?? '';
+    const of = await inviteProjectId(s.deps, id).catch(() => null);
+    if (of !== projectId) throw new AppError('invite_not_found', 404, `Invite ${id} not found.`);
+    return id;
+  };
+
+  app.post('/ui/p/:slug/settings/invites', async (c) => {
+    const { project } = await managed(c, s);
+    const form = await c.req.parseBody();
+    const email = field(form, 'email') ?? '';
+    const role = field(form, 'role') || undefined;
+    try {
+      const result = await inviteToProject(s.deps, project.slug, { email, ...(role ? { role } : {}) }, userOf(c).id);
+      if (result.kind === 'member') {
+        return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=member-had-account#members-title`), 303);
+      }
+      return invited(c, result.invite, result.token);
+    } catch (err) {
+      return membersPage(c, err, { email, ...(role ? { role } : {}) });
+    }
+  });
+
+  app.post('/ui/p/:slug/settings/invites/:id/resend', async (c) => {
+    const { project } = await managed(c, s);
+    const { invite, token } = await resendInvite(s.deps, await ownInvite(c, project.id));
+    return invited(c, invite, token);
+  });
+
+  app.post('/ui/p/:slug/settings/invites/:id/delete', async (c) => {
+    const { project } = await managed(c, s);
+    await revokeInvite(s.deps, await ownInvite(c, project.id));
+    return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=invite-revoked#members-title`), 303);
   });
 }

@@ -14,7 +14,9 @@ Human-readable reference: ${publicUrl}/docs
 Send a project token: \`Authorization: Bearer pt_…\`. An admin or a project maintainer creates
 tokens with scopes \`read\`, \`write\` (builds and checks) and \`review\` (approve/reject). A token
 only sees its own project. A user's personal token (POST /auth/token) sees the projects that user
-can open: others answer 404, as if they did not exist.
+can open: others answer 404, as if they did not exist. To give a person access, an admin or
+maintainer POSTs /projects/<slug>/invites {"email":…,"role":"viewer|reviewer|maintainer"}: an account
+becomes a member at once (kind "member"), anyone else gets a one-time link (kind "invite", \`link\`).
 
 ## Workflow (five calls)
 

@@ -66,6 +66,16 @@ const NOT_PROJECT_SCOPED = new Set([
   'POST /ui/admin/users',
   'POST /ui/admin/users/:id',
   'POST /ui/admin/users/:id/delete',
+  'POST /ui/admin/users/:id/reset-link',
+  'GET /ui/admin/invites/new',
+  'POST /ui/admin/invites',
+  'POST /ui/admin/invites/:id/resend',
+  'POST /ui/admin/invites/:id/delete',
+  // One-time link pages: public, the token is the credential.
+  'GET /ui/invite/:token',
+  'POST /ui/invite/:token',
+  'GET /ui/reset/:token',
+  'POST /ui/reset/:token',
 ]);
 
 const PROJECT_SCOPED = /:slug\b|^\/api\/v1\/(builds|checks|images|invites)\/|^\/ui\/(builds|checks)\//;
