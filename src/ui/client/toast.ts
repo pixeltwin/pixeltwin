@@ -26,21 +26,6 @@ function region(): HTMLElement {
   return created;
 }
 
-/**
- * On a page with a review action bar (the check page) the top right holds the check's own
- * navigation, so toasts sit centred just above the action bar instead, clear of every button.
- */
-function place(container: HTMLElement): void {
-  const bar = document.querySelector<HTMLElement>('.action-bar');
-  container.classList.toggle('above-actions', bar !== null);
-  if (!bar) return;
-  const gap = 12;
-  container.style.setProperty(
-    '--toasts-bottom',
-    `${Math.max(gap, window.innerHeight - bar.getBoundingClientRect().top + gap)}px`,
-  );
-}
-
 export function toast(message: string, options: ToastOptions = {}): Toast {
   const el = document.createElement('div');
   el.className = `toast tone-${options.tone ?? 'neutral'}`;
@@ -74,7 +59,6 @@ export function toast(message: string, options: ToastOptions = {}): Toast {
   el.append(dismiss);
 
   const container = region();
-  place(container);
   // One toast at a time: a new one replaces what was shown.
   container.replaceChildren(el);
   const timeout = options.timeout ?? 5000;
