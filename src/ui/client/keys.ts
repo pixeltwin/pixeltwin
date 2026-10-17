@@ -8,6 +8,8 @@ export interface Shortcut {
   /** Shown in the `?` sheet; omit to keep a shortcut out of it. */
   label?: string;
   run: (event: KeyboardEvent) => void;
+  /** Only listed in the `?` sheet: an island handles the key (or gesture) itself. */
+  hint?: boolean;
 }
 
 const shortcuts: Shortcut[] = [];
@@ -19,6 +21,11 @@ export function onKey(shortcut: Shortcut): () => void {
     const i = shortcuts.indexOf(shortcut);
     if (i >= 0) shortcuts.splice(i, 1);
   };
+}
+
+/** Lists a key or gesture an island handles itself in the `?` sheet; returns its removal. */
+export function hint(key: string, label: string): () => void {
+  return onKey({ key, label, run: () => {}, hint: true });
 }
 
 function isEditing(target: EventTarget | null): boolean {
@@ -39,8 +46,16 @@ function trigger(element: HTMLElement): void {
   else element.click();
 }
 
+const MAC = navigator.platform.startsWith('Mac');
+
 const KEY_NAMES: Record<string, string> = {
-  'mod+k': navigator.platform.startsWith('Mac') ? '⌘K' : 'Ctrl K',
+  'mod+k': MAC ? '⌘K' : 'Ctrl K',
+  'mod+d': MAC ? '⌘D' : 'Ctrl D',
+  'mod+z': MAC ? '⌘Z' : 'Ctrl Z',
+  'alt+drag': MAC ? '⌥ drag' : 'Alt drag',
+  arrows: '← ↑ → ↓',
+  'shift+arrows': 'Shift ← ↑ → ↓',
+  delete: 'Delete',
   escape: 'Esc',
   arrowleft: '←',
   arrowright: '→',
@@ -102,7 +117,7 @@ export function initKeys(): void {
     if (!key) return;
     // An open modal dialog owns the keyboard; Escape is the browser's to close it.
     if (document.querySelector('dialog[open]') && key !== 'mod+k') return;
-    const shortcut = shortcuts.find((s) => s.key === key);
+    const shortcut = shortcuts.find((s) => s.key === key && !s.hint);
     if (shortcut) {
       event.preventDefault();
       shortcut.run(event);

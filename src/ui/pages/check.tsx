@@ -4,7 +4,15 @@ import type { ActorKind, Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
 import type { DiffData, DiffErrorData, ElementChange, Rect, Region, Size } from '../../diff/types';
 import { actorName } from '../../domain/actors';
-import { type Area, aroundChange, createArea, deleteArea, ignoreChanges, listAreas } from '../../domain/areas';
+import {
+  type Area,
+  aroundChange,
+  createArea,
+  deleteArea,
+  ignoreChanges,
+  listAreas,
+  MAX_AREAS_PER_SNAPSHOT,
+} from '../../domain/areas';
 import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, compareWithoutAreas, listChecks } from '../../domain/checks';
@@ -252,6 +260,15 @@ function DrawTools({ areas, off = false }: { areas: Area[]; off?: boolean }) {
         </button>
         <button type="button" class="small" data-area-cancel>
           Cancel <kbd>Esc</kbd>
+        </button>
+        <button
+          type="button"
+          class="small ghost"
+          data-area-duplicate-picked
+          data-mod-title="Duplicate this area ({mod}D), or Alt+drag it"
+          title="Duplicate this area (Ctrl+D), or Alt+drag it"
+        >
+          Duplicate <kbd data-mod-key="D">Ctrl+D</kbd>
         </button>
       </div>
     </>
@@ -649,6 +666,16 @@ function FitIcon() {
   );
 }
 
+/** Two overlapping boxes: duplicate. */
+function DuplicateIcon() {
+  return (
+    <svg class="icon icon-duplicate" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1" />
+      <path d="M10.5 3V2.5h-8v8H3" />
+    </svg>
+  );
+}
+
 /** A bin: delete. */
 function DeleteIcon() {
   return (
@@ -707,6 +734,19 @@ function Areas(props: {
                 >
                   <EditIcon />
                 </button>
+                {!props.off && (
+                  <button
+                    type="button"
+                    class="small ghost icon-button"
+                    data-area-duplicate={a.id}
+                    hidden
+                    aria-label="Duplicate this area"
+                    data-mod-title="Duplicate this area: a copy of the same size below it (pick it, then {mod}D)"
+                    title="Duplicate this area: a copy of the same size below it"
+                  >
+                    <DuplicateIcon />
+                  </button>
+                )}
                 <form
                   method="post"
                   action={ui.url(`/ui/checks/${check.id}/areas/${a.id}/delete`)}
@@ -1317,6 +1357,7 @@ function CheckPage(props: {
         class="review"
         id="review"
         data-check={check.id}
+        data-area-limit={String(MAX_AREAS_PER_SNAPSHOT)}
         data-build={build.id}
         data-build-number={String(build.number)}
         data-project-href={ui.url(`/ui/p/${project.slug}`)}

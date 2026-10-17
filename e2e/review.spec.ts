@@ -431,3 +431,148 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   expect(await where()).toEqual(before);
   expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
 });
+
+/** The areas of a check through the API, in the order they were added. */
+async function areasOf(seeded: { ci: { call: <T>(method: string, path: string) => Promise<T> } }, checkId: string) {
+  const { items } = await seeded.ci.call<{ items: Array<{ x: number; y: number; width: number; height: number }> }>(
+    'GET',
+    `/checks/${checkId}/areas`,
+  );
+  return items.map(({ x, y, width, height }) => ({ x, y, width, height }));
+}
+
+test('Alt+drag on an area drags out a copy of the same size; the original stays and the check is compared again', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  // Right of the changed button, so the check still has its change.
+  await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, {
+    kind: 'ignore',
+    x: 300,
+    y: 210,
+    width: 160,
+    height: 50,
+  });
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.review-head .status')).not.toHaveText('passed');
+  await page.keyboard.press('1');
+  const img = page.locator('.pane-current img').first();
+  const box = await img.boundingBox();
+  if (!box) throw new Error('screenshot not on screen');
+  const at = (x: number, y: number) => ({ x: box.x + (x / 480) * box.width, y: box.y + (y / 300) * box.height });
+  const grab = at(380, 235);
+  const drop = at(110, 235);
+  await page.keyboard.down('Alt');
+  await page.mouse.move(grab.x, grab.y);
+  // The copy cursor shows while Alt is held over the areas.
+  await expect(page.locator('#stage')).toHaveAttribute('data-copying', '');
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
+  await expect(page.locator('.area-ghost')).toHaveCount(1);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect(page.locator('.toast').last()).toContainText('Area duplicated');
+  // The copy covers the change: compared again, the check passes.
+  await expect(page.locator('.review-head .status')).toHaveText('passed');
+  await expect(page.locator('.area-item')).toHaveCount(2);
+  // The copy comes back picked, to be nudged into place.
+  await expect(page.locator('.area-editor')).toBeVisible();
+  const saved = await areasOf(seeded, seeded.changed);
+  expect(saved).toHaveLength(2);
+  expect(saved[0]).toEqual({ x: 300, y: 210, width: 160, height: 50 });
+  // The drop is in screen pixels: allow a pixel of rounding.
+  expect(saved[1]?.width).toBe(160);
+  expect(saved[1]?.height).toBe(50);
+  expect(Math.abs((saved[1]?.x ?? 0) - 30)).toBeLessThanOrEqual(1);
+  expect(Math.abs((saved[1]?.y ?? 0) - 210)).toBeLessThanOrEqual(1);
+
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.area-item')).toHaveCount(2);
+  await expect(page.locator('.review-head .status')).toHaveText('passed');
+  // Show diff: nothing can be drawn, so nothing can be duplicated either.
+  await expect(page.locator('[data-area-duplicate]')).toHaveCount(2);
+  await page.locator('.areas-toggle').click();
+  await expect(page.locator('.areas.is-off')).toBeVisible();
+  await expect(page.locator('[data-area-duplicate]')).toHaveCount(0);
+});
+
+test('Cmd/Ctrl+D duplicates the picked area below it; arrows nudge it; Cmd/Ctrl+D repeats the move; Cmd/Ctrl+Z takes it back', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, {
+    kind: 'ignore',
+    x: 300,
+    y: 40,
+    width: 120,
+    height: 20,
+  });
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await page.keyboard.press('1');
+  // The shortcuts are in the ? sheet.
+  await page.keyboard.press('?');
+  const sheet = page.locator('#shortcut-sheet');
+  await expect(sheet).toContainText('Duplicate the picked area');
+  await expect(sheet).toContainText('Duplicate an area: drag the copy where it goes');
+  await expect(sheet).toContainText('Nudge the picked area 10 px');
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+
+  await page.locator('.area-item').getByRole('button', { name: 'Edit this area' }).click();
+  await expect(page.locator('.area-editor')).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+d');
+  await expect(page.locator('.toast').last()).toContainText('Area duplicated');
+  await expect(page.locator('.area-item')).toHaveCount(2);
+  await expect(page.locator('.area-editor')).toBeVisible();
+  expect(await areasOf(seeded, seeded.changed)).toEqual([
+    { x: 300, y: 40, width: 120, height: 20 },
+    { x: 300, y: 68, width: 120, height: 20 },
+  ]);
+
+  // The copy is picked: nudge it 1 px right and 10 px down, then duplicate it again. The move is
+  // saved first, and the next copy repeats the step from the original to the moved copy.
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('ControlOrMeta+d');
+  await expect(page.locator('.area-item')).toHaveCount(3);
+  expect(await areasOf(seeded, seeded.changed)).toEqual([
+    { x: 300, y: 40, width: 120, height: 20 },
+    { x: 301, y: 78, width: 120, height: 20 },
+    { x: 302, y: 116, width: 120, height: 20 },
+  ]);
+
+  // Cmd/Ctrl+Z removes the duplicate just made.
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.toast').last()).toContainText('Duplicate removed');
+  await expect(page.locator('.area-item')).toHaveCount(2);
+
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.area-item')).toHaveCount(2);
+  expect(await areasOf(seeded, seeded.changed)).toEqual([
+    { x: 300, y: 40, width: 120, height: 20 },
+    { x: 301, y: 78, width: 120, height: 20 },
+  ]);
+  // Delete removes the picked area.
+  await page.locator('.area-item').last().getByRole('button', { name: 'Edit this area' }).click();
+  await page.keyboard.press('Delete');
+  await expect(page.locator('.toast').last()).toContainText('Area deleted');
+  await expect(page.locator('.area-item')).toHaveCount(1);
+});
+
+test('Duplicate at the area limit says so and adds nothing', async ({ reviewerPage: page, seeded }) => {
+  for (let i = 0; i < 50; i++) {
+    await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, {
+      kind: 'ignore',
+      x: (i % 10) * 40,
+      y: Math.floor(i / 10) * 30,
+      width: 20,
+      height: 10,
+    });
+  }
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.area-item')).toHaveCount(50);
+  await page.locator('.area-item').first().getByRole('button', { name: 'Duplicate this area' }).click();
+  await expect(page.locator('.toast').last()).toContainText('already has 50 areas');
+  await expect(page.locator('.area-item')).toHaveCount(50);
+  expect(await areasOf(seeded, seeded.changed)).toHaveLength(50);
+});
