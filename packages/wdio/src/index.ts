@@ -28,6 +28,7 @@ import {
   runBuildId,
   startRun,
 } from '@pixeltwin/client/run';
+import { findMarker, MARKER, MARKER_HEIGHT } from './marker.js';
 
 /** A WebdriverIO element. */
 export type WdioElement = { elementId: string };
@@ -44,10 +45,11 @@ export type ElementLike =
 
 export interface WdioCheckOptions {
   /**
-   * Parts never compared: elements (`$()`, `$$()` results; browsers only) or rectangles in
-   * screenshot pixels.
+   * Parts never compared: elements (`$()`, `$$()` results), CSS selectors (every match, found when
+   * the screenshot is taken) or rectangles in screenshot pixels. Elements and selectors need a page:
+   * a desktop or a mobile browser, not a native app.
    */
-  ignore?: (ElementLike | Rect)[];
+  ignore?: (ElementLike | Rect | string)[];
   /** Merged over the automatic variant and the service's `variant`. */
   variant?: Variant;
   colorThreshold?: number;
@@ -161,6 +163,35 @@ async function elementsOf(ignore: ElementLike[]): Promise<WdioElement[]> {
   return elements;
 }
 
+/** Runs in the browser: the boxes of every element matching the selectors. */
+function selectorBoxes(selectors: string[]): Rect[] {
+  const boxes: Rect[] = [];
+  for (const selector of selectors) {
+    for (const el of document.querySelectorAll(selector)) {
+      const r = el.getBoundingClientRect();
+      boxes.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+  }
+  return boxes;
+}
+
+/** Runs in the browser: a thin bar of `color` across the top of the page, over everything. */
+function placeMarker(color: string, height: number): { width: number; height: number } {
+  const bar = document.createElement('div');
+  bar.id = '__pixeltwin_marker';
+  bar.setAttribute(
+    'style',
+    `position:fixed;top:0;left:0;width:100%;height:${height}px;background:${color};z-index:2147483647;pointer-events:none`,
+  );
+  document.documentElement.appendChild(bar);
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+/** Runs in the browser: removes the marker bar. */
+function removeMarker(): void {
+  document.getElementById('__pixeltwin_marker')?.remove();
+}
+
 function decode(base64: string): Uint8Array {
   return new Uint8Array(Buffer.from(base64, 'base64'));
 }
@@ -229,6 +260,8 @@ export class PixeltwinService {
   #client: PixeltwinClient | null = null;
   #browser: BrowserLike | null = null;
   readonly #timings = new TimingTotals();
+  /** Where the page starts in a phone's screenshot, per viewport size (CSS pixels). */
+  readonly #offsets = new Map<string, { x: number; y: number }>();
 
   constructor(options: PixeltwinServiceOptions = {}) {
     this.#options = options;
@@ -336,6 +369,35 @@ export class PixeltwinService {
     return check;
   }
 
+  /**
+   * Screenshot pixels from the top left of a phone's screenshot to the page: a magenta bar shown at
+   * the top of the page for one screenshot tells. Kept per viewport size (bars that collapse change it).
+   */
+  async #pageOffset(
+    target: BrowserLike,
+    name: string,
+    viewport: { width: number; height: number },
+  ): Promise<{ x: number; y: number }> {
+    const key = `${viewport.width}x${viewport.height}`;
+    const known = this.#offsets.get(key);
+    if (known) return known;
+    await target.execute(placeMarker, `rgb(${MARKER.join(',')})`, MARKER_HEIGHT);
+    let found: { x: number; y: number } | null;
+    try {
+      found = findMarker(decode(await target.takeScreenshot()));
+    } finally {
+      await target.execute(removeMarker);
+    }
+    if (!found) {
+      throw new Error(
+        `pixeltwin: "${name}": could not find where the page starts in the screenshot; pass rectangles in ` +
+          'screenshot pixels instead.',
+      );
+    }
+    this.#offsets.set(key, found);
+    return found;
+  }
+
   /** One screenshot with its ignore regions (screenshot pixels) and variant. */
   async #shoot(
     target: BrowserLike,
@@ -345,18 +407,23 @@ export class PixeltwinService {
   ): Promise<CheckInput> {
     const capabilities = target.capabilities;
     const mobile = isMobileSession(capabilities);
+    // A native app has no page; a mobile browser has one, measured like a desktop browser's.
+    const nativeApp = mobile && !capabilities.browserName;
     const ignore = options.ignore ?? [];
-    const elementLikes = ignore.filter(isElementLike);
-    if (mobile && elementLikes.length > 0) {
+    const selectors = ignore.filter((r): r is string => typeof r === 'string');
+    const elementLikes = ignore.filter((r): r is ElementLike => typeof r !== 'string' && isElementLike(r));
+    if (nativeApp && (elementLikes.length > 0 || selectors.length > 0)) {
       throw new Error(
-        `pixeltwin: "${name}": ignoring elements needs a desktop browser; on a phone pass rectangles in screenshot ` +
+        `pixeltwin: "${name}": a native app has no page to measure elements in; pass rectangles in screenshot ` +
           "pixels, or the service's `ignore` option.",
       );
     }
-    const rects = ignore.filter((r): r is Rect => !isElementLike(r));
+    const rects = ignore.filter((r): r is Rect => typeof r !== 'string' && !isElementLike(r));
     const elements = await elementsOf(elementLikes);
-    // A phone screenshot also shows the system bars, so DOM boxes would not line up with it.
-    const measured = mobile ? null : await target.execute(measure, element, ...elements);
+    const measured = nativeApp ? null : await target.execute(measure, element, ...elements);
+    const found = selectors.length > 0 ? await target.execute(selectorBoxes, selectors) : [];
+    // A phone's screenshot also shows the system bars: find where the page starts in it (once per size).
+    const offset = mobile && measured && !element ? await this.#pageOffset(target, name, measured) : { x: 0, y: 0 };
     const image = decode(
       element ? await target.takeElementScreenshot(element.elementId) : await target.takeScreenshot(),
     );
@@ -368,8 +435,8 @@ export class PixeltwinService {
         throw new Error(`pixeltwin: "${name}": the element to screenshot is not visible.`);
       // Screenshot pixels per CSS pixel: the device pixel ratio, read from the image itself.
       const scale = (size?.width ?? origin.width) / origin.width;
-      const mapping = { origin: element ? origin : { x: 0, y: 0 }, scale };
-      for (const box of measured.boxes) {
+      const mapping = { origin: element ? origin : { x: -offset.x / scale, y: -offset.y / scale }, scale };
+      for (const box of [...measured.boxes, ...found]) {
         const region = box ? cssBoxToPixels(box, mapping, size) : null;
         if (region) ignoreRegions.push(region);
       }

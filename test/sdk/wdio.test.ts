@@ -68,7 +68,11 @@ function fakeBrowser(button: Rgba | ((shot: number) => Rgba) = [0, 112, 243, 255
         makePng(800, 80, [17, 17, 17, 255], [{ x: 600, y: 20, width: 160, height: 40, color: [tick * 40, 0, 0, 255] }]),
       ).toString('base64');
     },
-    execute: (async (_script: unknown, ...args: ({ elementId: string } | null)[]) => {
+    execute: (async (script: { name?: string }, ...args: ({ elementId: string } | null)[]) => {
+      if (script.name === 'selectorBoxes') {
+        const selectors = args[0] as unknown as string[];
+        return selectors.flatMap((s) => (elements[s.replace(/^\./, '')] ? [elements[s.replace(/^\./, '')]] : []));
+      }
       executed.push(args);
       const box = (e: { elementId: string } | null) => (e ? (elements[e.elementId] ?? null) : null);
       const [target, ...ignored] = args;
@@ -343,7 +347,76 @@ describe('PixeltwinService', () => {
       { x: 0, y: 570, width: 800, height: 30 },
     ]);
     const err = await fake.check('cart', { ignore: [fake.el('clock')] }).catch((e: Error) => e.message);
-    expect(err).toContain('ignoring elements needs a desktop browser');
+    expect(err).toContain('a native app has no page to measure');
+    await run.launcher.onComplete();
+  });
+
+  test('a phone browser: elements and selectors are measured in the page, below the system bars', async () => {
+    const run = services({ externalId: 'wdio-phone-web-1' });
+    await run.launcher.onPrepare({});
+    // iPhone-like: 390 × 700 CSS pixels at 3×, a 141 px status bar above the page, a toolbar below.
+    const STATUS = 141;
+    let marker = false;
+    let screenshots = 0;
+    const boxes: Record<string, { x: number; y: number; width: number; height: number }> = {
+      date: { x: 10, y: 100, width: 100, height: 20 },
+      '.timer': { x: 200, y: 0, width: 50, height: 10 },
+    };
+    const commands: Record<string, CommandFn> = {};
+    const browser: BrowserLike = {
+      capabilities: {
+        platformName: 'iOS',
+        browserName: 'Safari',
+        'appium:platformVersion': '16.0',
+        'appium:deviceName': 'iPhone 13 Pro Max',
+      },
+      takeScreenshot: async () => {
+        screenshots++;
+        const rects = [{ x: 0, y: 0, width: 1170, height: STATUS, color: [0, 0, 0, 255] as Rgba }];
+        if (marker) rects.push({ x: 0, y: STATUS, width: 1170, height: 6, color: [255, 0, 255, 255] });
+        return Buffer.from(makePng(1170, 2532, WHITE, rects)).toString('base64');
+      },
+      takeElementScreenshot: async () => {
+        throw new Error('no element screenshots here');
+      },
+      execute: (async (script: { name?: string }, ...args: unknown[]) => {
+        if (script.name === 'placeMarker') marker = true;
+        if (script.name === 'removeMarker') marker = false;
+        if (script.name === 'selectorBoxes') return (args[0] as string[]).map((s) => boxes[s]);
+        if (script.name === 'measure') {
+          const ids = args.slice(1) as { elementId: string }[];
+          return { width: 390, height: 700, target: null, boxes: ids.map((e) => boxes[e.elementId] ?? null) };
+        }
+        return { width: 390, height: 700 };
+      }) as BrowserLike['execute'],
+      addCommand(name, fn, commandOptions) {
+        if (!commandOptions?.attachToElement) commands[name] = fn as CommandFn;
+      },
+    };
+    run.worker.before({}, [], browser);
+    const check = await commands.pixeltwinCheck?.call(browser, 'delivery', {
+      ignore: [{ elementId: 'date' }, '.timer'],
+    });
+    // CSS × 3, then moved below the status bar.
+    expect(check?.ignoreRegions).toEqual([
+      { x: 30, y: STATUS + 300, width: 300, height: 60 },
+      { x: 600, y: STATUS, width: 150, height: 30 },
+    ]);
+    expect(marker).toBe(false);
+    // The offset is found once per viewport size: one marker screenshot, then one per check.
+    await commands.pixeltwinCheck?.call(browser, 'delivery-again', { ignore: ['.timer'] });
+    expect(screenshots).toBe(3);
+    await run.launcher.onComplete();
+  });
+
+  test('CSS selectors in ignore are found at check time, in a desktop browser too', async () => {
+    const run = services({ externalId: 'wdio-selectors-1' });
+    await run.launcher.onPrepare({});
+    const fake = fakeBrowser();
+    run.worker.before({}, [], fake.browser);
+    const check = await fake.check('home', { ignore: ['.clock', '.nothing'] });
+    // The clock (300, 10, 80 × 20 CSS) at 2×; a selector that matches nothing adds nothing.
+    expect(check?.ignoreRegions).toEqual([{ x: 600, y: 20, width: 160, height: 40 }]);
     await run.launcher.onComplete();
   });
 

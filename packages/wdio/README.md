@@ -54,7 +54,7 @@ On `browser`: the viewport. On an element: that element. Resolves to the compare
 
 | Option | |
 |---|---|
-| `ignore` | elements, `$()` or `$$()` results (every element) or `{x, y, width, height}` rectangles in screenshot pixels: never compared |
+| `ignore` | elements, `$()` or `$$()` results (every element), CSS selectors (`'.delivery-date'`: every match, found when the screenshot is taken) or `{x, y, width, height}` rectangles in screenshot pixels: never compared |
 | `variant` | extra variant keys for this check |
 | `colorThreshold`, `tolerancePercent` | override the project's settings for this check |
 | `retakes`, `failOnChange` | override the service's settings for this check |
@@ -70,8 +70,16 @@ A `changed` check is screenshotted again while `retakes` last (a page still load
 
 On an Appium session (`platformName` iOS or Android), native app or mobile browser, the variant
 comes from the capabilities: `{ os: 'iOS 16.0', device: 'iPhone 13 Pro Max' }` (plus `browser` in
-a mobile browser). The screenshot also shows the system bars, so the page is not measured: ignore
-rectangles in screenshot pixels, and the bars for every check with the service's `ignore`:
+a mobile browser).
+
+In a mobile browser, elements and selectors in `ignore` work as on a desktop. The screenshot also
+shows the system bars and the browser's own bars, so the service finds where the page starts in it:
+once per viewport size, the page shows a thin magenta bar at its top for one screenshot (the
+address bar on top or at the bottom, any device). A native app has no page: ignore rectangles in
+screenshot pixels there.
+
+The bars themselves change from run to run (the clock, the battery): ignore them for every check
+with the service's `ignore`:
 
 ```ts
 services: [[PixeltwinService, {
