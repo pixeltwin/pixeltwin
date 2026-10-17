@@ -49,13 +49,15 @@ export function RejectMenu(props: {
           {REJECT_REASON_LIST.map((r, i) => (
             <label class="reason-chip" title={r.meaning}>
               <input type="radio" name="reasonCode" value={r.code} />
-              <kbd>{String(i + 1)}</kbd>
               <span>{r.label}</span>
+              <kbd>{String(i + 1)}</kbd>
             </label>
           ))}
         </fieldset>
         <label class="reason-comment">
-          <span class="muted">Comment (optional)</span>
+          <span>
+            Comment <span class="muted">(optional)</span>
+          </span>
           <input
             type="text"
             name="reason"
@@ -66,10 +68,10 @@ export function RejectMenu(props: {
           />
         </label>
         <div class="reject-actions">
-          <button type="button" class="small ghost" data-reject-cancel>
-            Cancel <kbd>Esc</kbd>
+          <button type="button" class="small ghost" data-reject-cancel title="Cancel (Esc)">
+            Cancel
           </button>
-          <button type="submit" class="small reject">
+          <button type="submit" class="small reject-submit" title="Reject (Enter)">
             Reject <kbd>↵</kbd>
           </button>
         </div>
