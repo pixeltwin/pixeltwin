@@ -177,26 +177,30 @@ export type WebhookFormat = (typeof WEBHOOK_FORMATS)[number];
 export const DELIVERY_STATES = ['pending', 'delivered', 'failed'] as const;
 export type DeliveryState = (typeof DELIVERY_STATES)[number];
 
-/** A project's GitHub integration. Secrets are sealed (see domain/secrets.ts); flags are 0 or 1. */
-export interface GithubIntegrationsTable {
+export const PROVIDERS = ['github', 'gitlab'] as const;
+export type Provider = (typeof PROVIDERS)[number];
+
+/** A project's code host integration (one at a time). Secrets are sealed (see domain/secrets.ts); flags are 0 or 1. */
+export interface IntegrationsTable {
   projectId: string;
-  /** `owner/name`, used when a build names none (and to match incoming GitHub webhooks). */
+  provider: Provider;
+  /** GitHub `owner/name` or GitLab `group/sub/project`: used when a build names none, and to match incoming webhooks. */
   repository: string | null;
-  /** `https://api.github.com`, or a GitHub Enterprise Server's `https://host/api/v3`. */
-  apiUrl: string;
+  /** GitHub's API URL (`https://api.github.com`, GHES `https://host/api/v3`) or the GitLab instance URL. */
+  baseUrl: string;
   token: string | null;
   tokenLast4: string | null;
   commitStatus: number;
   prComment: number;
   autoPromote: number;
-  /** Verifies `X-Hub-Signature-256` of the repository's webhook (auto-promote on merge). */
+  /** Verifies the code host's webhook (auto-promote): GitHub's signature secret or GitLab's secret token. */
   webhookSecret: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-/** A build whose state GitHub should see: coalesced, one replica at a time (`lockedUntil`). */
-export interface GithubSyncsTable {
+/** A build whose state the code host should see: coalesced, one replica at a time (`lockedUntil`). */
+export interface IntegrationSyncsTable {
   buildId: string;
   projectId: string;
   requested: number;
@@ -204,16 +208,17 @@ export interface GithubSyncsTable {
   dueAt: number;
   lockedUntil: number | null;
   attempts: number;
-  /** The pull request comment this build edits. */
+  /** The pull request comment (GitLab: merge request note) this build edits. */
   commentId: string | null;
   lastError: string | null;
   syncedAt: number | null;
   updatedAt: number;
 }
 
-/** A merged pull request handled by auto-promote (its key makes a redelivery a no-op). */
-export interface GithubMergesTable {
+/** A merged pull (merge) request handled by auto-promote (its key makes a redelivery a no-op). */
+export interface IntegrationMergesTable {
   projectId: string;
+  provider: Provider;
   repository: string;
   pullRequest: number;
   headBranch: string;
@@ -274,9 +279,9 @@ export interface DB {
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
   storedObjects: StoredObjectsTable;
-  githubIntegrations: GithubIntegrationsTable;
-  githubSyncs: GithubSyncsTable;
-  githubMerges: GithubMergesTable;
+  integrations: IntegrationsTable;
+  integrationSyncs: IntegrationSyncsTable;
+  integrationMerges: IntegrationMergesTable;
   webhooks: WebhooksTable;
   webhookDeliveries: WebhookDeliveriesTable;
 }

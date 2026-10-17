@@ -282,7 +282,11 @@ export async function listBuilds(
  * build (`{ part }`) is counted once; the build closes when every part has finalized it. Without a
  * part it closes at once (a CI job that never ran, or an admin).
  */
-export async function finalizeBuild(deps: DbDeps, id: string, input: unknown = {}): Promise<BuildView> {
+export async function finalizeBuild(
+  deps: Pick<Deps, 'db' | 'events'>,
+  id: string,
+  input: unknown = {},
+): Promise<BuildView> {
   const { part } = parseInput(finalizeBuildSchema, input);
   const build = await getBuildRow(deps, id);
   if (build.state === 'open' && build.parallelTotal !== null && part) {
@@ -295,12 +299,14 @@ export async function finalizeBuild(deps: DbDeps, id: string, input: unknown = {
     const finished = (await countParts(deps, [build])).get(id) ?? 0;
     if (finished < build.parallelTotal) return getBuild(deps, id);
   }
-  await deps.db
+  const closed = await deps.db
     .updateTable('builds')
     .set({ state: 'finalized', finalizedAt: Date.now() })
     .where('id', '=', id)
     .where('state', '=', 'open')
-    .execute();
+    .executeTakeFirst();
+  // Only the call that closed it announces it (not a repeated finalize).
+  if (Number(closed.numUpdatedRows) === 1) await deps.events?.buildFinalized(id);
   return getBuild(deps, id);
 }
 

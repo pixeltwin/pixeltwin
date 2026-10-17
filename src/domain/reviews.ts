@@ -13,7 +13,7 @@ import { parseInput, reviewInputSchema } from './schemas';
 export const AUTO_APPROVER = 'auto';
 export const AUTO_APPROVE_COMMENT = 'New screenshot approved automatically (project setting).';
 
-type DbDeps = Pick<Deps, 'db'>;
+type DbDeps = Pick<Deps, 'db' | 'events'>;
 
 async function notReviewable(db: Db, checkId: string, allowed: CheckReview[]): Promise<AppError> {
   const check = await db.selectFrom('checks').select('review').where('id', '=', checkId).executeTakeFirst();
@@ -85,7 +85,7 @@ export async function listReviews(deps: DbDeps, checkId: string): Promise<Review
  * approved by a concurrent request). The conditional update makes concurrent approvals of
  * one check produce one baseline.
  */
-type ApproveOutcome = { approved: true } | { approved: false; error: AppError | null };
+type ApproveOutcome = { approved: true; builds: string[] } | { approved: false; error: AppError | null };
 
 async function tryApprove(tx: Db, checkId: string, actor: string, comment: string | null): Promise<ApproveOutcome> {
   const outdated = await outdatedGuard(tx, checkId);
@@ -104,6 +104,7 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
     .innerJoin('builds', 'builds.id', 'checks.buildId')
     .select([
       'checks.projectId',
+      'checks.buildId',
       'checks.snapshotKey',
       'checks.name',
       'checks.variant',
@@ -125,12 +126,23 @@ async function tryApprove(tx: Db, checkId: string, actor: string, comment: strin
   });
   await recordReview(tx, { checkId, projectId: check.projectId, action: 'approved', actor, comment });
   // Older builds of this branch must not put their screenshot of this screen back over it.
-  await outdateOlder(
+  const older = await outdateOlder(
     tx,
     { projectId: check.projectId, snapshotKey: check.snapshotKey, branch: check.branch, buildNumber: check.number },
     checkId,
   );
-  return { approved: true };
+  return { approved: true, builds: [check.buildId, ...older] };
+}
+
+/** Tells the events sink (GitHub, webhooks) about reviews once their transaction committed. */
+async function announce(
+  deps: DbDeps,
+  reviewed: Array<{ checkId: string; action: ReviewAction; actor: string }>,
+  builds: string[],
+): Promise<void> {
+  if (!deps.events) return;
+  for (const event of reviewed) await deps.events.checkReviewed(event);
+  await deps.events.buildsChanged(builds);
 }
 
 export async function approveCheck(
@@ -140,10 +152,12 @@ export async function approveCheck(
   input: unknown = {},
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
-  await deps.db.transaction().execute(async (tx) => {
+  const builds = await deps.db.transaction().execute(async (tx) => {
     const outcome = await tryApprove(tx, checkId, actor, comment ?? null);
     if (!outcome.approved) throw outcome.error ?? (await notReviewable(tx, checkId, APPROVABLE));
+    return outcome.builds;
   });
+  await announce(deps, [{ checkId, action: 'approved', actor }], builds);
   return getCheck(deps, checkId);
 }
 
@@ -154,7 +168,7 @@ export async function rejectCheck(
   input: unknown = {},
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
-  await deps.db.transaction().execute(async (tx) => {
+  const buildId = await deps.db.transaction().execute(async (tx) => {
     const outdated = await outdatedGuard(tx, checkId);
     if (outdated) throw outdated;
     const now = Date.now();
@@ -165,13 +179,15 @@ export async function rejectCheck(
       .where('review', '=', 'pending')
       .executeTakeFirst();
     if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, ['pending']);
-    const { projectId } = await tx
+    const { projectId, buildId } = await tx
       .selectFrom('checks')
-      .select('projectId')
+      .select(['projectId', 'buildId'])
       .where('id', '=', checkId)
       .executeTakeFirstOrThrow();
     await recordReview(tx, { checkId, projectId, action: 'rejected', actor, comment: comment ?? null });
+    return buildId;
   });
+  await announce(deps, [{ checkId, action: 'rejected', actor }], [buildId]);
   return getCheck(deps, checkId);
 }
 
@@ -184,15 +200,16 @@ const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
  * 409 review_not_resettable. Allowed on finalized builds, like approve.
  */
 export async function resetReview(deps: DbDeps, checkId: string, actor: string): Promise<CheckView> {
-  await deps.db.transaction().execute(async (tx) => {
+  const builds = await deps.db.transaction().execute(async (tx) => {
     const check = await tx
       .selectFrom('checks')
       .innerJoin('builds', 'builds.id', 'checks.buildId')
-      .select(['checks.review', 'checks.projectId', 'checks.snapshotKey', 'builds.branch'])
+      .select(['checks.review', 'checks.projectId', 'checks.buildId', 'checks.snapshotKey', 'builds.branch'])
       .where('checks.id', '=', checkId)
       .executeTakeFirst();
     if (!check || !RESETTABLE.includes(check.review)) throw await notReviewable(tx, checkId, RESETTABLE);
 
+    const changed = [check.buildId];
     if (check.review === 'approved') {
       const current = await findCurrentBaseline(tx, check.projectId, check.snapshotKey, check.branch);
       if (current?.sourceCheckId !== checkId) {
@@ -218,7 +235,7 @@ export async function resetReview(deps: DbDeps, checkId: string, actor: string):
       }
       await tx.deleteFrom('baselines').where('id', '=', current.id).execute();
       // The older checks this approval outdated wait for review again.
-      await restoreOutdated(tx, checkId);
+      changed.push(...(await restoreOutdated(tx, checkId)));
     }
     const updated = await tx
       .updateTable('checks')
@@ -229,7 +246,9 @@ export async function resetReview(deps: DbDeps, checkId: string, actor: string):
     // A concurrent reset or review changed the state since the read above; the transaction rolls back.
     if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, RESETTABLE);
     await recordReview(tx, { checkId, projectId: check.projectId, action: 'reset', actor, comment: null });
+    return changed;
   });
+  await announce(deps, [{ checkId, action: 'reset', actor }], builds);
   return getCheck(deps, checkId);
 }
 
@@ -239,7 +258,7 @@ export async function resetReview(deps: DbDeps, checkId: string, actor: string):
  */
 export async function approveBuild(deps: DbDeps, buildId: string, actor: string): Promise<{ approved: number }> {
   await getBuildRow(deps, buildId);
-  return deps.db.transaction().execute(async (tx) => {
+  const { approved, builds } = await deps.db.transaction().execute(async (tx) => {
     const pending = await tx
       .selectFrom('checks')
       .select('id')
@@ -247,9 +266,21 @@ export async function approveBuild(deps: DbDeps, buildId: string, actor: string)
       .where('review', '=', 'pending')
       .orderBy('id')
       .execute();
-    let approved = 0;
+    const approved: string[] = [];
+    const builds = [buildId];
     // Outdated checks are skipped (and marked so): a newer build already approved their screen.
-    for (const { id } of pending) if ((await tryApprove(tx, id, actor, null)).approved) approved += 1;
-    return { approved };
+    for (const { id } of pending) {
+      const outcome = await tryApprove(tx, id, actor, null);
+      if (!outcome.approved) continue;
+      approved.push(id);
+      builds.push(...outcome.builds);
+    }
+    return { approved, builds };
   });
+  await announce(
+    deps,
+    approved.map((checkId) => ({ checkId, action: 'approved' as const, actor })),
+    builds,
+  );
+  return { approved: approved.length };
 }

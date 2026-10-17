@@ -527,6 +527,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
       }))
       .where('id', '=', checkId)
       .execute();
+    await deps.events?.buildsChanged([check.buildId]);
     return getCheck(deps, checkId);
   }
 }
