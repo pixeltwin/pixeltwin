@@ -7,8 +7,11 @@ import type { Rect, Size } from './types';
  * its thumbnail is a few dozen kilobytes. Runs in a diff worker (decoding is the slow part).
  */
 
-/** The longer sides thumbnails are made at: few sizes, so few files per image. */
-export const THUMB_EDGES = [320, 640] as const;
+/**
+ * The longer sides thumbnails are made at: few sizes, so few files per image. 960 is a large card
+ * (about 460 px wide) on a 2× screen; 640 a compact one.
+ */
+export const THUMB_EDGES = [320, 640, 960] as const;
 export type ThumbEdge = (typeof THUMB_EDGES)[number];
 
 /**
@@ -37,6 +40,33 @@ export function thumbEdge(asked: number | undefined): ThumbEdge {
   const largest = THUMB_EDGES[THUMB_EDGES.length - 1] as ThumbEdge;
   if (asked === undefined || !Number.isFinite(asked)) return largest;
   return THUMB_EDGES.find((edge) => edge >= asked) ?? largest;
+}
+
+/** Taller than this many times its width, a screenshot is a full page: a card shows a part of it. */
+export const TALL_RATIO = 2.5;
+/** Width to height of the part of a full page a card shows. */
+export const TALL_ASPECT = 1.6;
+
+/** A full-page screenshot (phone screens, about 2.2 times as tall as wide, are not). */
+export function isTall(size: Size): boolean {
+  return size.height > size.width * TALL_RATIO;
+}
+
+/** The top of an image, TALL_ASPECT wide to high (all of it when it is not that tall). */
+export function topCrop(size: Size): Rect {
+  return { x: 0, y: 0, width: size.width, height: Math.min(size.height, Math.round(size.width / TALL_ASPECT)) };
+}
+
+/**
+ * The part of a full page a card shows: its top, unless the topmost change lies below it; then
+ * a band as tall as the top around that change (its start, when the change is taller than that).
+ */
+export function tallView(size: Size, regions: Rect[]): { crop: Rect; top: boolean } {
+  const top = topCrop(size);
+  const first = [...regions].sort((a, b) => a.y - b.y)[0];
+  if (!first || first.y + first.height <= top.height) return { crop: top, top: true };
+  const y = first.height >= top.height - 32 ? first.y - 16 : Math.round(first.y + first.height / 2 - top.height / 2);
+  return { crop: { ...top, y: Math.max(0, Math.min(y, size.height - top.height)) }, top: false };
 }
 
 /** The thumbnail's size for an image of `size`: the same when it already fits, never larger. */

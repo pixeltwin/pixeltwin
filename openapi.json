@@ -10659,7 +10659,7 @@
           "images"
         ],
         "summary": "Download a thumbnail of an image (PNG)",
-        "description": "The image scaled down so its longer side is at most `w` pixels (rounded up to one of 320, 640; the largest by default). An image that fits already comes back as it is. `mode=diff` keeps a diff image's changed (red) pixels visible; `crop` scales only a part of the image (not stored, an image's crops are made again when asked for). Made on the first request and stored; the same caller access as the image.",
+        "description": "The image scaled down so its longer side is at most `w` pixels (rounded up to one of 320, 640, 960; the largest by default). An image that fits already comes back as it is. `mode=diff` keeps a diff image's changed (red) pixels visible; `fit=top` scales only the top of the image, 1.6 times as wide as high (the build page's card of a full-page screenshot); `crop` scales only a part of the image (not stored, an image's crops are made again when asked for). Made on the first request and stored; the same caller access as the image.",
         "x-permission": "project.read",
         "security": [
           {
@@ -10698,6 +10698,19 @@
             },
             "required": false,
             "name": "mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "top"
+              ],
+              "description": "Only the top of the image; not with `crop`."
+            },
+            "required": false,
+            "description": "Only the top of the image; not with `crop`.",
+            "name": "fit",
             "in": "query"
           },
           {

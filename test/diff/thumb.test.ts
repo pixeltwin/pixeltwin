@@ -1,15 +1,41 @@
 import { describe, expect, test } from 'bun:test';
-import { downscale, makeThumb, thumbEdge, thumbSize } from '../../src/diff/thumb';
+import { downscale, isTall, makeThumb, tallView, thumbEdge, thumbSize, topCrop } from '../../src/diff/thumb';
 import { decodePng, makePng, pixelAt, WHITE } from '../helpers/png';
 
 describe('thumbnails', () => {
   test('the asked edge rounds up to a size thumbnails are made at', () => {
-    expect(thumbEdge(undefined)).toBe(640);
+    expect(thumbEdge(undefined)).toBe(960);
     expect(thumbEdge(100)).toBe(320);
     expect(thumbEdge(320)).toBe(320);
     expect(thumbEdge(321)).toBe(640);
-    expect(thumbEdge(5000)).toBe(640);
-    expect(thumbEdge(Number.NaN)).toBe(640);
+    expect(thumbEdge(641)).toBe(960);
+    expect(thumbEdge(5000)).toBe(960);
+    expect(thumbEdge(Number.NaN)).toBe(960);
+  });
+
+  test('a full page is over 2.5 times as tall as wide; a phone screen is not', () => {
+    expect(isTall({ width: 1280, height: 6000 })).toBe(true);
+    expect(isTall({ width: 390, height: 844 })).toBe(false);
+    expect(isTall({ width: 1280, height: 800 })).toBe(false);
+    expect(topCrop({ width: 1280, height: 6000 })).toEqual({ x: 0, y: 0, width: 1280, height: 800 });
+    expect(topCrop({ width: 1280, height: 500 })).toEqual({ x: 0, y: 0, width: 1280, height: 500 });
+  });
+
+  test('a full page shows its top, or the band around its topmost change when that lies lower', () => {
+    const size = { width: 1280, height: 6000 };
+    const top = { x: 0, y: 0, width: 1280, height: 800 };
+    expect(tallView(size, [])).toEqual({ crop: top, top: true });
+    expect(tallView(size, [{ x: 10, y: 700, width: 50, height: 90 }])).toEqual({ crop: top, top: true });
+    // The topmost change, not the first listed, centred in the band.
+    const regions = [
+      { x: 0, y: 5000, width: 10, height: 10 },
+      { x: 0, y: 3000, width: 100, height: 200 },
+    ];
+    expect(tallView(size, regions)).toEqual({ crop: { ...top, y: 2700 }, top: false });
+    // Near the bottom: the band ends with the page.
+    expect(tallView(size, [{ x: 0, y: 5900, width: 10, height: 60 }]).crop.y).toBe(5200);
+    // Taller than the band: its start, with a little room above.
+    expect(tallView(size, [{ x: 0, y: 2000, width: 10, height: 2000 }]).crop.y).toBe(1984);
   });
 
   test('the longer side fits the edge, the aspect ratio stays, and nothing is scaled up', () => {

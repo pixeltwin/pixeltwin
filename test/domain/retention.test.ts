@@ -79,11 +79,13 @@ describe('retention', () => {
 
     await deps.storage.put(thumbKey(orphanSha, 320, 'plain'), orphan);
     await deps.storage.put(thumbKey(orphanSha, 640, 'diff'), orphan);
+    await deps.storage.put(thumbKey(orphanSha, 960, 'diff', true), orphan);
     const result = await runRetention(deps, NOW);
     expect(result.imagesDeleted).toBe(1);
     expect(await deps.storage.exists(imageKey(orphanSha))).toBe(false);
     expect(await deps.storage.exists(thumbKey(orphanSha, 320, 'plain'))).toBe(false);
     expect(await deps.storage.exists(thumbKey(orphanSha, 640, 'diff'))).toBe(false);
+    expect(await deps.storage.exists(thumbKey(orphanSha, 960, 'diff', true))).toBe(false);
     const kept = (await deps.db.selectFrom('images').select('sha').execute()).map((r) => r.sha).sort();
     expect(kept).toEqual([sha256Hex(white), sha256Hex(withSquare), changed.check.diffImageSha as string].sort());
   });

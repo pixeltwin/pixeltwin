@@ -248,6 +248,23 @@ describe('review, baseline, promotion and image routes', () => {
     expect((await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?crop=1,2,3`, { as: ci })).status).toBe(422);
   });
 
+  test('the top of a full page is a thumbnail of its own, stored like the whole one', async () => {
+    const tall = makePng(1000, 4000, WHITE, [{ x: 0, y: 625, width: 1000, height: 3375, color: BLACK }]);
+    const { check: c } = await check('main', tall);
+    const res = await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?w=960&fit=top`, { as: ci });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('etag')).toBe(`"${c.imageSha}-960-plain-top"`);
+    // The top 1000 × 625 (16:10), scaled to 960 wide: all of it white, none of the black below.
+    const top = decodePng(new Uint8Array(await res.arrayBuffer()));
+    expect([top.width, top.height]).toEqual([960, 600]);
+    expect([top.data[0], top.data[(top.width * top.height - 1) * 4]]).toEqual([255, 255]);
+    expect(await t.deps.storage.exists(thumbKey(c.imageSha, 960, 'plain', true))).toBe(true);
+    expect(await t.deps.storage.exists(thumbKey(c.imageSha, 960, 'plain'))).toBe(false);
+    const both = await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?fit=top&crop=0,0,10,10`, { as: ci });
+    expect(await problemOf(both)).toMatchObject({ status: 422, code: 'invalid_thumb' });
+    expect((await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?fit=side`, { as: ci })).status).toBe(422);
+  });
+
   test('a diff image thumbnail keeps the changed pixels red', async () => {
     const page = makePng(1280, 640);
     const dot = makePng(1280, 640, WHITE, [{ x: 600, y: 300, width: 2, height: 2, color: BLACK }]);
@@ -259,10 +276,23 @@ describe('review, baseline, promotion and image routes', () => {
     const res = await t.request('GET', `/api/v1/images/${changed.diffImageSha}/thumb?w=320&mode=diff`, { as: ci });
     const thumb = decodePng(new Uint8Array(await res.arrayBuffer()));
     expect([thumb.width, thumb.height]).toEqual([320, 160]);
-    let red = 0;
-    for (let i = 0; i < thumb.data.length; i += 4) {
-      if (thumb.data[i] === 255 && thumb.data[i + 1] === 0 && thumb.data[i + 2] === 0) red++;
-    }
-    expect(red).toBeGreaterThan(0);
+    const reds = (png: ReturnType<typeof decodePng>) => {
+      let red = 0;
+      for (let i = 0; i < png.data.length; i += 4) {
+        if (png.data[i] === 255 && png.data[i + 1] === 0 && png.data[i + 2] === 0) red++;
+      }
+      return red;
+    };
+    expect(reds(thumb)).toBeGreaterThan(0);
+    // A crop of it too (a full page's card around its change).
+    const crop = await t.request(
+      'GET',
+      `/api/v1/images/${changed.diffImageSha}/thumb?w=320&mode=diff&crop=0,200,1280,200`,
+      {
+        as: ci,
+      },
+    );
+    expect(crop.headers.get('etag')).toBe(`"${changed.diffImageSha}-320-diff-0,200,1280,200"`);
+    expect(reds(decodePng(new Uint8Array(await crop.arrayBuffer())))).toBeGreaterThan(0);
   });
 });

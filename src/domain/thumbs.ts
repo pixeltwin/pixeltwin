@@ -1,4 +1,4 @@
-import { makeThumb, THUMB_EDGES, type ThumbMode, thumbSize } from '../diff/thumb';
+import { makeThumb, THUMB_EDGES, type ThumbMode, thumbSize, topCrop } from '../diff/thumb';
 import type { Rect } from '../diff/types';
 import { thumbKey } from '../storage/storage';
 import type { Deps } from './deps';
@@ -28,17 +28,19 @@ function pngSize(bytes: Uint8Array): { width: number; height: number } {
 /**
  * The thumbnail of image `sha` whose longer side is at most `edge`; null for an unknown image. An
  * image that fits already is served as it is. When the worker fails, the full image is served
- * (and nothing is stored), so a card still shows its screenshot.
+ * (and nothing is stored), so a card still shows its screenshot. `top`: only the top of the image
+ * (topCrop, a full page's card), stored like the whole one; it is the same for every card.
  */
 export async function loadThumb(
   deps: Pick<Deps, 'storage' | 'runThumb'>,
   sha: string,
   edge: number,
   mode: ThumbMode,
-  crop?: Rect,
+  options: { crop?: Rect | undefined; top?: boolean } = {},
 ): Promise<Uint8Array | null> {
-  if (crop) return loadCrop(deps, sha, edge, crop);
-  const key = thumbKey(sha, edge, mode);
+  if (options.crop) return loadCrop(deps, sha, edge, mode, options.crop);
+  const top = options.top ?? false;
+  const key = thumbKey(sha, edge, mode, top);
   const stored = await deps.storage.get(key);
   if (stored) return stored;
   let pending = making.get(key);
@@ -47,9 +49,11 @@ export async function loadThumb(
       const image = await loadImage(deps, sha);
       if (!image) return null;
       const size = pngSize(image);
-      const out = thumbSize(size, edge);
-      if (out.width === size.width && mode === 'plain') return image;
-      const job = { thumb: true as const, png: image, edge, mode };
+      const crop = top ? topCrop(size) : undefined;
+      const part = crop ?? size;
+      const out = thumbSize(part, edge);
+      if (out.width === size.width && part.height === size.height && mode === 'plain') return image;
+      const job = { thumb: true as const, png: image, edge, mode, crop };
       const result = deps.runThumb ? await deps.runThumb(job) : makeThumb(job);
       if (result.kind !== 'thumb') return image;
       await deps.storage.put(key, result.png);
@@ -65,9 +69,10 @@ async function loadCrop(
   deps: Pick<Deps, 'storage' | 'runThumb'>,
   sha: string,
   edge: number,
+  mode: ThumbMode,
   crop: Rect,
 ): Promise<Uint8Array | null> {
-  const key = `${sha}-${edge}-${crop.x},${crop.y},${crop.width},${crop.height}`;
+  const key = `${sha}-${edge}-${mode}-${crop.x},${crop.y},${crop.width},${crop.height}`;
   const kept = crops.get(key);
   if (kept) {
     // Most recently used last: the first entry is the one to forget.
@@ -80,7 +85,7 @@ async function loadCrop(
     pending = (async () => {
       const image = await loadImage(deps, sha);
       if (!image) return null;
-      const job = { thumb: true as const, png: image, edge, mode: 'plain' as const, crop };
+      const job = { thumb: true as const, png: image, edge, mode, crop };
       const result = deps.runThumb ? await deps.runThumb(job) : makeThumb(job);
       if (result.kind !== 'thumb') return null;
       crops.set(key, result.png);
@@ -97,5 +102,7 @@ async function loadCrop(
 
 /** Every thumbnail key an image can have: deleted with the image. */
 export function thumbKeys(sha: string): string[] {
-  return THUMB_EDGES.flatMap((edge) => [thumbKey(sha, edge, 'plain'), thumbKey(sha, edge, 'diff')]);
+  return THUMB_EDGES.flatMap((edge) =>
+    [false, true].flatMap((top) => [thumbKey(sha, edge, 'plain', top), thumbKey(sha, edge, 'diff', top)]),
+  );
 }
