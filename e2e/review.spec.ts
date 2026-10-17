@@ -383,7 +383,7 @@ test('Ignore keeps the list of changes as it was; Ignore all clears the rest in 
   expect((await seeded.ci.call<{ result: string }>('GET', `/checks/${check.id}`)).result).toBe('unchanged');
 });
 
-test('the Areas switch shows what the areas hide and back, in place', async ({ reviewerPage: page, seeded }) => {
+test('Show diff shows what the areas hide and back, in place', async ({ reviewerPage: page, seeded }) => {
   await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, {
     kind: 'ignore',
     x: 0,
@@ -394,12 +394,24 @@ test('the Areas switch shows what the areas hide and back, in place', async ({ r
   await open(page, `/ui/checks/${seeded.changed}?filter=all`);
   await page.evaluate(() => {
     (window as unknown as { stayed: boolean }).stayed = true;
+    localStorage.setItem('pixeltwin.review.highlight', 'off');
   });
   await expect(page.locator('.areas-off')).toHaveCount(0);
+  await expect(page.locator('.areas-toggle')).toHaveText('Show diff');
+  // The slider divider moved by the reviewer stays where it is: nothing jumps.
+  await page.locator('[data-mode-button="slider"]').click();
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.keyboard.press('Shift+ArrowRight');
+  const divider = () => page.locator('.divider').evaluate((el) => (el as HTMLElement).style.left);
+  const moved = await divider();
+  expect(moved).toBe('60%');
   await page.locator('.areas-toggle').click();
   await expect(page.locator('.areas-off')).toBeVisible();
   await expect(page).toHaveURL(/areas=off/);
+  expect(await divider()).toBe(moved);
   await expect(page.locator('.pane-diff img')).toHaveCount(1);
+  // Show diff is there to see the changes: they are highlighted even if Changes was off.
+  await expect(page.locator('[data-highlight]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.areas-toggle').click();
   await expect(page.locator('.areas-off')).toHaveCount(0);
   await expect(page).not.toHaveURL(/areas=off/);

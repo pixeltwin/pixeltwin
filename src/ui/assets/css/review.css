@@ -600,12 +600,11 @@ body.focus main {
   color: var(--diff);
 }
 /* The Areas switch: amber like the areas while they apply; plain when they are off. */
-.areas-toggle[data-areas="on"] {
-  border-color: var(--amber-border);
-  color: var(--amber);
-}
+/* Show diff: pressed while the diff without areas is shown. */
 .areas-toggle[data-areas="off"] {
-  text-decoration: line-through;
+  border-color: var(--amber-border);
+  background: var(--amber-bg);
+  color: var(--amber);
 }
 /* Areas off: the panel says the comparison is a preview without them. */
 .areas-off {

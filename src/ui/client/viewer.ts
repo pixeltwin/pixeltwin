@@ -7,6 +7,12 @@ import { actualView, fitView, panBy, type Size, type View, zoomAt } from './zoom
 const MODES = ['side', 'slider', 'onion', 'diff'] as const;
 type Mode = (typeof MODES)[number];
 const MODE_STORAGE = 'pixeltwin.review.mode';
+
+/**
+ * The zoom, pan, divider and onion opacity of the check last shown: the same check drawn again
+ * (Show diff, an area changed) keeps them, so nothing jumps; another check starts fresh.
+ */
+let carried: { checkId: string; fit: boolean; view: View; split: number; onion: string } | null = null;
 const HIGHLIGHT_STORAGE = 'pixeltwin.review.highlight';
 
 function storedMode(): Mode {
@@ -52,7 +58,8 @@ function mountHighlight(stage: HTMLElement, drawn: () => void): () => void {
   const toggle = stage.querySelector<HTMLButtonElement>('[data-highlight]');
   const diff = stage.querySelector<HTMLImageElement>('.pane-diff img');
   if (!toggle || !diff) return () => {};
-  let on = storedHighlight();
+  // Show diff (areas off) is there to see the changes: they are highlighted whatever was chosen.
+  let on = stage.hasAttribute('data-areas-off') || storedHighlight();
   const show = () => {
     stage.classList.toggle('highlight-changes', on);
     toggle.setAttribute('aria-pressed', String(on));
@@ -142,6 +149,11 @@ export function mountViewer(root: HTMLElement): () => void {
   let fit = true;
   let view: View = { scale: 1, x: 0, y: 0 };
   let split = 0.5;
+  const checkId = root.dataset.check ?? '';
+  if (carried?.checkId === checkId) {
+    ({ fit, view, split } = carried);
+    if (onion) onion.value = carried.onion;
+  }
 
   const image = () => sizeOf(current);
   const box = (): Size => {
@@ -330,6 +342,7 @@ export function mountViewer(root: HTMLElement): () => void {
   if (mode === 'new') render();
   else setMode(mode);
   return () => {
+    carried = { checkId, fit, view, split, onion: onion?.value ?? '50' };
     for (const cleanup of cleanups.splice(0)) cleanup();
   };
 }

@@ -111,7 +111,11 @@ async function show(id: string, url = checkUrl(id)): Promise<void> {
   }
   unmountViewer();
   unmountAreas();
+  // Images already shown come from the cache: no skeleton flash for them.
+  const shown = new Set([...root.querySelectorAll<HTMLImageElement>('img.is-loaded')].map((img) => img.src));
   const fresh = document.importNode(next, true);
+  for (const img of fresh.querySelectorAll<HTMLImageElement>('img'))
+    if (shown.has(img.src)) img.classList.add('is-loaded');
   root.replaceWith(fresh);
   root = fresh;
   const crumbs = doc.querySelector('.crumbs');

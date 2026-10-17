@@ -196,7 +196,13 @@ function Stage(props: {
   const currentSize = sizes.get(check.imageSha);
   return (
     // `all` is the no-JavaScript view: side by side, then the diff. The island switches modes.
-    <section class="stage" id="stage" data-mode="all" aria-label="Comparison">
+    <section
+      class="stage"
+      id="stage"
+      data-mode="all"
+      data-areas-off={props.areasSwitch && !props.areasSwitch.on ? '' : undefined}
+      aria-label="Comparison"
+    >
       <div class="stage-toolbar" hidden>
         <fieldset class="segmented modes">
           <legend class="visually-hidden">Compare mode</legend>
@@ -224,11 +230,11 @@ function Stage(props: {
             data-areas={props.areasSwitch.on ? 'on' : 'off'}
             title={
               props.areasSwitch.on
-                ? 'Switch the areas off to see what they hide (the check stays as it is)'
-                : 'Switch the areas back on'
+                ? 'Show the diff without the areas: what they hide (the check stays as it is)'
+                : 'Back to the comparison with the areas'
             }
           >
-            Areas
+            Show diff
           </a>
         )}
         <label class="onion-control" hidden>
