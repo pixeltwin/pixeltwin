@@ -4,10 +4,12 @@ import type { TimingInput } from './timing.js';
 import type {
   Area,
   Build,
+  ChangeGroup,
   Check,
   CheckInput,
   CheckResult,
   CheckReview,
+  GroupReview,
   OpenBuildInput,
   Page,
   PageElement,
@@ -15,6 +17,7 @@ import type {
   Rect,
   ReviewEvent,
   ReviewOutcome,
+  ScreenHistory,
 } from './types.js';
 
 export const SDK_VERSION = '0.1.0';
@@ -193,6 +196,42 @@ export class PixeltwinClient {
     const path = `/checks/${encodeURIComponent(checkId)}/${action}`;
     const body = options.reason ? { json: { reason: options.reason } } : undefined;
     return (await this.#request<Check & { outcome: ReviewOutcome }>('POST', path, body)).data;
+  }
+
+  /** The build's change groups (checks with exactly the same changes), biggest first. */
+  async listGroups(buildId: string): Promise<ChangeGroup[]> {
+    const path = `/builds/${encodeURIComponent(buildId)}/groups`;
+    return (await this.#request<{ items: ChangeGroup[] }>('GET', path)).data.items;
+  }
+
+  /**
+   * Approves or rejects every check of a change group that waits for review (of `checkIds`, when
+   * given; needs the `review` scope). Under the project's agent review policy some members become
+   * suggestions for a person (`suggested`), and a reason is required.
+   */
+  async reviewGroup(
+    buildId: string,
+    groupId: string,
+    action: 'approve' | 'reject',
+    options: { reason?: string; checkIds?: string[] } = {},
+  ): Promise<GroupReview> {
+    const path = `/builds/${encodeURIComponent(buildId)}/groups/${encodeURIComponent(groupId)}/${action}`;
+    const body = {
+      ...(options.reason ? { reason: options.reason } : {}),
+      ...(options.checkIds ? { checkIds: options.checkIds } : {}),
+    };
+    return (await this.#request<GroupReview>('POST', path, Object.keys(body).length ? { json: body } : undefined)).data;
+  }
+
+  /** The check's screen over its last checks on the branch, and whether it is flaky. */
+  async checkHistory(checkId: string): Promise<ScreenHistory> {
+    return (await this.#request<ScreenHistory>('GET', `/checks/${encodeURIComponent(checkId)}/history`)).data;
+  }
+
+  /** The project's flaky screens, per branch, most flaky first. */
+  async noisyScreens(project: string): Promise<ScreenHistory[]> {
+    const path = `/projects/${encodeURIComponent(project)}/noisy-screens`;
+    return (await this.#request<{ items: ScreenHistory[] }>('GET', path)).data.items;
   }
 
   /** Draws an ignore area on the check's snapshot (screenshot pixels); the check is compared again. */

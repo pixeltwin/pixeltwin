@@ -4,7 +4,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { type PageElement, PixeltwinClient } from '@pixeltwin/client';
 import { decodePng } from '../../packages/client/src/png-image';
-import { makePng, WHITE } from '../helpers/png';
+import { BLACK, makePng, WHITE } from '../helpers/png';
 import { REPO, startServer, type TestServer } from './server';
 
 const BLUE = [0, 112, 243, 255] as [number, number, number, number];
@@ -87,8 +87,8 @@ let server: TestServer;
 let client: PixeltwinClient;
 let mcp: Rpc;
 
-const tool = async (name: string, args: Record<string, unknown>) => {
-  const { result, error } = await mcp.call('tools/call', { name, arguments: args });
+const tool = async (name: string, args: Record<string, unknown>, rpc: Rpc = mcp) => {
+  const { result, error } = await rpc.call('tools/call', { name, arguments: args });
   if (error) throw new Error(error.message);
   return result as {
     content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
@@ -117,6 +117,25 @@ async function changedBuild(name: string) {
   return { base, changed, buildId: two.id };
 }
 
+const GRAY = [120, 120, 120, 255] as [number, number, number, number];
+/** A page with a header (a gray bar and a logo `logo` px wide); pages differ in height only. */
+const headerPage = (logo: number, height: number) =>
+  makePng(120, height, WHITE, [
+    { x: 0, y: 0, width: 120, height: 16, color: GRAY },
+    { x: 8, y: 4, width: logo, height: 8, color: BLACK },
+  ]);
+const headerElements = (logo: number): PageElement[] => [
+  { key: '[data-testid=logo]', tag: 'img', role: 'img', x: 8, y: 4, width: logo, height: 8 },
+];
+/** Three screens of 120×100, 120×200 and 120×400: the same header change is 1.33 %, 0.67 % and 0.33 % of each. */
+const SCREENS = [
+  ['home', 100],
+  ['pricing', 200],
+  ['docs', 400],
+] as const;
+const clock = (ticked: boolean) =>
+  makePng(120, 80, WHITE, ticked ? [{ x: 90, y: 4, width: 20, height: 8, color: BLACK }] : []);
+
 beforeAll(async () => {
   server = await startServer('mcp');
   client = new PixeltwinClient({ url: server.url, token: server.token });
@@ -141,6 +160,7 @@ describe('pixeltwin mcp', () => {
       serverInfo: { name: 'pixeltwin' },
     });
     expect(init.result.instructions).toContain('approve_check');
+    expect(init.result.instructions).toContain('review_group');
     mcp.send(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
     expect((await mcp.call('ping')).result).toEqual({});
 
@@ -153,6 +173,7 @@ describe('pixeltwin mcp', () => {
       'get_check_images',
       'approve_check',
       'reject_check',
+      'review_group',
       'add_ignore_area',
     ]);
     for (const t of result.tools) {
@@ -175,7 +196,9 @@ describe('pixeltwin mcp', () => {
 
     const listed = await tool('list_changes', { branch: 'main' });
     expect(texts(listed)[0]).toContain('verdict pending; 1 changed or new check.');
-    const [item] = lastJson(listed);
+    const { groups, checks } = lastJson(listed);
+    expect(groups).toEqual([]);
+    const [item] = checks;
     expect(item).toMatchObject({ checkId: changed.id, name: 'login', result: 'changed', review: 'pending' });
     expect(item.summary).toContain('`button[data-testid=submit]` moved 8 px down');
     expect(item.changes.map((c: { description: string }) => c.description)).toEqual([
@@ -184,7 +207,7 @@ describe('pixeltwin mcp', () => {
     ]);
 
     const detail = lastJson(await tool('get_check', { checkId: changed.id }));
-    expect(detail).toMatchObject({ checkId: changed.id, elementCount: 2, review: 'pending' });
+    expect(detail).toMatchObject({ checkId: changed.id, elementCount: 2, review: 'pending', group: null, flaky: null });
     expect(detail.links.review).toBe(`${server.url}/ui/checks/${changed.id}`);
     expect(detail.history).toEqual([]);
 
@@ -242,4 +265,167 @@ describe('pixeltwin mcp', () => {
       await bare.stop();
     }
   });
+});
+
+describe('pixeltwin mcp with change groups and flaky screens', () => {
+  let groups: Rpc;
+  let gc: PixeltwinClient;
+  let mainBuild: string;
+  let clockCheck: string;
+
+  const policy = async (agentReview: string, agentMaxDiffPercent = 1) => {
+    const res = await fetch(`${server.url}/api/v1/projects/groups`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: server.cookie, origin: server.url },
+      body: JSON.stringify({ agentReview, agentMaxDiffPercent }),
+    });
+    expect(res.status).toBe(200);
+  };
+  /** A build of `branch` where all three screens got a wider logo: one group of three. */
+  const headerBuild = async (branch: string) => {
+    const build = await gc.openBuild('groups', { branch });
+    const ids: Record<string, string> = {};
+    for (const [name, height] of SCREENS) {
+      ids[name] = (
+        await gc.postCheck(build.id, { name, image: headerPage(50, height), elements: headerElements(50) })
+      ).id;
+    }
+    const listed = lastJson(await tool('list_changes', { buildId: build.id }, groups));
+    expect(listed.groups).toHaveLength(1);
+    return { buildId: build.id, groupId: listed.groups[0].groupId as string, ids };
+  };
+
+  beforeAll(async () => {
+    const token = await server.newProject('groups');
+    gc = new PixeltwinClient({ url: server.url, token });
+    groups = startMcp({ PIXELTWIN_URL: server.url, PIXELTWIN_TOKEN: token, PIXELTWIN_PROJECT: 'groups' });
+    // Baselines: three screens with a narrow logo and a clock; a person approves them.
+    const first = await gc.openBuild('groups', { branch: 'main' });
+    for (const [name, height] of SCREENS) {
+      await gc.postCheck(first.id, { name, image: headerPage(30, height), elements: headerElements(30) });
+    }
+    await gc.postCheck(first.id, { name: 'clock', image: clock(false) });
+    const approved = await fetch(`${server.url}/api/v1/builds/${first.id}/approve`, {
+      method: 'POST',
+      headers: { cookie: server.cookie, origin: server.url },
+    });
+    expect(approved.status).toBe(200);
+    // The clock ticks every other run and nobody approves it: a flaky screen.
+    for (const ticked of [true, false]) {
+      const build = await gc.openBuild('groups', { branch: 'main' });
+      await gc.postCheck(build.id, { name: 'clock', image: clock(ticked) });
+    }
+    const build = await gc.openBuild('groups', { branch: 'main' });
+    for (const [name, height] of SCREENS) {
+      await gc.postCheck(build.id, { name, image: headerPage(50, height), elements: headerElements(50) });
+    }
+    clockCheck = (await gc.postCheck(build.id, { name: 'clock', image: clock(true) })).id;
+    mainBuild = build.id;
+  }, 60_000);
+
+  afterAll(async () => {
+    await groups?.stop();
+  });
+
+  test('list_changes shows the group once with a representative, and marks the flaky screen', async () => {
+    const listed = await tool('list_changes', { buildId: mainBuild }, groups);
+    const head = texts(listed)[0];
+    expect(head).toContain('4 changed or new checks: 1 change group of 3 checks');
+    expect(head).toContain('review_group');
+    expect(head).toContain('and 1 on its own. 1 check on flaky screens (flakyScore): likely noise.');
+    const { groups: found, checks } = lastJson(listed);
+    expect(found).toHaveLength(1);
+    const [group] = found;
+    expect(group).toMatchObject({ size: 3, review: { pending: 3 } });
+    expect(group.members.map((m: { name: string }) => m.name).sort()).toEqual(['docs', 'home', 'pricing']);
+    expect(group.moreMembers).toBeUndefined();
+    expect(group.representative).toMatchObject({ result: 'changed', review: 'pending' });
+    expect(group.representative.summary).toContain('[data-testid=logo]');
+    expect(group.representative.changes[0]).toMatchObject({ kind: 'resized', key: '[data-testid=logo]' });
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toMatchObject({ checkId: clockCheck, name: 'clock', flakyScore: 0.67 });
+    expect(group.members.every((m: { flakyScore?: number }) => m.flakyScore === undefined)).toBe(true);
+
+    const member = lastJson(await tool('get_check', { checkId: group.representative.checkId }, groups));
+    expect(member.group).toEqual({ groupId: group.groupId, size: 3 });
+    expect(member.flaky).toBeNull();
+    const flaky = lastJson(await tool('get_check', { checkId: clockCheck }, groups));
+    expect(flaky.group).toBeNull();
+    expect(flaky.flaky).toEqual({ score: 0.67, flips: 2, unstableArea: { x: 90, y: 4, width: 20, height: 8 } });
+  }, 60_000);
+
+  test('review_group needs a reason', async () => {
+    const { buildId, groupId } = await headerBuild('no-reason');
+    const refused = await tool('review_group', { buildId, groupId, action: 'approve' }, groups);
+    expect(refused.isError).toBe(true);
+    expect(texts(refused)[0]).toBe('"reason" is required.');
+    const blank = await tool('review_group', { buildId, groupId, action: 'approve', reason: '  ' }, groups);
+    expect(blank.isError).toBe(true);
+  }, 60_000);
+
+  test('under "suggest" the group review is a suggestion for every member', async () => {
+    await policy('suggest');
+    try {
+      const { buildId, groupId, ids } = await headerBuild('suggest');
+      const r = await tool('review_group', { buildId, groupId, action: 'approve', reason: 'New logo.' }, groups);
+      expect(texts(r)[0]).toStartWith(
+        "Recorded as a suggestion to approve for 3 checks: this project has a person decide on agents' reviews.",
+      );
+      expect(texts(r)[0]).toContain("The build's verdict is now pending.");
+      expect(lastJson(r)).toMatchObject({ applied: [], skipped: [], verdict: 'pending' });
+      expect(lastJson(r).suggested.sort()).toEqual(Object.values(ids).sort());
+      expect((await gc.getCheck(ids.home as string)).suggestion?.reason).toBe('New logo.');
+    } finally {
+      await policy('off');
+    }
+  }, 60_000);
+
+  test('under "auto-below" small diffs apply and the larger one becomes a suggestion', async () => {
+    await policy('auto-below', 1);
+    try {
+      const { buildId, groupId, ids } = await headerBuild('auto');
+      const r = await tool('review_group', { buildId, groupId, action: 'approve', reason: 'New logo.' }, groups);
+      expect(texts(r)[0]).toStartWith('Applied: 2 checks approved. Recorded as a suggestion to approve for 1 check');
+      expect(texts(r)[0]).toContain('It stays pending until someone accepts or dismisses it at');
+      // home: 1.33 % of its pixels, above the limit; pricing and docs below it.
+      expect(lastJson(r).suggested).toEqual([ids.home]);
+      expect(lastJson(r).applied.sort()).toEqual([ids.pricing, ids.docs].sort());
+    } finally {
+      await policy('off');
+    }
+  }, 60_000);
+
+  test('with the policy off the review applies; a subset first, then the rest', async () => {
+    const listed = lastJson(await tool('list_changes', { buildId: mainBuild }, groups));
+    const { groupId, members } = listed.groups[0];
+    const first = members[0].checkId as string;
+    const one = await tool(
+      'review_group',
+      { buildId: mainBuild, groupId, action: 'approve', reason: 'The wider logo is the new brand.', checkIds: [first] },
+      groups,
+    );
+    expect(texts(one)[0]).toBe(
+      "Applied: 1 check approved. 2 other members not in checkIds left as they were. The build's verdict is now pending.",
+    );
+    expect(lastJson(one)).toMatchObject({ groupId, applied: [first], suggested: [], skipped: [] });
+    const after = lastJson(await tool('list_changes', { buildId: mainBuild }, groups)).groups[0];
+    expect(after.review).toEqual({ pending: 2, approved: 1 });
+    expect(after.members.find((m: { checkId: string }) => m.checkId === first).review).toBe('approved');
+    expect(after.members.filter((m: { review?: string }) => m.review === undefined)).toHaveLength(2);
+
+    const rest = await tool(
+      'review_group',
+      { buildId: mainBuild, groupId, action: 'approve', reason: 'The wider logo is the new brand.' },
+      groups,
+    );
+    expect(texts(rest)[0]).toStartWith('Applied: 2 checks approved. Skipped 1 check, left as it was (1 approved).');
+    expect(lastJson(rest).skipped).toEqual([{ checkId: first, review: 'approved' }]);
+    // The flaky clock still waits.
+    expect(lastJson(rest).verdict).toBe('pending');
+    expect((await gc.listReviews(first))[0]).toMatchObject({
+      action: 'approved',
+      actorKind: 'token',
+      comment: 'The wider logo is the new brand.',
+    });
+  }, 60_000);
 });

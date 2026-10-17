@@ -324,8 +324,13 @@ element by element, look at the screenshots, and approve what it meant to do wit
 tools: `latest_build` (by branch; the checked-out one by default), `list_changes` (changed and new
 checks with their summary and element changes), `get_check`, `get_check_images` (baseline, new
 and diff as images, cropped to a change to save tokens), `approve_check` and `reject_check` (with
-a `reason`; the answer says whether it applied or was recorded as a suggestion) and
-`add_ignore_area`. For Claude Code, a `.mcp.json` in the repository:
+a `reason`; the answer says whether it applied or was recorded as a suggestion), `review_group`
+and `add_ignore_area`. A header changed on 40 screens is one change group: `list_changes` shows it
+once, with its members by name and one representative check, and the agent judges it once and
+decides all 40 with `review_group` (what applied, what became a suggestion, what was skipped, and
+the build's new verdict). Checks on flaky screens carry a `flakyScore`, so the agent treats their
+changes as likely noise; `get_check` adds the flips and the unstable area. For Claude Code, a
+`.mcp.json` in the repository:
 
 ```json
 {

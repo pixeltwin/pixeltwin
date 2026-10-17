@@ -51,6 +51,7 @@ describe('documentation routes', () => {
       '"reason"',
       'suggestion',
       'npx pixeltwin mcp',
+      'review_group',
       'groupId',
       '/groups/<groupId>/approve',
       'flaky',

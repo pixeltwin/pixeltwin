@@ -124,8 +124,12 @@ accepting it does both, with the agent's reason.
 
 MCP: \`npx pixeltwin mcp\` (package @pixeltwin/client) is a Model Context Protocol server on stdio
 with these steps as tools: latest_build, list_changes, get_check, get_check_images (cropped to a
-change), approve_check, reject_check (with a reason) and add_ignore_area. Environment:
+change), approve_check, reject_check (with a reason), review_group and add_ignore_area. Environment:
 PIXELTWIN_URL=${publicUrl}, PIXELTWIN_TOKEN (read and review), PIXELTWIN_PROJECT.
+list_changes shows each change group once (its members by name and one representative check) and
+marks checks on flaky screens with a flakyScore (likely noise). Judge a group once via review_group:
+look at the representative (get_check_images), then approve or reject the whole group with one
+reason instead of one approve_check per member.
 
 ## Values
 
