@@ -127,6 +127,73 @@ A project can approve new screenshots automatically (Settings, or `"autoApproveN
 `PATCH /api/v1/projects/{slug}`): a screen with no baseline yet becomes one as soon as it arrives,
 recorded in its review history as approved by auto-approve, and only changes wait for review.
 
+### Pull requests: GitHub and GitLab
+
+A project can report every build on its pull (merge) request. In **Settings → Pull requests**
+(or `PATCH /api/v1/projects/{slug}/integration`) pick GitHub or GitLab and give it a token:
+
+- **GitHub**: a fine-grained personal access token with *Commit statuses* and *Pull requests*
+  (read and write) on the repository, or a GitHub App installation token. For GitHub Enterprise
+  Server set the API URL to `https://<host>/api/v3`.
+- **GitLab**: a project access token with the `api` scope and at least the Developer role. For a
+  self-hosted GitLab set the instance URL, e.g. `https://gitlab.example.com`.
+
+Then each finalized build gets a commit status `pixeltwin/<project>`: *pending* "3 screenshots to
+review" while changes wait, *success* when the verdict is `passed`, *failure* when something was
+rejected or could not be compared. It is posted again whenever a review changes the build (approve,
+reject, undo, an area, auto-approve, a promotion), so approving in pixeltwin turns the pull request
+green without running CI again. With *Pull request comment* each build keeps one comment (GitLab: a
+merge request note) with its counts and up to six changed screens linking to their review pages,
+edited in place. The token is never shown again; the API returns `tokenSet` and `tokenLast4`.
+
+The SDK sends the commit, repository and pull request from GitHub Actions and GitLab CI by itself
+(on GitHub `pull_request` runs, the pull request's head commit, not the merge commit). Without the
+SDK, send `commitSha`, `repository` and `pullRequest` when opening the build.
+
+**Promote on merge.** Turn on *Promote on merge*, set a webhook secret (`openssl rand -hex 32`),
+and add a webhook on the code host that points at the URL the settings page shows:
+
+- GitHub: repository *Settings → Webhooks → Add webhook*: payload URL
+  `<PUBLIC_URL>/api/v1/integrations/github/webhook`, content type `application/json`, the secret,
+  *Let me select individual events → Pull requests*.
+- GitLab: project *Settings → Webhooks*: URL `<PUBLIC_URL>/api/v1/integrations/gitlab/webhook`,
+  the secret as *Secret token*, trigger *Merge request events*.
+
+A merged pull request then promotes its branch's baselines into the branch it was merged into (as
+`pixeltwin promote` does), once: a redelivered event changes nothing. The promoted baselines name
+the merge as their approver ("GitHub merge by octocat"). The project is found by the repository in
+the settings (GitHub `owner/name`, GitLab `group/sub/project`), and the event must carry the
+secret (GitHub's `X-Hub-Signature-256`, GitLab's `X-Gitlab-Token`).
+
+### Webhooks
+
+**Settings → Webhooks** (or `POST /api/v1/projects/{slug}/webhooks`) sends `build.finalized`,
+`build.verdict_changed` and `check.reviewed` to a URL. Each delivery is a JSON `POST` with
+`X-Pixeltwin-Event`, `X-Pixeltwin-Delivery` (the same id on every retry) and
+`X-Pixeltwin-Signature: sha256=<HMAC-SHA256 of the body with the webhook's secret>`:
+
+```json
+{
+  "id": "dlv_01…", "event": "build.verdict_changed", "createdAt": 1760000000000,
+  "project": { "id": "prj_…", "slug": "web", "name": "Web" },
+  "build": { "id": "bld_…", "number": 12, "branch": "feature/login", "baseBranch": "main",
+             "commitSha": "…", "repository": "acme/shop", "pullRequest": 42, "state": "finalized",
+             "verdict": "passed", "previousVerdict": "pending",
+             "counts": { "total": 41, "unchanged": 38, "changed": 2, "new": 1, "error": 0,
+                         "pending": 0, "approved": 3, "rejected": 0, "outdated": 0 },
+             "url": "https://pixeltwin.example.com/ui/builds/bld_…" }
+}
+```
+
+`check.reviewed` adds `check` (`id`, `name`, `variant`, `result`, `review`, `url`) and `review`
+(`action`: approved, rejected or reset; `actor`: `id` and `name`). Format *Slack* posts a
+Slack-compatible `{ text, blocks }` instead, for an incoming webhook URL. Sending happens in the
+background and never slows or fails the request that caused it; a failed delivery (network,
+timeout, 5xx, 429) is retried with backoff for about five hours, a 4xx is not. Deliveries wait in
+the database, so a restart loses none, and with several replicas each is sent once (at least once
+if a replica dies mid-send: dedupe on the delivery id). Each webhook's page shows its last 20
+deliveries and has *Send test*. Webhook URLs must be `http(s)`; redirects are not followed.
+
 ### Kubernetes
 
 A Helm chart is in [`deploy/helm/pixeltwin`](deploy/helm/pixeltwin/README.md). It has two modes:
@@ -163,6 +230,8 @@ it out.
 | `DIFF_TIMEOUT_MS` | `30000` |
 | `DIFF_QUEUE_MAX` | `DIFF_WORKERS` × 20: while more diffs wait, uploads get `503 server_busy` with `Retry-After`; `0` never refuses |
 | `SHUTDOWN_GRACE_MS` | `20000`: on SIGTERM, requests in flight get this long to finish (keep it below Kubernetes' `terminationGracePeriodSeconds`) |
+| `SECRET_KEY` | unset → integration tokens and webhook secrets are stored as they are (the settings page says so); set (≥ 32 characters, the same on every replica) to encrypt them with AES-256-GCM. Changing it makes the stored ones unreadable: enter them again |
+| `OUTBOUND_BLOCK_PRIVATE` | off: webhooks and GitHub/GitLab calls may reach loopback and private networks (a chat server or GitHub Enterprise next door); `1` refuses them too. Link-local addresses (cloud metadata) are always refused |
 | `MAX_IMAGE_BYTES` | `10485760` |
 | `MAX_IMAGE_PIXELS` | `40000000` |
 | `LOG_LEVEL` | `info` |

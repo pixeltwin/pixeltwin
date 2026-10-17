@@ -49,6 +49,11 @@ database:
 # replica accepts the same token (without one, each pod logs its own and only that pod accepts it).
 setupToken: ""
 
+# Encrypts the GitHub/GitLab token and webhook secrets pixeltwin stores (SECRET_KEY, at least 32
+# characters). Empty: the chart generates one and keeps it in its Secret across upgrades, so every
+# replica uses the same key. Losing or changing it means entering those tokens and secrets again.
+secretKey: ""
+
 # Use a Secret you manage instead of the one the chart creates. When set, database.url and
 # setupToken are ignored and these keys are read from it (each key is optional, except the
 # database URL in `postgres` mode).
@@ -56,6 +61,7 @@ existingSecret: ""
 existingSecretKeys:
   databaseUrl: DATABASE_URL
   setupToken: SETUP_TOKEN
+  secretKey: SECRET_KEY
 
 # Parallel diff workers per pod (DIFF_WORKERS), each a thread comparing two images. Empty lets the
 # server pick: its CPU limit (resources.limits.cpu, rounded up) minus one, at least 1, because the

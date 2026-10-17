@@ -32,7 +32,7 @@ spec:
         {{- end }}
       annotations:
         # Restart the pods when the chart's Secret values change.
-        checksum/secret: {{ printf "%s|%s|%s" .Values.database.url .Values.setupToken .Values.existingSecret | sha256sum }}
+        checksum/secret: {{ printf "%s|%s|%s|%s" .Values.database.url .Values.setupToken .Values.existingSecret .Values.secretKey | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -109,6 +109,12 @@ spec:
                 secretKeyRef:
                   name: {{ $secret }}
                   key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.setupToken }}{{ else }}SETUP_TOKEN{{ end }}
+                  optional: true
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ if .Values.existingSecret }}{{ .Values.existingSecretKeys.secretKey }}{{ else }}SECRET_KEY{{ end }}
                   optional: true
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
