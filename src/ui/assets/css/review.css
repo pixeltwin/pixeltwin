@@ -392,6 +392,11 @@ body.focus main {
 .ignore-all {
   margin: var(--space-2) 0 0;
 }
+.areas-delete-all {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--space-2) 0 0;
+}
 .ignore-all button {
   width: 100%;
   justify-content: center;

@@ -112,4 +112,32 @@ describe('area routes', () => {
     const again = await t.request('POST', `/api/v1/checks/${check.id}/areas/ignore-changes`, { as: reviewer });
     expect((await problemOf(again)).code).toBe('no_changes');
   });
+  test('DELETE /checks/{id}/areas deletes every area of the snapshot and compares again', async () => {
+    const first = await post(white);
+    await t.request('POST', `/api/v1/checks/${first.id}/approve`, { as: ci });
+    const check = await post(withClock);
+    for (const x of [0, 20]) {
+      const res = await t.request('POST', `/api/v1/checks/${check.id}/areas`, {
+        as: reviewer,
+        json: { kind: 'ignore', x, y: 0, width: 10, height: 10 },
+      });
+      expect(res.status).toBe(201);
+    }
+    const viewer = await t.userAs('viewer');
+    expect((await t.request('DELETE', `/api/v1/checks/${check.id}/areas`, { as: viewer })).status).toBe(403);
+    const res = await t.request('DELETE', `/api/v1/checks/${check.id}/areas`, { as: reviewer });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { deleted: number; check: { id: string } };
+    expect(body.deleted).toBe(2);
+    const list = (await (await t.request('GET', `/api/v1/checks/${check.id}/areas`, { as: reviewer })).json()) as {
+      items: unknown[];
+    };
+    expect(list.items).toEqual([]);
+    const again = await t.request('DELETE', `/api/v1/checks/${check.id}/areas`, { as: reviewer });
+    expect((await problemOf(again)).code).toBe('area_not_found');
+    const doc = (await (await t.request('GET', '/openapi.json')).json()) as {
+      paths: Record<string, Record<string, { 'x-permission'?: string }>>;
+    };
+    expect(doc.paths['/api/v1/checks/{id}/areas']?.delete?.['x-permission']).toBe('check.review');
+  });
 });

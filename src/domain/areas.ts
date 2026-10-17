@@ -141,6 +141,21 @@ export async function deleteArea(deps: Deps, checkId: string, areaId: string): P
   return recomputeCheck(deps, checkId);
 }
 
+/** Deletes every area of the check's snapshot (on every branch) and compares the check again. */
+export async function deleteAreas(deps: Deps, checkId: string): Promise<{ deleted: number; check: CheckView }> {
+  const check = await getCheck(deps, checkId);
+  const result = await deps.db
+    .deleteFrom('snapshotAreas')
+    .where('projectId', '=', check.projectId)
+    .where('snapshotKey', '=', check.snapshotKey)
+    .executeTakeFirst();
+  const deleted = Number(result.numDeletedRows);
+  if (deleted === 0) {
+    throw new AppError('area_not_found', 404, `Snapshot ${check.name} has no areas to delete.`);
+  }
+  return { deleted, check: await recomputeCheck(deps, checkId) };
+}
+
 /** Moves or resizes one area of the check's snapshot and compares the check again. */
 export async function updateArea(
   deps: Deps,

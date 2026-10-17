@@ -644,6 +644,26 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     });
   }
 
+  // Delete all areas: one call, then the check is compared again (the button asks first).
+  for (const form of root.querySelectorAll<HTMLFormElement>('form[data-areas-delete-all]')) {
+    listen(form, 'submit', (e) => {
+      e.preventDefault();
+      const button = form.querySelector('button');
+      if (button) button.disabled = true;
+      void (async () => {
+        try {
+          const { deleted } = await api<{ deleted: number }>('DELETE', `/checks/${checkId}/areas`);
+          lastCopy = null;
+          toast(`Deleted ${deleted} areas`, { timeout: 2000 });
+          if (!gone) await changed(checkId);
+        } catch (err) {
+          if (button) button.disabled = false;
+          toast(`Couldn't delete the areas: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
+        }
+      })();
+    });
+  }
+
   for (const form of root.querySelectorAll<HTMLFormElement>('form[data-area-delete]')) {
     listen(form, 'submit', (e) => {
       e.preventDefault();

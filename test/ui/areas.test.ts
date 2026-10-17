@@ -147,6 +147,24 @@ describe('UI areas', () => {
     expect((await getCheck(t.deps, check.id)).result).toBe('unchanged');
   });
 
+  test('Delete all areas deletes every area of the snapshot at once, after asking, also without JavaScript', async () => {
+    const check = await changedCheck();
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', x: 0, y: 0, width: 5, height: 5 });
+    // One area has only its own Delete.
+    expect(await page(`/ui/checks/${check.id}?filter=all`)).not.toContain('data-areas-delete-all');
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', x: 20, y: 20, width: 5, height: 5 });
+    const body = await page(`/ui/checks/${check.id}?filter=all`);
+    expect(body).toContain(`action="/ui/checks/${check.id}/areas/delete-all" data-areas-delete-all="true"`);
+    expect(body).toContain('Delete all 2 areas');
+    expect(body).toContain('data-confirm-label="Delete all"');
+    expect(await page(`/ui/checks/${check.id}`, viewer)).not.toContain('data-areas-delete-all');
+
+    expect((await postForm(t, `/ui/checks/${check.id}/areas/delete-all`, {}, viewer)).status).toBe(403);
+    const res = await postForm(t, `/ui/checks/${check.id}/areas/delete-all`, { filter: 'all' }, reviewer);
+    expect(location(res)).toBe(`/ui/checks/${check.id}?filter=all&done=areas-deleted`);
+    expect(await listAreas(t.deps, check.id)).toHaveLength(0);
+  });
+
   test('a single change has no Ignore all: its own Ignore does the same', async () => {
     const check = await changedCheck();
     expect(await page(`/ui/checks/${check.id}`)).not.toContain('data-ignore-changes');

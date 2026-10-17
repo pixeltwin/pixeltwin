@@ -670,3 +670,19 @@ test('Duplicate at the area limit says so and adds nothing', async ({ reviewerPa
   await expect(page.locator('.area-item')).toHaveCount(50);
   expect(await areasOf(seeded, seeded.changed)).toHaveLength(50);
 });
+
+test('Delete all areas asks first, then deletes every area in place', async ({ reviewerPage: page, seeded }) => {
+  for (const x of [0, 40]) {
+    await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, { kind: 'ignore', x, y: 0, width: 20, height: 20 });
+  }
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(page.locator('.area-item')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Delete all 2 areas' }).click();
+  const dialog = page.locator('dialog.confirm');
+  await expect(dialog).toContainText('Delete all 2 areas of this snapshot?');
+  await dialog.getByRole('button', { name: 'Delete all' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Deleted 2 areas');
+  await expect(page.locator('.area-item')).toHaveCount(0);
+  const { items } = await seeded.ci.call<{ items: unknown[] }>('GET', `/checks/${seeded.changed}/areas`);
+  expect(items).toEqual([]);
+});

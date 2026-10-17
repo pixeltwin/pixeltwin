@@ -9,6 +9,7 @@ import {
   aroundChange,
   createArea,
   deleteArea,
+  deleteAreas,
   ignoreChanges,
   listAreas,
   MAX_AREAS_PER_SNAPSHOT,
@@ -787,6 +788,26 @@ function Areas(props: {
         ))}
       </ul>
       {areas.length > 0 && <p class="hint">Areas apply to every check of this snapshot, on every branch.</p>}
+      {props.canReview && areas.length > 1 && (
+        <form
+          class="areas-delete-all"
+          method="post"
+          action={ui.url(`/ui/checks/${check.id}/areas/delete-all`)}
+          data-areas-delete-all
+        >
+          <input type="hidden" name="filter" value={props.filter.key} />
+          <button
+            type="submit"
+            class="small ghost danger-hover"
+            disabled={props.off}
+            title={props.off ? 'Back to the comparison with the areas to change them' : undefined}
+            data-confirm={`Delete all ${areas.length} areas of this snapshot? They apply to every check of it, on every branch; it is compared again at once.`}
+            data-confirm-label="Delete all"
+          >
+            {`Delete all ${areas.length} areas`}
+          </button>
+        </form>
+      )}
     </section>
   );
 }
@@ -1664,6 +1685,15 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
     const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
     const { check } = await ignoreChanges(s.deps, c.req.param('id'), userOf(c).id);
     return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=changes-ignored`), 303);
+  });
+
+  app.post('/ui/checks/:id/areas/delete-all', async (c) => {
+    const ui = uiOf(c, s);
+    await visibleCheck(c, s.deps, c.req.param('id'), 'check.review');
+    const form = await c.req.parseBody();
+    const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
+    const { check } = await deleteAreas(s.deps, c.req.param('id'));
+    return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=areas-deleted`), 303);
   });
 
   app.post('/ui/checks/:id/areas/:areaId/delete', async (c) => {

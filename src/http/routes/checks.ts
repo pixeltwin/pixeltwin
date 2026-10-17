@@ -1,7 +1,7 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { CHECK_RESULTS, CHECK_REVIEWS } from '../../db/schema';
-import { createArea, deleteArea, ignoreChanges, listAreas, updateArea } from '../../domain/areas';
+import { createArea, deleteArea, deleteAreas, ignoreChanges, listAreas, updateArea } from '../../domain/areas';
 import { getBuildRow } from '../../domain/builds';
 import { type CheckView, checkElements, getCheck, listChecks, submitCheck } from '../../domain/checks';
 import { getProjectById } from '../../domain/projects';
@@ -403,6 +403,26 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
   app.openapi(areaDelete, async (c) => {
     const { id, areaId } = c.req.valid('param');
     return c.json(withLinks(await deleteArea(s.deps, id, areaId)), 200);
+  });
+
+  const areasDelete = defineRoute('check.review', {
+    method: 'delete',
+    path: `${API}/checks/{id}/areas`,
+    tags: ['areas'],
+    summary: "Delete every area of the check's snapshot (on every branch); the check is compared again at once",
+    request: { params: idParam },
+    responses: {
+      200: json(
+        z.object({ deleted: z.number().int(), check: CheckSchema }),
+        'How many were deleted, and the check compared again',
+      ),
+      ...problems(401, 403, 404),
+    },
+  });
+  app.openapi(areasDelete, async (c) => {
+    const { id } = c.req.valid('param');
+    const { deleted, check } = await deleteAreas(s.deps, id);
+    return c.json({ deleted, check: withLinks(check) }, 200);
   });
 
   const history = defineRoute('project.read', {
