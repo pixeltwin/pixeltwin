@@ -40,9 +40,6 @@ export function actorFromPrincipal(principal: Principal): ReviewActor {
 /** What a review did: applied, or recorded as a suggestion for a person (agent review policy). */
 export type ReviewOutcome = 'applied' | 'suggested';
 
-/** A review event as the API shows it: who acted (kind and token name) and the reason. */
-export type ReviewEventView = ReviewEvent;
-
 /** The reason of a review: `reason`, or `comment` as older clients call it; empty is none. */
 function reasonOf(input: unknown): string | null {
   const { comment, reason } = parseInput(reviewInputSchema, input);
@@ -123,7 +120,7 @@ async function recordReview(
 }
 
 /** Who approved, rejected, undid or suggested a review of the check, newest first. */
-export async function listReviews(deps: DbDeps, checkId: string): Promise<ReviewEventView[]> {
+export async function listReviews(deps: DbDeps, checkId: string): Promise<ReviewEvent[]> {
   const check = await deps.db.selectFrom('checks').select('id').where('id', '=', checkId).executeTakeFirst();
   if (!check) throw new AppError('check_not_found', 404, `Check ${checkId} not found.`);
   return deps.db.selectFrom('reviewEvents').selectAll().where('checkId', '=', checkId).orderBy('id', 'desc').execute();
@@ -468,20 +465,27 @@ export async function approveBuild(
   const build = await getBuildRow(deps, buildId);
   const who = actorOf(actor);
   const reason = reasonOf(input);
-  const toSuggest: string[] = [];
-  if (who.kind === 'token') {
-    const project = await getProjectById(deps, build.projectId);
-    if (project.agentReview !== 'off') {
-      if (!reason) throw reasonRequired(project, 'approve');
-      const pending = await deps.db
+  const pendingIds = async (db: Db) =>
+    (
+      await db
         .selectFrom('checks')
         .select('id')
         .where('buildId', '=', buildId)
         .where('review', '=', 'pending')
         .orderBy('id')
-        .execute();
-      for (const { id } of pending) {
+        .execute()
+    ).map((r) => r.id);
+  // Under a policy a token approves only the checks judged here; one posted meanwhile waits.
+  let allowed: Set<string> | null = null;
+  const toSuggest: string[] = [];
+  if (who.kind === 'token') {
+    const project = await getProjectById(deps, build.projectId);
+    if (project.agentReview !== 'off') {
+      if (!reason) throw reasonRequired(project, 'approve');
+      allowed = new Set();
+      for (const id of await pendingIds(deps.db)) {
         if (suggestsInstead(project, await getCheck(deps, id), 'approve')) toSuggest.push(id);
+        else allowed.add(id);
       }
     }
   }
@@ -495,19 +499,11 @@ export async function approveBuild(
       if (!(err instanceof AppError) || err.status !== 409) throw err;
     }
   }
-  const skip = new Set(toSuggest);
   const approved = await deps.db.transaction().execute(async (tx) => {
-    const pending = await tx
-      .selectFrom('checks')
-      .select('id')
-      .where('buildId', '=', buildId)
-      .where('review', '=', 'pending')
-      .orderBy('id')
-      .execute();
     let count = 0;
     // Outdated checks are skipped (and marked so): a newer build already approved their screen.
-    for (const { id } of pending) {
-      if (skip.has(id)) continue;
+    for (const id of await pendingIds(tx)) {
+      if (allowed && !allowed.has(id)) continue;
       if ((await tryApprove(tx, id, who, reason)).approved) count += 1;
     }
     return count;

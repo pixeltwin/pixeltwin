@@ -177,7 +177,7 @@ describe('build and check routes', () => {
       const { id } = (await res.json()) as { id: string };
       const big = await small.request('POST', `/api/v1/builds/${id}/checks`, {
         as: token,
-        json: { name: 'x', imageBase64: 'A'.repeat(200_000) },
+        json: { name: 'x', imageBase64: 'A'.repeat(400_000) },
       });
       expect(await problemOf(big)).toMatchObject({ status: 413, code: 'payload_too_large' });
     } finally {

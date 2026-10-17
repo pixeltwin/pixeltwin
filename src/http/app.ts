@@ -51,9 +51,12 @@ function requestContext(services: Services): MiddlewareHandler<AppEnv> {
   };
 }
 
-/** Spec §7.4: size limits before parsing. Check uploads may carry a base64 image plus metadata. */
+/**
+ * Spec §7.4: size limits before parsing. Check uploads may carry a base64 image plus metadata,
+ * which with its page elements (the SDKs cap them at 200 KB of JSON) needs up to about 300 KB.
+ */
 function bodyLimits(maxImageBytes: number): MiddlewareHandler<AppEnv> {
-  const uploadLimit = Math.ceil(maxImageBytes / 3) * 4 + 64 * 1024;
+  const uploadLimit = Math.ceil(maxImageBytes / 3) * 4 + 320 * 1024;
   const onError = () => {
     throw new AppError('payload_too_large', 413, 'The request body is too large.');
   };
