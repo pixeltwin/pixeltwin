@@ -177,6 +177,7 @@ describe('pixeltwin mcp', () => {
       'reject_check',
       'review_group',
       'rejection_patterns',
+      'project_insights',
       'add_ignore_area',
     ]);
     for (const t of result.tools) {
@@ -529,6 +530,23 @@ describe('pixeltwin mcp and the reasons screens were rejected', () => {
     expect(one.screens.map((sc: { name: string }) => sc.name)).toEqual(['pricing']);
     const none = await tool('rejection_patterns', { branch: 'feature/none' }, rpc);
     expect(texts(none)).toEqual(['No rejections on feature/none.']);
+  }, 60_000);
+
+  test('project_insights says where the noise comes from and what to fix in the tests', async () => {
+    const answer = await tool('project_insights', { days: 7 }, rpc);
+    const [summary] = texts(answer);
+    expect(summary).toStartWith('Insights for main, ');
+    expect(summary).toContain('Screens to fix in the tests, noisiest first:');
+    expect(summary).toMatch(
+      /- home \(3× rejected as not_loaded\): Wait for the page to finish loading \(network idle, or the element\) before the screenshot\. checkId chk_/,
+    );
+    expect(summary).toContain('- pricing (1× rejected as dynamic_data): Ignore the area with the changing data');
+    const data = lastJson(answer);
+    expect(data).toMatchObject({ branch: 'main', days: 7, timeZone: 'UTC' });
+    expect(data.noisyScreens[0]).toMatchObject({ name: 'home', mainReason: 'not_loaded', noiseRejections: 3 });
+    expect(data.noisyScreens[0].url).toStartWith(`${server.url}/ui/checks/chk_`);
+    expect(data.url).toBe(`${server.url}/ui/p/learn/insights`);
+    expect(data.daily).toBeUndefined();
   }, 60_000);
 
   test('approving a group warns about its members rejected as not loaded', async () => {

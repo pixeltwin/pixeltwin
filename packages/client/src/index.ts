@@ -40,6 +40,8 @@ export type {
   ElementChange,
   Flaky,
   GroupReview,
+  Insights,
+  NoiseReason,
   OpenBuildInput,
   Page,
   PageElement,

@@ -15,6 +15,7 @@ import type {
   Diff,
   ElementChange,
   Flaky,
+  Insights,
   Rect,
   RejectionPatterns,
   ScreenRejections,
@@ -47,7 +48,8 @@ before deciding, and fix the test rather than the page when they say so: not_loa
 (captured too early: wait for network idle or the element, images, fonts), animation (disable
 animations, or retakes), dynamic_data (fix the data or add an ignore area), environment (pin the
 browser, OS, viewport), real_bug (a real regression: fix the code). Rejecting, always give a reasonCode
-from these, plus other.`;
+from these, plus other. project_insights says where a project's noise comes from: the screens to fix
+in the tests, each with its main reason and what to change.`;
 
 interface Content {
   type: 'text' | 'image';
@@ -162,6 +164,61 @@ function grow(rect: Rect, by: number): Rect {
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const percent = (rate: number | null) => (rate === null ? '—' : `${Math.round(rate * 100)}%`);
+
+/** `45 s`, `18m`, `2h 10m`, `3d 4h`, as the Insights page says them. */
+function span(ms: number | null): string {
+  if (ms === null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h${m % 60 ? ` ${m % 60}m` : ''}`;
+  return `${Math.floor(h / 24)}d${h % 24 ? ` ${h % 24}h` : ''}`;
+}
+
+/** The answer of project_insights in a few lines: the numbers, then the screens to fix. */
+export function insightsText(i: Insights): string {
+  const t = i.totals;
+  const before =
+    t.autoPassRate !== null && i.previous.autoPassRate !== null
+      ? ` (${Math.round((t.autoPassRate - i.previous.autoPassRate) * 100) >= 0 ? '+' : ''}${Math.round((t.autoPassRate - i.previous.autoPassRate) * 100)} pts vs the ${i.days} days before)`
+      : '';
+  const reasons = Object.entries(t.rejections.byReason)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, n]) => `${n}× ${code}`)
+    .join(', ');
+  const lines = [
+    `Insights for ${i.branch}, ${i.from} to ${i.to} (UTC): ${plural(t.builds, 'build')}, ${plural(t.checks, 'check')}; auto-pass ${percent(t.autoPassRate)}${before}.`,
+    `${t.neededReview} needed review; median time to decision ${span(t.timeToDecision.medianMs)} (p90 ${span(t.timeToDecision.p90Ms)}).`,
+    t.rejections.total === 0
+      ? 'Nothing was rejected.'
+      : `${t.rejections.noise} of ${plural(t.rejections.total, 'rejection')} were noise from the tests, ${t.rejections.realBug} a real bug (${reasons}).`,
+  ];
+  if (t.suggestions.made > 0) {
+    lines.push(
+      `Agent suggestions: ${t.suggestions.made} made, ${t.suggestions.accepted} accepted, ${t.suggestions.dismissed} dismissed.`,
+    );
+  }
+  if (i.noisyScreens.length === 0) lines.push('No noisy screens: the noise does not come from one screen.');
+  else {
+    lines.push('Screens to fix in the tests, noisiest first:');
+    for (const s of i.noisyScreens.slice(0, 5)) {
+      const why = [
+        s.noiseRejections > 0
+          ? `${s.noiseRejections}× rejected as ${s.mainReason === 'flaky' ? 'noise' : s.mainReason}`
+          : '',
+        s.flakyScore !== null ? `flaky ${Math.round(s.flakyScore * 100)}%` : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
+      lines.push(`- ${s.name}${variantText(s.variant)} (${why}): ${s.action}. checkId ${s.checkId}`);
+    }
+  }
+  return lines.join('\n');
+}
 
 /** Rejections of a screen listed per check by list_changes (get_check lists up to 5). */
 const LIST_REJECTIONS = 3;
@@ -772,6 +829,66 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
                 recent: rejectionsView(sc, 5)?.recent ?? [],
                 lastAt: new Date(sc.lastAt).toISOString(),
               })),
+            }),
+          ],
+        };
+      },
+    },
+    {
+      name: 'project_insights',
+      description:
+        "How healthy this project's visual tests are on a branch over the last days, and where the noise comes from: the auto-pass rate (checks that needed no one) and its change, how many checks needed review and how soon they were decided, how many rejections were noise from the tests (not_loaded, late_asset, animation, dynamic_data) versus real bugs, what agent suggestions became, and the screens to fix in the tests, noisiest first, with the main reason and what to change (a wait, animations off, an ignore area). Use it before a review session or when asked why visual tests are noisy; fix the test code of the listed screens rather than approving or rejecting the same artefact again. Default: the last 30 days of the main branch.",
+      inputSchema: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: "Default the project's main branch" },
+          days: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 366,
+            description: 'The last N UTC days, today included; default 30',
+          },
+          from: { type: 'string', description: 'First day, YYYY-MM-DD (UTC); instead of days' },
+          to: { type: 'string', description: 'Last day, YYYY-MM-DD (UTC); default today' },
+        },
+        additionalProperties: false,
+      },
+      async run(args) {
+        const c = need();
+        const days = int(args, 'days');
+        const to = str(args, 'to');
+        const end = to ? new Date(`${to}T00:00:00Z`) : new Date();
+        const from =
+          str(args, 'from') ??
+          (days ? new Date(end.getTime() - (days - 1) * 86_400_000).toISOString().slice(0, 10) : undefined);
+        const branch = str(args, 'branch');
+        let insights: Insights;
+        try {
+          insights = await c.insights(project, {
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+            ...(branch ? { branch } : {}),
+          });
+        } catch (err) {
+          if (err instanceof PixeltwinError && err.status === 404 && err.code !== 'project_not_found') {
+            throw new ToolError('This pixeltwin server has no Insights yet; update it.');
+          }
+          throw err;
+        }
+        const { daily: _daily, slowScreens, ...rest } = insights;
+        return {
+          content: [
+            text(insightsText(insights)),
+            json({
+              ...rest,
+              noisyScreens: insights.noisyScreens.map((s) => ({
+                ...s,
+                name: `${s.name}${variantText(s.variant)}`,
+                lastSeen: new Date(s.lastSeen).toISOString(),
+                url: absolute(`/ui/checks/${s.checkId}`),
+              })),
+              slowScreens: slowScreens.slice(0, 5),
+              url: absolute(`/ui/p/${project}/insights`),
             }),
           ],
         };
