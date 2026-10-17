@@ -591,10 +591,3 @@ td select {
 .legend-review::before {
   background: var(--blue-dot);
 }
-/* The builds table's Checks column: the counts, then the review stats under them. */
-.checks-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}

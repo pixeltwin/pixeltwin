@@ -14,7 +14,6 @@ import {
   Ago,
   BuildDot,
   BuildStatus,
-  countsText,
   describedBy,
   Field,
   formErrors,
@@ -267,10 +266,13 @@ function Lane(props: {
             </li>
           ))}
         </ol>
-        <span class="muted">{countsText(build.counts)}</span>
-        <span class="muted">
-          <ReviewStats counts={build.counts} />
-        </span>
+        {build.counts.total === 0 ? (
+          <span class="muted">no checks</span>
+        ) : (
+          <span class="muted">
+            <ReviewStats counts={build.counts} />
+          </span>
+        )}
       </div>
     </article>
   );
@@ -408,12 +410,7 @@ function BuildsTable(props: { ui: Ui; builds: BuildView[]; watch: boolean; delet
             <td>
               <VerdictCell build={b} />
             </td>
-            <td>
-              <div class="checks-cell">
-                <span class="muted">{countsText(b.counts)}</span>
-                <ReviewStats counts={b.counts} />
-              </div>
-            </td>
+            <td>{b.counts.total === 0 ? <span class="muted">no checks</span> : <ReviewStats counts={b.counts} />}</td>
             <td>
               <Ago at={b.createdAt} />
             </td>

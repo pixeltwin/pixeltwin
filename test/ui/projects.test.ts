@@ -344,9 +344,10 @@ describe('UI projects', () => {
         return page.slice(from, page.indexOf('</span></span>', from) + 14);
       };
       const table = await html(await t.request('GET', '/ui/p/web/builds', { as: viewer }));
-      // One Checks column: the counts, then the review stats under them.
+      // One Checks column with the review stats only: the result counts are on the build page.
       expect(table).not.toContain('<th>Review</th>');
-      expect(table).toMatch(/<td><div class="checks-cell"><span class="muted">[^<]*<\/span><span class="review-stats"/);
+      expect(table).toMatch(/<td><span class="review-stats"/);
+      expect(table).not.toContain('1 changed · 1 new');
       // The automatic and the reviewed counts with a coloured dot each; the sentence is the tooltip.
       const cart = statsOf(table, cartBuild);
       expect(cart).toContain('title="0 automatically · 2 needed review · 2 left"');
