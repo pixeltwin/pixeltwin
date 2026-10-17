@@ -51,7 +51,7 @@ test('a small window still shows the filmstrip, with the stage shrinking instead
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
-test('one toast at a time, above the action bar on the check page, in the colour of what happened, never over a button', async ({
+test('one toast at a time, dropping in at the top centre, in the colour of what happened, never over a button', async ({
   reviewerPage: page,
   seeded,
 }) => {
@@ -64,6 +64,8 @@ test('one toast at a time, above the action bar on the check page, in the colour
   const toast = await approved.boundingBox();
   const bar = await page.locator('.action-bar').boundingBox();
   if (!toast || !bar) throw new Error('toast or action bar not on screen');
+  // Over the top bar's empty middle.
+  expect(toast.y + toast.height).toBeLessThanOrEqual(60);
   expect(toast.y + toast.height).toBeLessThanOrEqual(bar.y);
   const viewport = page.viewportSize()?.width ?? 0;
   expect(Math.abs(toast.x + toast.width / 2 - viewport / 2)).toBeLessThan(2);
