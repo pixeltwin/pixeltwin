@@ -30,7 +30,8 @@ describe('member.added webhook', () => {
 
   const payloads = async () => {
     await t.notifier.drain();
-    return receiver.received.map((r) => JSON.parse(r.body) as WebhookPayload);
+    // Sent several at a time: in the order they happened by delivery id (a ULID).
+    return receiver.received.map((r) => JSON.parse(r.body) as WebhookPayload).sort((a, b) => a.id.localeCompare(b.id));
   };
 
   test('adding a member, an accepted invite and an approved sign-up each announce the new member', async () => {
