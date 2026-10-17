@@ -194,6 +194,13 @@ A project can approve new screenshots automatically (Settings, or `"autoApproveN
 `PATCH /api/v1/projects/{slug}`): a screen with no baseline yet becomes one as soon as it arrives,
 recorded in its review history as approved by auto-approve, and only changes wait for review.
 
+A check whose pixels differ by no more than the tolerance passes, but it is not hidden: its card
+gets an amber "within tolerance 0.12% ≤ 0.5%" tag, the build page has a "Within tolerance" chip,
+and the check page shows the diff and offers Approve as new baseline (so small drift does not add
+up) or Reject. The API marks it with `"withinTolerance": true` (and
+`GET /api/v1/builds/{id}/checks?withinTolerance=true`). Settings (or `"reviewWithinTolerance": true`
+on the project, or in the SDK's check options) make such checks wait for review instead.
+
 Agents review too. A token with the `review` scope approves and rejects with a reason
 (`{"reason": "…"}`), kept in the review history with an "agent" badge. The project's agent review
 policy (Settings, or `"agentReview"` on `PATCH /api/v1/projects/{slug}`) decides what that does:

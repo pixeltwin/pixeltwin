@@ -49,6 +49,8 @@ const projectSettings = {
   agentMaxDiffPercent: z.number().min(0).max(100),
   /** Every user may open the project with their global role; otherwise members only. */
   visibleToAll: z.boolean(),
+  /** A check within the tolerance whose pixels differ waits for review instead of passing. */
+  reviewWithinTolerance: z.boolean(),
 };
 
 export const createProjectSchema = z.strictObject({
@@ -64,6 +66,7 @@ export const createProjectSchema = z.strictObject({
   agentReview: projectSettings.agentReview.default('off'),
   agentMaxDiffPercent: projectSettings.agentMaxDiffPercent.default(1),
   visibleToAll: projectSettings.visibleToAll.default(false),
+  reviewWithinTolerance: projectSettings.reviewWithinTolerance.default(false),
 });
 
 export const updateProjectSchema = z.strictObject(projectSettings).partial();
@@ -123,6 +126,8 @@ export const checkMetaSchema = z.strictObject({
   ignoreRegions: z.array(rectSchema).max(100).default([]),
   colorThreshold: colorThreshold.optional(),
   tolerancePercent: tolerancePercent.optional(),
+  /** Overrides the project's setting: a diff within the tolerance waits for review instead of passing. */
+  reviewWithinTolerance: z.boolean().optional(),
   /** The page elements in the screenshot; with them the diff lists element changes. */
   elements: z.array(snapshotElementSchema).max(MAX_ELEMENTS).optional(),
 });

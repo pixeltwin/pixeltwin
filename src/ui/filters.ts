@@ -20,6 +20,7 @@ export const CHECK_FILTERS: CheckFilter[] = [
   { key: 'resolved', label: 'Resolved', status: 'resolved' },
   { key: 'error', label: 'Errors', result: 'error' },
   { key: 'unchanged', label: 'Passed', status: 'passed' },
+  { key: 'tolerance', label: 'Within tolerance', status: 'tolerance' },
   { key: 'rejected', label: 'Rejected', review: 'rejected' },
   { key: 'areas', label: 'Areas', status: 'areas' },
 ];
@@ -41,7 +42,10 @@ export function filterFromQuery(
 }
 
 export function countFor(filter: CheckFilter, counts: BuildCounts): number {
-  if (filter.status === 'passed') return counts.result.unchanged + counts.autoApproved;
+  // Passed: identical, within the tolerance and not reviewed, or approved by auto-approve-new.
+  if (filter.status === 'passed')
+    return counts.result.unchanged - counts.withinTolerance + counts.withinTolerancePassed + counts.autoApproved;
+  if (filter.status === 'tolerance') return counts.withinTolerance;
   if (filter.status === 'resolved') return counts.review.approved - counts.autoApproved;
   if (filter.status === 'areas') return counts.withAreas;
   if (filter.result) return counts.result[filter.result];

@@ -140,7 +140,10 @@ export function Ago({ at, now }: { at: number; now?: number }) {
   );
 }
 
-/** `2 changed · 1 new · 38 unchanged`; zero counts are left out. */
+/**
+ * `2 changed · 1 new · 31 passed · 7 within tolerance`; zero counts are left out. Unchanged checks
+ * count once: as passed when identical, else as within tolerance.
+ */
 export function countsText(counts: BuildCounts): string {
   if (counts.total === 0) return 'no checks';
   const parts: string[] = [];
@@ -149,7 +152,8 @@ export function countsText(counts: BuildCounts): string {
   add(counts.result.new, 'new');
   add(counts.result.error, counts.result.error === 1 ? 'error' : 'errors');
   add(counts.review.rejected, 'rejected');
-  add(counts.result.unchanged, 'passed');
+  add(counts.result.unchanged - counts.withinTolerance, 'passed');
+  add(counts.withinTolerance, 'within tolerance');
   return parts.join(' · ');
 }
 
@@ -198,20 +202,29 @@ export function BuildTime({ timing }: { timing: BuildView['timing'] }) {
 }
 
 /**
- * What a build cost its reviewers: checks that passed automatically (unchanged, or new and approved
- * by the project setting) against those that needed a person (changed or new: decided or waiting).
+ * What a build cost its reviewers: checks that passed automatically (identical, or new and approved
+ * by the project setting), those that passed within the tolerance (some pixels differ: worth a
+ * look), and those that needed a person (changed, new or within tolerance: decided or waiting).
+ * Each check counts once.
  */
 export function ReviewStats({ counts }: { counts: BuildCounts }) {
   if (counts.total === 0) return null;
-  const auto = counts.result.unchanged + counts.autoApproved;
+  const tolerance = counts.withinTolerancePassed;
+  const auto = counts.result.unchanged - counts.withinTolerance + counts.autoApproved;
   const { pending, approved, rejected, outdated } = counts.review;
   const needed = pending + approved - counts.autoApproved + rejected + outdated;
   const left = pending > 0 ? ` · ${pending} left` : '';
+  const within = tolerance > 0 ? ` · ${tolerance} within tolerance` : '';
   return (
-    <span class="review-stats" title={`${auto} automatically · ${needed} needed review${left}`}>
+    <span class="review-stats" title={`${auto} automatically${within} · ${needed} needed review${left}`}>
       <span class="legend-item">
         <span class="legend-auto">{auto}</span> auto
       </span>
+      {tolerance > 0 && (
+        <span class="legend-item">
+          <span class="legend-tolerance">{tolerance}</span> within tolerance
+        </span>
+      )}
       {needed - pending > 0 && (
         <span class="legend-item">
           <span class="legend-reviewed">{needed - pending}</span> reviewed
@@ -398,10 +411,39 @@ const RESULT_LABELS: Record<CheckView['result'], string> = {
   error: 'error',
 };
 
-/** A check's status in words: `changed · unresolved`, `new · approved`, `passed`. */
-export function statusText(check: Pick<CheckView, 'result' | 'review'>): string {
+type ToleranceFields = Pick<CheckView, 'withinTolerance' | 'diff' | 'tolerancePercent'>;
+
+/** `0.12% ≤ 0.5%`: how much differs against the tolerance (`<0.01%` for a few pixels). */
+export function toleranceText(check: ToleranceFields): string {
+  const percent = check.diff && 'percent' in check.diff ? check.diff.percent : 0;
+  return `${percent > 0 ? `${percent}%` : '<0.01%'} ≤ ${check.tolerancePercent}%`;
+}
+
+/**
+ * A check that passed only within the tolerance: a small amber tag with how much differs against
+ * the tolerance; the tooltip says what it means. Nothing for any other check.
+ */
+export function ToleranceTag({ check }: { check: ToleranceFields }) {
+  if (!check.withinTolerance) return null;
+  return (
+    <span
+      class="tolerance-tag"
+      title={`Within tolerance: some pixels differ (${toleranceText(check)} allowed), so it was not called changed`}
+    >
+      <span class="tolerance-word">within tolerance </span>
+      {toleranceText(check)}
+    </span>
+  );
+}
+
+/** A check's status in words: `changed · unresolved`, `new · approved`, `passed`, `passed within tolerance`. */
+export function statusText(
+  check: Pick<CheckView, 'result' | 'review'> & Partial<Pick<CheckView, 'withinTolerance'>>,
+): string {
   const review = REVIEW_LABELS[check.review];
-  return review ? `${RESULT_LABELS[check.result]} · ${review}` : RESULT_LABELS[check.result];
+  const result = check.withinTolerance ? 'passed within tolerance' : RESULT_LABELS[check.result];
+  if (check.withinTolerance && review) return `within tolerance · ${review}`;
+  return review ? `${result} · ${review}` : result;
 }
 
 /**
@@ -418,8 +460,23 @@ export function cardStatus(check: Pick<CheckView, 'result' | 'review' | 'reviewe
   return 'passed';
 }
 
-/** Result and review state of a check: `changed` `unresolved`, `new` `approved`, … */
-export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> }) {
+/**
+ * Result and review state of a check: `changed` `unresolved`, `new` `approved`, … One within the
+ * tolerance says so with how much differs: `passed` `within tolerance (0.12% ≤ 0.5%)`, or the tag
+ * and its review once a person has to decide or decided.
+ */
+export function CheckStatus({ check }: { check: Pick<CheckView, 'result' | 'review'> & ToleranceFields }) {
+  if (check.withinTolerance) {
+    return (
+      <span class="status">
+        {check.review === 'none' && <Pill tone="green">passed</Pill>}
+        <span class="pill tone-tolerance" title="Some pixels differ, no more than the tolerance allows">
+          {`within tolerance (${toleranceText(check)})`}
+        </span>
+        {check.review !== 'none' && <Pill tone={toneOf(check.review)}>{REVIEW_LABELS[check.review]}</Pill>}
+      </span>
+    );
+  }
   return (
     <span class="status">
       <Pill tone={toneOf(check.result)}>{RESULT_LABELS[check.result]}</Pill>

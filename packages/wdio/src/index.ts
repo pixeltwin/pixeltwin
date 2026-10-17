@@ -60,6 +60,8 @@ export interface WdioCheckOptions {
   variant?: Variant;
   colorThreshold?: number;
   tolerancePercent?: number;
+  /** A diff within the tolerance waits for review instead of passing (default: the project's setting). */
+  reviewWithinTolerance?: boolean;
   /** Override the service's `retakes` and `failOnChange` for this check. */
   retakes?: number;
   failOnChange?: boolean;
@@ -490,6 +492,7 @@ export class PixeltwinService {
       ignoreRegions,
       colorThreshold: options.colorThreshold,
       tolerancePercent: options.tolerancePercent,
+      reviewWithinTolerance: options.reviewWithinTolerance,
       ...(mapping && options.elements !== false ? { elements: elementsToPixels(raw, mapping, size) } : {}),
     };
   }

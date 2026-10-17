@@ -24,6 +24,8 @@ const VERDICT_WORDS: Record<string, string> = {
   passed: 'passed',
 };
 const TONES: Record<string, string> = {
+  // Only an undone review of a check within the tolerance comes back as none: it passes again.
+  none: 'green',
   passed: 'green',
   approved: 'green',
   pending: 'amber',
@@ -50,9 +52,12 @@ const checkUrl = (id: string) =>
   `${basePath()}/ui/checks/${id}?filter=${encodeURIComponent(root.dataset.filter ?? 'pending')}`;
 
 function frames(): Frame[] {
+  // Under the Within tolerance filter, one that passed by itself waits for a look too.
+  const tolerance = root.dataset.filter === 'tolerance';
   return [...root.querySelectorAll<HTMLElement>('[data-frame]')].map((el) => {
     const id = el.dataset.frame as string;
-    return { id, review: states.get(id) ?? el.dataset.review ?? 'none' };
+    const review = states.get(id) ?? el.dataset.review ?? 'none';
+    return { id, review: tolerance && review === 'none' && el.hasAttribute('data-tolerance') ? 'pending' : review };
   });
 }
 
@@ -312,8 +317,10 @@ async function undo(target: string | null = lastReviewed ?? currentId()): Promis
   if (!target || busy) return;
   busy = true;
   try {
+    // Pending again, or passed again for one within the tolerance: the server says which.
+    let after = 'pending';
     try {
-      await api('POST', `/checks/${target}/reset`);
+      after = (await api<{ review: string }>('POST', `/checks/${target}/reset`)).review;
     } catch (err) {
       if (err instanceof ApiError && err.code === 'review_not_resettable') {
         toast("Can't undo: a newer baseline or a later build builds on this approval.", { tone: 'danger' });
@@ -327,7 +334,7 @@ async function undo(target: string | null = lastReviewed ?? currentId()): Promis
     const was = states.get(target);
     if (was === 'approved') session.approved--;
     if (was === 'rejected') session.rejected--;
-    states.set(target, 'pending');
+    states.set(target, after);
     forget(target);
     if (lastReviewed === target) lastReviewed = null;
     toast('Review undone', { timeout: 2000 });

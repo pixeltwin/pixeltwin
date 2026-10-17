@@ -109,6 +109,11 @@ export const ProjectSchema = z
       description:
         'Every user on the server may open the project with their global role (viewer or reviewer); otherwise only admins and members',
     }),
+    reviewWithinTolerance: z.boolean().openapi({
+      description:
+        'A check whose diff is within tolerancePercent but not pixel-identical waits for review (pending) instead of ' +
+        'passing. Off by default; the SDK can set it per check.',
+    }),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
   })
@@ -185,6 +190,13 @@ export const BuildSchema = z
       withAreas: z.number().int().openapi({ description: 'Checks whose snapshot has drawn ignore or compare areas' }),
       suggested: z.number().int().openapi({
         description: "Checks with an agent's open suggestion, waiting for a person to accept or dismiss it",
+      }),
+      withinTolerance: z.number().int().openapi({
+        description:
+          'Checks unchanged only because their diff is within the tolerance (some pixels differ), whatever their review',
+      }),
+      withinTolerancePassed: z.number().int().openapi({
+        description: 'Of withinTolerance, those that passed with no review (part of result.unchanged)',
       }),
     }),
   })
@@ -420,6 +432,13 @@ export const CheckSchema = z
     tolerancePercent: z.number(),
     result: z.enum(CHECK_RESULTS),
     review: z.enum(CHECK_REVIEWS),
+    withinTolerance: z.boolean().openapi({
+      description:
+        'Unchanged only because the diff is within the tolerance: diff.percent of the pixels differ, at most ' +
+        'tolerancePercent (the diff image shows them). False for identical screenshots and other results. Such a check ' +
+        'passes unless the project (or the SDK) asks for a review; a person may still approve it as the new baseline ' +
+        'or reject it as a real change.',
+    }),
     diff: z.union([DiffSchema, DiffErrorSchema]).nullable(),
     reviewedBy: z.string().nullable(),
     reviewedAt: z.number().int().nullable(),
@@ -737,9 +756,15 @@ export const InsightsSchema = z
       autoPassed: z
         .number()
         .int()
-        .openapi({ description: 'Unchanged, or new and approved by the auto-approve setting' }),
+        .openapi({ description: 'Unchanged and not reviewed, or new and approved by the auto-approve setting' }),
       autoPassRate: z.number().nullable().openapi({ description: 'autoPassed / checks, 0 to 1; null without checks' }),
-      neededReview: z.number().int().openapi({ description: 'Changed or new checks a person or agent had to decide' }),
+      withinTolerance: z.number().int().openapi({
+        description: 'Of autoPassed, the checks that passed within the tolerance: some pixels differ',
+      }),
+      neededReview: z.number().int().openapi({
+        description:
+          'Changed or new checks a person or agent had to decide, and unchanged ones reviewed (within the tolerance)',
+      }),
       approved: z.number().int(),
       rejected: z.number().int(),
       outdated: z.number().int(),
@@ -789,6 +814,7 @@ export const InsightsSchema = z
         checks: z.number().int(),
         autoPassed: z.number().int(),
         autoPassRate: z.number().nullable(),
+        withinTolerance: z.number().int(),
         approved: z.number().int(),
         rejected: z.number().int(),
         rejectedBy: RejectionCountsSchema,

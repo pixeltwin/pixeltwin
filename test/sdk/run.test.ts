@@ -14,6 +14,8 @@ import {
   startRun,
   summaryLines,
 } from '@pixeltwin/client/run';
+import { failsOnChange } from '../../packages/client/src/errors';
+import type { Check } from '../../packages/client/src/types';
 import { makePng, WHITE } from '../helpers/png';
 import { REPO, startServer, type TestServer } from './server';
 
@@ -197,6 +199,32 @@ describe('settings', () => {
     );
     const untimed = { ...build, timing: { ...timing, checks: 0 } } as Build;
     expect((await summaryLines(client, untimed)).join('\n')).not.toContain(' over ');
+  });
+
+  test('the summary counts the unchanged checks that passed within the tolerance', async () => {
+    const counts = {
+      total: 9,
+      result: { unchanged: 9, changed: 0, new: 0, error: 0 },
+      review: { none: 9, pending: 0, approved: 0, rejected: 0, outdated: 0 },
+      autoApproved: 0,
+      withinTolerance: 2,
+    };
+    const build = { id: 'bld_1', number: 7, branch: 'main', verdict: 'passed', counts } as unknown as Build;
+    const client = { buildUrl: (id: string) => `http://pt/ui/builds/${id}` } as unknown as PixeltwinClient;
+    expect((await summaryLines(client, build)).join('\n')).toContain(
+      '9 checks: 9 unchanged (2 within the tolerance), 0 changed',
+    );
+  });
+
+  test('failOnChange fails an unchanged check only while it waits for review (within the tolerance)', () => {
+    const check = (result: string, review: string, withinTolerance = false) =>
+      ({ result, review, withinTolerance }) as unknown as Check;
+    expect(failsOnChange(check('unchanged', 'none'))).toBe(false);
+    expect(failsOnChange(check('unchanged', 'none', true))).toBe(false);
+    expect(failsOnChange(check('unchanged', 'pending', true))).toBe(true);
+    expect(failsOnChange(check('changed', 'pending'))).toBe(true);
+    expect(failsOnChange(check('new', 'approved'))).toBe(false);
+    expect(failsOnChange(check('error', 'none'))).toBe(true);
   });
 
   test('the summary ends with a tip for screens people keep rejecting as captured too early', async () => {

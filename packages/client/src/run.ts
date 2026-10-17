@@ -485,8 +485,9 @@ export async function summaryLines(client: PixeltwinClient, build: Build): Promi
   const { result, review } = build.counts;
   const lines = [
     `pixeltwin: build #${build.number} on ${build.branch}: verdict ${build.verdict}`,
-    `pixeltwin: ${plural(build.counts.total, 'check')}: ${result.unchanged} unchanged, ${result.changed} changed, ` +
-      `${result.new} new, ${result.error} errors; ${review.pending} awaiting review`,
+    `pixeltwin: ${plural(build.counts.total, 'check')}: ${result.unchanged} unchanged` +
+      (build.counts.withinTolerance ? ` (${build.counts.withinTolerance} within the tolerance)` : '') +
+      `, ${result.changed} changed, ${result.new} new, ${result.error} errors; ${review.pending} awaiting review`,
   ];
   const listed: Check[] = [];
   if (result.error > 0) listed.push(...(await client.listChecks(build.id, { result: 'error', limit: 20 })).items);

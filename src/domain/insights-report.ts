@@ -71,6 +71,8 @@ export interface Totals {
   autoPassed: number;
   /** autoPassed / checks; null without checks. */
   autoPassRate: number | null;
+  /** Of autoPassed, the checks that passed within the tolerance: some pixels differ. */
+  withinTolerance: number;
   neededReview: number;
   approved: number;
   rejected: number;
@@ -98,6 +100,7 @@ export interface DailyPoint {
   checks: number;
   autoPassed: number;
   autoPassRate: number | null;
+  withinTolerance: number;
   approved: number;
   rejected: number;
   rejectedBy: Record<RejectionCategory, number>;
@@ -228,6 +231,7 @@ function totalsOf(t: DayTotals): Totals {
     checks: t.checks,
     autoPassed: t.autoPassed,
     autoPassRate: rate(t.autoPassed, t.checks),
+    withinTolerance: t.withinTolerance,
     neededReview: t.neededReview,
     approved: t.approved,
     rejected: t.rejected,
@@ -265,6 +269,7 @@ function dailyOf(day: number, t: DayTotals): DailyPoint {
     checks: t.checks,
     autoPassed: t.autoPassed,
     autoPassRate: rate(t.autoPassed, t.checks),
+    withinTolerance: t.withinTolerance,
     approved: t.approved,
     rejected: t.rejected,
     rejectedBy: { ...t.rejectedBy },

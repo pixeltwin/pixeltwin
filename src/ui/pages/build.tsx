@@ -28,6 +28,7 @@ import {
   countsText,
   FlakyBadge,
   statusText,
+  ToleranceTag,
   thumbnailSha,
   Variant,
 } from '../components';
@@ -98,8 +99,10 @@ function CheckCard(props: {
   flaky?: FlakySignal | undefined;
 }) {
   const { ui, check, size, filter } = props;
-  // A changed check shows its new screenshot; the thumbs island paints the diff's changes over it.
-  const diffSrc = check.result === 'changed' && check.diffImageSha ? thumbUrl(ui, check.diffImageSha, 'diff') : null;
+  // A changed check (or one within the tolerance) shows its new screenshot; the thumbs island
+  // paints the diff's changes over it.
+  const painted = check.result === 'changed' || check.withinTolerance;
+  const diffSrc = painted && check.diffImageSha ? thumbUrl(ui, check.diffImageSha, 'diff') : null;
   const sha = diffSrc ? check.imageSha : thumbnailSha(check);
   // The thumbnail's own size: the skeleton holds exactly the box the image will fill.
   const box = size ? thumbSize(size, THUMB_EDGE) : undefined;
@@ -112,7 +115,7 @@ function CheckCard(props: {
       data-search={[check.name, ...Object.values(check.variant)].join(' ').toLowerCase()}
     >
       <a
-        class={`check-card card-${cardStatus(check)}`}
+        class={`check-card card-${cardStatus(check)}${check.withinTolerance ? ' card-tolerance' : ''}`}
         title={cardTitle(check)}
         href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
       >
@@ -134,6 +137,7 @@ function CheckCard(props: {
             {check.result === 'changed' && check.review !== 'rejected' && diff && (
               <span class="diff-pct" title="Pixels changed">{`${diff.percent}%`}</span>
             )}
+            <ToleranceTag check={check} />
             {check.suggestion && (
               <span
                 class="badge-agent"
@@ -483,6 +487,7 @@ const EMPTY_FILTER: Record<string, string> = {
   new: 'No new checks',
   error: 'No errors',
   unchanged: 'No unchanged checks',
+  tolerance: 'No checks within tolerance',
   rejected: 'No rejected checks',
 };
 

@@ -44,6 +44,8 @@ export interface CheckOptions {
   variant?: Variant;
   colorThreshold?: number;
   tolerancePercent?: number;
+  /** A diff within the tolerance waits for review instead of passing (default: the project's setting). */
+  reviewWithinTolerance?: boolean;
   /** Other Playwright screenshot options. `animations` defaults to `disabled`, `caret` to `hide`. */
   screenshot?: ScreenshotOptions;
   /** Override `retakes` and `failOnChange` (options or PIXELTWIN_* variables) for this check. */
@@ -321,6 +323,7 @@ export class Pixeltwin {
       ignoreRegions,
       colorThreshold: options.colorThreshold,
       tolerancePercent: options.tolerancePercent,
+      reviewWithinTolerance: options.reviewWithinTolerance,
       ...(wantElements ? { elements: elementsToPixels(raw, mapping, size) } : {}),
     };
   }

@@ -257,7 +257,7 @@ describe('command line', () => {
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(await main(['migrate'], { DATA_DIR: dir }, out)).toBe(0);
     expect(lines).toEqual([
-      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers, 0004_review_events, 0005_snapshot_areas, 0006_outdated_checks, 0007_stored_objects, 0008_parallel_builds, 0009_auto_approve_new, 0010_timings, 0011_integrations, 0012_agent_review, 0013_change_groups, 0014_project_members, 0015_mail_outbox, 0016_reject_reasons, 0017_insights',
+      'Applied: 0001_init, 0002_retention_indexes, 0003_build_numbers, 0004_review_events, 0005_snapshot_areas, 0006_outdated_checks, 0007_stored_objects, 0008_parallel_builds, 0009_auto_approve_new, 0010_timings, 0011_integrations, 0012_agent_review, 0013_change_groups, 0014_project_members, 0015_mail_outbox, 0016_reject_reasons, 0017_insights, 0018_within_tolerance',
       'Database is up to date.',
     ]);
   });

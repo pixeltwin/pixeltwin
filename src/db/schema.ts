@@ -74,6 +74,8 @@ export interface ProjectsTable {
   agentMaxDiffPercent: Generated<number>;
   /** 1: every user may open the project with their global role, members or not. */
   visibleToAll: Generated<number>;
+  /** 1: a check within the tolerance whose pixels differ waits for review instead of passing. */
+  reviewWithinTolerance: Generated<number>;
   /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
   buildSeq: Generated<number>;
   createdAt: number;
@@ -163,6 +165,13 @@ export interface ChecksTable {
    * with the same key form a change group. Null when unchanged, new, resized or older than groups.
    */
   changeKey: string | null;
+  /** 1: unchanged only because its diff is within the tolerance (some pixels differ). */
+  withinTolerance: Generated<number>;
+  /**
+   * 1: a check within the tolerance waits for review, as the project or the SDK said when this one
+   * was compared; undoing its review or comparing it again goes by it. Internal.
+   */
+  reviewWithinTolerance: Generated<number>;
   createdAt: number;
   updatedAt: number;
 }
@@ -461,6 +470,8 @@ export interface InsightDaysTable {
   retakes: Generated<number>;
   timedChecks: Generated<number>;
   flakyScreens: Generated<number>;
+  /** Of autoPassed, the checks that passed within the tolerance (some pixels differ). */
+  withinTolerance: Generated<number>;
   /** JSON array: decided builds per LATENCY_BUCKETS bucket. */
   latencyHist: Generated<string>;
   /** JSON object: per reviewer (`user:<id>`, `token:<id>`) decisions, latency and suggestions. */
@@ -534,9 +545,13 @@ export interface DB {
 }
 
 export type UserRow = Selectable<UsersTable>;
-export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew' | 'visibleToAll'> & {
+export type Project = Omit<
+  Selectable<ProjectsTable>,
+  'buildSeq' | 'autoApproveNew' | 'visibleToAll' | 'reviewWithinTolerance'
+> & {
   autoApproveNew: boolean;
   visibleToAll: boolean;
+  reviewWithinTolerance: boolean;
 };
 export type Build = Omit<Selectable<BuildsTable>, 'notifiedVerdict'>;
 export type CheckRow = Selectable<ChecksTable>;

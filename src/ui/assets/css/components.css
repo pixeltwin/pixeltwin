@@ -275,6 +275,22 @@ input[aria-invalid="true"] {
   background: var(--amber-bg);
   color: var(--amber);
 }
+/* Passed within the tolerance: outlined amber, so it reads apart from changed (filled) and flaky (dashed). */
+.tone-tolerance,
+.tolerance-tag {
+  border: 1px solid var(--amber-border);
+  background: none;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.tolerance-tag {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
 .tone-blue,
 .badge.new,
 .badge.open {
@@ -594,6 +610,7 @@ td select {
   gap: 4px;
 }
 .legend-auto,
+.legend-tolerance,
 .legend-reviewed,
 .legend-review {
   display: inline-flex;
@@ -604,6 +621,7 @@ td select {
   font-weight: 600;
 }
 .legend-auto::before,
+.legend-tolerance::before,
 .legend-reviewed::before,
 .legend-review::before {
   content: "";
@@ -611,6 +629,9 @@ td select {
   height: 6px;
   border-radius: 50%;
   background: var(--green-dot);
+}
+.legend-tolerance::before {
+  background: var(--amber-dot);
 }
 .legend-reviewed::before {
   background: var(--text-muted);

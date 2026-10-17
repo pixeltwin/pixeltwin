@@ -194,13 +194,21 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       query: PageQuerySchema.extend({
         result: z.enum(CHECK_RESULTS).optional(),
         review: z.enum(CHECK_REVIEWS).optional(),
+        withinTolerance: z.enum(['true', 'false']).optional().openapi({
+          description:
+            'true: only checks that passed within the tolerance (unchanged, some pixels differ), whatever their review',
+        }),
       }),
     },
     responses: { 200: json(CheckPageSchema, 'Checks'), ...problems(401, 403, 404, 422) },
   });
   app.openapi(list, async (c) => {
     const { id } = c.req.valid('param');
-    const page = await listChecks(s.deps, id, c.req.valid('query'));
+    const { withinTolerance, ...query } = c.req.valid('query');
+    const page = await listChecks(s.deps, id, {
+      ...query,
+      ...(withinTolerance === 'true' ? { status: 'tolerance' as const } : {}),
+    });
     return c.json({ items: page.items.map(withLinks), nextCursor: page.nextCursor }, 200);
   });
 
@@ -299,9 +307,9 @@ export function registerCheckRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     path: `${API}/checks/{id}/reset`,
     tags: ['reviews'],
     summary:
-      'Undo a review: back to pending. Undoing an approval removes the baseline it created, unless a newer one replaced it (409 review_not_resettable)',
+      'Undo a review: back to pending (a check that had passed within the tolerance passes again). Undoing an approval removes the baseline it created, unless a newer one replaced it (409 review_not_resettable)',
     request: { params: idParam },
-    responses: { 200: json(CheckSchema, 'The check, pending again'), ...problems(401, 403, 404, 409) },
+    responses: { 200: json(CheckSchema, 'The check, as before the review'), ...problems(401, 403, 404, 409) },
   });
   app.openapi(reset, async (c) => {
     const { id } = c.req.valid('param');
