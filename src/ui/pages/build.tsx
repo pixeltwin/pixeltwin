@@ -129,6 +129,19 @@ function ThumbStack(props: {
   );
 }
 
+/** Four big tiles or nine small ones: the density switch's buttons. */
+function DensityIcon(props: { density: Density }) {
+  const n = props.density === 'large' ? 2 : 3;
+  const size = (14 - (n - 1) * 2) / n;
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+      {Array.from({ length: n * n }, (_, i) => (
+        <rect x={1 + (i % n) * (size + 2)} y={1 + Math.floor(i / n) * (size + 2)} width={size} height={size} rx="1" />
+      ))}
+    </svg>
+  );
+}
+
 /** Where a full page's card says it is: at the top, or how far down its change is. */
 function PartHint(props: { part: Part; size: Size }) {
   const { part, size } = props;
@@ -816,9 +829,10 @@ function BuildPage(props: {
               name="density"
               value={d}
               aria-pressed={props.density === d ? 'true' : 'false'}
-              title={d === 'large' ? 'Fewer, larger cards' : 'More, smaller cards'}
+              aria-label={d === 'large' ? 'Large cards' : 'Compact cards'}
+              title={d === 'large' ? 'Large cards: fewer, sharper' : 'Compact cards: more on a page'}
             >
-              {d === 'large' ? 'Large' : 'Compact'}
+              <DensityIcon density={d} />
             </button>
           ))}
         </form>

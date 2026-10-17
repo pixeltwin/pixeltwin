@@ -92,7 +92,8 @@
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: calc(var(--thumb-height) - var(--space-2) * 2);
+  /* Less the padding and the bottom border. */
+  max-height: calc(var(--thumb-height) - var(--space-2) * 2 - 1px);
   border-radius: 2px;
 }
 /* With its size known, the image lies on its skeleton box (ThumbStack), exactly. */
@@ -721,12 +722,14 @@ main:has([data-live="checks"]) .page-head {
 [data-density="large"] .check-card-body:has(.group-members[open]) + .group-actions {
   position: static;
 }
-/* Approve at the variants' right, on their line. */
+/* Approve at the variants' right, on their line: as high on every card, so none moves once approved. */
 [data-density="large"] .approvable .check-card-body {
   padding-bottom: var(--space-3);
 }
-[data-density="large"] .approvable .variant {
+[data-density="large"] .check-card-body .variant {
   min-height: 30px;
+}
+[data-density="large"] .approvable .variant {
   margin-right: 90px;
 }
 [data-density="large"] .card-approve {
