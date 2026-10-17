@@ -67,15 +67,9 @@ button.small,
   font-size: var(--text-sm);
 }
 /*
- * An ignore action (Ignore next to a change, Ignore noisy area): the toolbar's ignore colour mark,
- * quiet until pointed at, and pressed while what it opens is unfolded.
+ * An ignore action (Ignore next to a change, Ignore noisy area): a regular button with the
+ * toolbar's ignore colour mark, amber when pointed at and pressed while what it opens is unfolded.
  */
-.ignore-action {
-  border-color: transparent;
-  background: none;
-  color: var(--text-muted);
-  font-weight: 500;
-}
 .ignore-action::before {
   content: "";
   flex: none;
