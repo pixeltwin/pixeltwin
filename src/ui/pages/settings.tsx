@@ -2,6 +2,13 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { AGENT_REVIEW_POLICIES, type AgentReviewPolicy, PROJECT_ROLES, type Project } from '../../db/schema';
 import { createProjectToken, deleteProjectToken, listProjectTokens, type TokenView } from '../../domain/auth/tokens';
+import {
+  type DigestSettings,
+  getDigestSettings,
+  sendDigestNow,
+  serverTimeZone,
+  updateDigestSettings,
+} from '../../domain/insights-digest';
 import { getIntegration, type IntegrationView } from '../../domain/integrations';
 import {
   type InviteView,
@@ -245,9 +252,84 @@ function MembersSection(props: {
   );
 }
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** The weekly digest of Insights: when, where it goes, and Send now. */
+function DigestSection(props: {
+  ui: Ui;
+  project: Project;
+  digest: DigestSettings;
+  webhooks: WebhookView[];
+  mailer: boolean;
+}) {
+  const { ui, project, digest } = props;
+  const base = `/ui/p/${project.slug}/settings/digest`;
+  const hooks = props.webhooks.filter((w) => w.enabled && w.events.includes('insights.weekly')).length;
+  return (
+    <section class="settings-section" aria-labelledby="digest-title">
+      <div class="section-head">
+        <h2 id="digest-title">Weekly digest</h2>
+        <p class="muted">
+          Last week on the main branch from Insights: the auto-pass rate, the time to decision and the screens to fix in
+          the tests.
+        </p>
+      </div>
+      <form class="panel" method="post" action={ui.url(base)}>
+        <label class="option">
+          <input type="checkbox" name="enabled" checked={digest.enabled} />
+          <span>
+            <strong>Send the weekly digest</strong>{' '}
+            <span class="muted">
+              {`To ${hooks === 1 ? '1 webhook' : `${hooks} webhooks`} with the insights.weekly event${props.mailer ? ', and by mail to members who ask for it on Insights' : ''}.`}
+            </span>
+          </span>
+        </label>
+        <div class="form-grid">
+          <div class="field">
+            <label for="digest-weekday">Day</label>
+            <select id="digest-weekday" name="weekday">
+              {WEEKDAY_NAMES.map((name, i) => (
+                <option value={String(i)} selected={digest.weekday === i}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div class="field">
+            <label for="digest-hour">Hour</label>
+            <select id="digest-hour" name="hour" aria-describedby="digest-hour-hint">
+              {Array.from({ length: 24 }, (_, h) => (
+                <option value={String(h)} selected={digest.hour === h}>
+                  {`${String(h).padStart(2, '0')}:00`}
+                </option>
+              ))}
+            </select>
+            <p class="hint" id="digest-hour-hint">
+              {`Server time: ${serverTimeZone()}.`}
+            </p>
+          </div>
+        </div>
+        {hooks === 0 && (
+          <p class="hint">No webhook gets it yet: tick insights.weekly on a webhook below (Slack works).</p>
+        )}
+        <div class="form-actions">
+          <button class="primary" type="submit">
+            Save digest
+          </button>
+          <button type="submit" formaction={ui.url(`${base}/send`)}>
+            Send now
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function SettingsPage(props: {
   ui: Ui;
   project: Project;
+  digest: DigestSettings;
+  mailer: boolean;
   access: ProjectAccess;
   tokens: TokenView[];
   integration: IntegrationView;
@@ -386,6 +468,8 @@ function SettingsPage(props: {
         </form>
       </section>
 
+      <DigestSection ui={ui} project={project} digest={props.digest} webhooks={props.webhooks} mailer={props.mailer} />
+
       <section class="settings-section" aria-labelledby="tokens-title">
         <div class="section-head">
           <h2 id="tokens-title">Tokens</h2>
@@ -516,12 +600,13 @@ function NewTokenPage(props: {
 export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): void {
   const page = async (c: Context<AppEnv>, extra: Partial<Parameters<typeof SettingsPage>[0]> = {}) => {
     const { project, access } = await managed(c, s);
-    const [tokens, members, invites, integration, webhooks] = await Promise.all([
+    const [tokens, members, invites, integration, webhooks, digest] = await Promise.all([
       listProjectTokens(s.deps, project.slug),
       listMembers(s.deps, project.slug),
       listInvites(s.deps, project.id),
       getIntegration(s.deps, project.slug),
       listWebhooks(s.deps, project.slug),
+      getDigestSettings(s.deps, project.id),
     ]);
     return (
       <SettingsPage
@@ -533,6 +618,8 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
         invites={invites}
         integration={integration}
         webhooks={webhooks}
+        digest={digest}
+        mailer={!!s.mailer}
         publicUrl={s.config.publicUrl}
         notice={noticeOf(c)}
         {...extra}
@@ -572,6 +659,23 @@ export function registerSettingsPages(app: OpenAPIHono<AppEnv>, s: Services): vo
       if (!(err instanceof AppError) || err.status >= 500) throw err;
       return c.html(await page(c, { values, errors: formErrors(err) }), err.status as 409 | 422);
     }
+  });
+
+  app.post('/ui/p/:slug/settings/digest', async (c) => {
+    const { project } = await managed(c, s);
+    const form = await c.req.parseBody();
+    await updateDigestSettings(s.deps, project.id, {
+      enabled: field(form, 'enabled') === 'on',
+      weekday: Number(field(form, 'weekday') ?? 1),
+      hour: Number(field(form, 'hour') ?? 9),
+    });
+    return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=digest-saved#digest-title`), 303);
+  });
+
+  app.post('/ui/p/:slug/settings/digest/send', async (c) => {
+    const { project } = await managed(c, s);
+    await sendDigestNow(s.deps, project, { publicUrl: s.config.publicUrl, mailer: s.mailer ?? null });
+    return c.redirect(uiOf(c, s).url(`/ui/p/${project.slug}/settings?done=digest-sent#digest-title`), 303);
   });
 
   app.get('/ui/p/:slug/settings/tokens/new', async (c) => {

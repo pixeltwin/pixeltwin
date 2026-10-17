@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { spanText } from '../../src/domain/insight-text';
 import { scaleOf } from '../../src/ui/charts';
-import { spanText } from '../../src/ui/pages/insights';
 import { createTestApp, type TestApp } from '../helpers/app';
 import { seedInsights } from '../helpers/insights';
-import { html } from '../helpers/ui';
+import { html, location, postForm } from '../helpers/ui';
 
 describe('Insights page', () => {
   let t: TestApp;
@@ -97,5 +97,73 @@ describe('chart scales and times', () => {
     expect(spanText(130 * 60_000)).toBe('2h 10m');
     expect(spanText(76 * 3_600_000)).toBe('3d 4h');
     expect(spanText(null)).toBe('—');
+  });
+});
+
+describe('weekly digest in the UI', () => {
+  let t: TestApp;
+  const sent: string[] = [];
+
+  beforeEach(async () => {
+    sent.length = 0;
+    t = await createTestApp({
+      mailer: {
+        async send(mail) {
+          sent.push(mail.to);
+        },
+      },
+    });
+    await seedInsights(t);
+  });
+
+  afterEach(async () => {
+    await t.close();
+  });
+
+  test('admins set the digest in Settings and send it now; the notice says where it went', async () => {
+    const admin = await t.userAs('admin');
+    const settings = await html(await t.request('GET', '/ui/p/web/settings', { as: admin }));
+    expect(settings).toContain('<h2 id="digest-title">Weekly digest</h2>');
+    expect(settings).toContain('No webhook gets it yet');
+    expect(settings).toMatch(/Server time: [^<]+\(UTC[+-]\d\d:\d\d\)\./);
+    const saved = await postForm(t, '/ui/p/web/settings/digest', { enabled: 'on', weekday: '3', hour: '14' }, admin);
+    expect(saved.status).toBe(303);
+    expect(location(saved)).toBe('/ui/p/web/settings?done=digest-saved#digest-title');
+    const after = await html(await t.request('GET', '/ui/p/web/settings', { as: admin }));
+    expect(after).toContain('<option value="3" selected="">Wednesday</option>');
+    expect(after).toContain('<option value="14" selected="">14:00</option>');
+    const now = await postForm(t, '/ui/p/web/settings/digest/send', {}, admin);
+    expect(location(now)).toBe('/ui/p/web/settings?done=digest-sent#digest-title');
+  });
+
+  test('a member asks for it by mail on Insights, and gets it when it is sent', async () => {
+    const rita = await t.userAs('viewer', 'rita@example.com');
+    const before = await html(await t.request('GET', '/ui/p/web/insights', { as: rita }));
+    expect(before).toContain('Mail me the weekly digest');
+    expect(before).toContain('The project does not send it yet');
+    const on = await postForm(t, '/ui/p/web/insights/digest-mail', { wanted: 'on' }, rita);
+    expect(location(on)).toBe('/ui/p/web/insights?done=digest-mail-on');
+    expect(await html(await t.request('GET', '/ui/p/web/insights', { as: rita }))).toMatch(/name="wanted" checked=""/);
+    const admin = await t.userAs('admin');
+    await postForm(t, '/ui/p/web/settings/digest/send', {}, admin);
+    for (let i = 0; i < 50 && sent.length === 0; i++) await Bun.sleep(20);
+    expect(sent).toEqual(['rita@example.com']);
+    await postForm(t, '/ui/p/web/insights/digest-mail', {}, rita);
+    expect(await html(await t.request('GET', '/ui/p/web/insights', { as: rita }))).not.toMatch(
+      /name="wanted" checked=""/,
+    );
+  });
+
+  test('without SMTP there is no mail toggle', async () => {
+    const plain = await createTestApp();
+    try {
+      await seedInsights(plain);
+      const admin = await plain.userAs('admin');
+      expect(await html(await plain.request('GET', '/ui/p/web/insights', { as: admin }))).not.toContain(
+        'Mail me the weekly digest',
+      );
+    } finally {
+      await plain.close();
+    }
   });
 });

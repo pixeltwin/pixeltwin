@@ -1,6 +1,8 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Project } from '../../db/schema';
+import { spanText } from '../../domain/insight-text';
 import { insightBranches } from '../../domain/insights';
+import { digestMailWanted, getDigestSettings, setDigestMail } from '../../domain/insights-digest';
 import {
   dateOf,
   getInsights,
@@ -16,7 +18,7 @@ import { visibleProject } from '../../http/access';
 import type { AppEnv, Services } from '../../http/env';
 import { type Bucket, Chart, type Series } from '../charts';
 import { Ago, Pill, ProjectTabs, Variant } from '../components';
-import { noticeOf, type Ui, uiOf } from '../context';
+import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { Layout } from '../layout';
 
 /** The ranges the page offers, in days; a 90-day range is drawn in weeks. */
@@ -30,19 +32,6 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function short(day: number): string {
   const d = new Date(day * 86_400_000);
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
-}
-
-/** `45 s`, `18m`, `2h 10m`, `3d 4h`: a time to decision. */
-export function spanText(ms: number | null): string {
-  if (ms === null) return '—';
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s} s`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h${m % 60 ? ` ${m % 60}m` : ''}`;
-  const d = Math.floor(h / 24);
-  return `${d}d${h % 24 ? ` ${h % 24}h` : ''}`;
 }
 
 /** `1m 12s`, `38 s`, `0.4 s`: a run's visual-check time. */
@@ -519,6 +508,8 @@ function InsightsPage(props: {
   report: InsightsReport;
   buckets: InsightBucket[];
   branches: string[];
+  /** With SMTP: whether this user gets the weekly digest by mail, and whether it is on. */
+  digestMail: { wanted: boolean; enabled: boolean } | null;
   notice?: string | undefined;
 }) {
   const { ui, project, report } = props;
@@ -544,6 +535,29 @@ function InsightsPage(props: {
         {`${short(props.span.fromDay)} – ${short(props.span.toDay)} · finalized builds on ${report.branch} · UTC days`}
       </p>
       <Tiles report={report} ui={ui} slug={project.slug} />
+      {props.digestMail && (
+        <form
+          class="insights-mail"
+          method="post"
+          action={ui.url(`/ui/p/${project.slug}/insights/digest-mail`)}
+          data-autosubmit=""
+        >
+          <label class="option">
+            <input type="checkbox" name="wanted" checked={props.digestMail.wanted} />
+            <span>
+              <strong>Mail me the weekly digest</strong>{' '}
+              <span class="muted">
+                {props.digestMail.enabled
+                  ? 'Once a week, when the project sends it.'
+                  : 'The project does not send it yet; a maintainer turns it on in Settings.'}
+              </span>
+            </span>
+          </label>
+          <button class="small insights-apply" type="submit">
+            Save
+          </button>
+        </form>
+      )}
       {empty ? (
         <div class="empty insights-empty">
           <h3>No builds in this range</h3>
@@ -572,9 +586,12 @@ export function registerInsightPages(app: OpenAPIHono<AppEnv>, s: Services): voi
     const range: Range = (RANGES as readonly number[]).includes(asked) ? (asked as Range) : 30;
     const span = rangeOf(project, { days: range, branch: c.req.query('branch') });
     const report = await getInsights(s.deps, project, span);
-    const [buckets, branches] = await Promise.all([
+    const user = userOf(c);
+    const [buckets, branches, digest, wanted] = await Promise.all([
       insightBuckets(s.deps, project.id, span, range === 90 ? 7 : 1),
       insightBranches(s.deps, project.id),
+      getDigestSettings(s.deps, project.id),
+      digestMailWanted(s.deps, project.id, user.id),
     ]);
     return c.html(
       <InsightsPage
@@ -586,8 +603,21 @@ export function registerInsightPages(app: OpenAPIHono<AppEnv>, s: Services): voi
         report={report}
         buckets={buckets}
         branches={branches}
+        digestMail={s.mailer ? { wanted, enabled: digest.enabled } : null}
         notice={noticeOf(c)}
       />,
+    );
+  });
+
+  // Any member may ask for the digest by mail (when the server sends mail).
+  app.post('/ui/p/:slug/insights/digest-mail', async (c) => {
+    const { project } = await visibleProject(c, s.deps, c.req.param('slug'), 'project.read');
+    const form = await c.req.parseBody();
+    const wanted = field(form, 'wanted') === 'on';
+    await setDigestMail(s.deps, project.id, userOf(c).id, wanted);
+    return c.redirect(
+      uiOf(c, s).url(`/ui/p/${project.slug}/insights?done=${wanted ? 'digest-mail-on' : 'digest-mail-off'}`),
+      303,
     );
   });
 }

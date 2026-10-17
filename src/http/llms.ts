@@ -105,8 +105,22 @@ integration posts the commit status pixeltwin/<slug> (pending while screenshots 
 success when passed, failure when rejected or an error) and one comment per build on the pull
 request. Approving updates them, so CI need not run again. Admins and the project's
 maintainers set it up with PATCH ${api}/projects/<slug>/integration and add webhooks (build.finalized,
-build.verdict_changed, check.reviewed, member.added; signed X-Pixeltwin-Signature: sha256=<HMAC>) with
-POST ${api}/projects/<slug>/webhooks.
+build.verdict_changed, check.reviewed, member.added, insights.weekly; signed X-Pixeltwin-Signature:
+sha256=<HMAC>) with POST ${api}/projects/<slug>/webhooks.
+
+## Insights (where the noise comes from)
+
+GET ${api}/projects/<slug>/insights?from=YYYY-MM-DD&to=YYYY-MM-DD&branch=… (default: the last 30
+UTC days of the main branch; project.read) says how healthy the visual tests are: \`totals\`
+(autoPassRate, neededReview, approved, rejected, \`rejections\` with noise vs realBug and
+\`byReason\`, \`timeToDecision\` median and p90 from finalize to the last decision, agent
+\`suggestions\` accepted or dismissed, \`runTime\`), \`daily\` numbers, \`previous\` (the as long range
+before) and \`noisyScreens\`: the screens to fix in the tests, noisiest first, each with
+\`mainReason\` (not_loaded, late_asset, animation, dynamic_data, or flaky: it keeps flipping) and
+\`action\` (what to change in the test). Fix those before reviewing more of their changes. The
+numbers outlive retention; noisyScreens and slowScreens read the builds still kept. Maintainers
+can send a weekly digest of it (PUT ${api}/projects/<slug>/insights/digest) to webhooks with
+insights.weekly.
 
 ## Rejection reasons (learn from them)
 

@@ -1,5 +1,7 @@
 import type { ActorKind, CheckResult, CheckReview, Project, ProjectRole, RejectReason } from '../db/schema';
 import type { BuildView } from '../domain/builds';
+import { percentText, pointsText, shortDate, spanText, variantText } from '../domain/insight-text';
+import type { InsightsDigest } from '../domain/insights-digest';
 import { reasonLabel } from '../domain/reject-reasons';
 import type { Verdict } from '../domain/verdict';
 import type { StatusUpdate } from './http';
@@ -223,6 +225,8 @@ export interface WebhookPayload {
     via: 'member' | 'invite' | 'access_request';
     addedBy: { id: string; email: string } | null;
   };
+  /** `insights.weekly`: last week's numbers on the main branch and the screens to fix in the tests. */
+  insights?: InsightsDigest;
 }
 
 export function buildPayload(build: BuildView, publicUrl: string): BuildPayload {
@@ -279,6 +283,7 @@ export function slackMessage(payload: WebhookPayload): { text: string; blocks: u
     const text = `pixeltwin · ${project}: ${slack(member.email)} ${how} as ${member.role}${by}`;
     return { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] };
   }
+  if (payload.event === 'insights.weekly' && payload.insights) return slackDigest(project, payload.insights);
   if (!build) {
     const text = `pixeltwin test message for project ${project}: this webhook works.`;
     return { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] };
@@ -327,6 +332,40 @@ export function slackMessage(payload: WebhookPayload): { text: string; blocks: u
       },
       ...(reviewed ? [{ type: 'section', text: { type: 'mrkdwn', text: reviewed } }] : []),
       { type: 'context', elements: [{ type: 'mrkdwn', text: context }] },
+    ],
+  };
+}
+
+/**
+ * The weekly digest in Slack: the auto-pass rate and its change, the median time to decision, and
+ * the five screens to fix in the tests with their main reason and what to do.
+ */
+function slackDigest(project: string, d: InsightsDigest): { text: string; blocks: unknown[] } {
+  const change = pointsText(d.autoPassRate, d.previousAutoPassRate);
+  const rate = `${percentText(d.autoPassRate)}${change ? ` (${change} vs the week before)` : ''}`;
+  const text = `pixeltwin · ${project}: weekly insights on ${slack(d.branch)}: auto-pass ${rate}, median time to decision ${spanText(d.medianTimeToDecisionMs)}`;
+  const summary = [
+    `*Weekly insights* on \`${slack(d.branch)}\` · ${shortDate(d.from)} – ${shortDate(d.to)}`,
+    `Auto-pass *${rate}* · median time to decision *${spanText(d.medianTimeToDecisionMs)}* · ${d.builds} builds`,
+    `Rejections: ${d.rejections.noise} noise from the tests, ${d.rejections.realBug} real ${d.rejections.realBug === 1 ? 'bug' : 'bugs'}`,
+  ].join('\n');
+  const screens =
+    d.screens.length === 0
+      ? 'No noisy screens last week.'
+      : [
+          '*Screens to fix in the tests*',
+          ...d.screens.map((s, i) => {
+            const why =
+              s.mainReason === 'flaky' ? 'keeps flipping' : `${s.noiseRejections}× ${s.mainReason.replace('_', ' ')}`;
+            return `${i + 1}. <${s.url}|${slack(s.name)}>${slack(variantText(s.variant))} · ${why} → ${s.action}`;
+          }),
+        ].join('\n');
+  return {
+    text,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: summary } },
+      { type: 'section', text: { type: 'mrkdwn', text: screens } },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: `pixeltwin · ${project} · <${d.url}|Open Insights>` }] },
     ],
   };
 }

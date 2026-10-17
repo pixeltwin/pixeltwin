@@ -102,3 +102,44 @@ describe('GET /projects/{slug}/insights', () => {
     expect((await problemOf(res)).code).toBe('project_not_found');
   });
 });
+
+describe('the weekly digest setting', () => {
+  let t: TestApp;
+
+  beforeEach(async () => {
+    t = await createTestApp();
+    await seedInsights(t);
+  });
+
+  afterEach(async () => {
+    await t.close();
+  });
+
+  test('maintainers read and set it, and send it now; reviewers may not', async () => {
+    const maintainer = await t.userAs('reviewer', 'max@example.com', { projects: [] });
+    const project = await t.deps.db.selectFrom('projects').select('id').executeTakeFirstOrThrow();
+    await t.deps.db
+      .insertInto('projectMembers')
+      .values({ projectId: project.id, userId: maintainer.id, role: 'maintainer', createdAt: Date.now() })
+      .execute();
+    const off = await t.request('GET', '/api/v1/projects/web/insights/digest', { as: maintainer });
+    expect(await off.json()).toMatchObject({ enabled: false, weekday: 1, hour: 9 });
+    const on = await t.request('PUT', '/api/v1/projects/web/insights/digest', {
+      as: maintainer,
+      json: { enabled: true, weekday: 5, hour: 16 },
+    });
+    expect(on.status).toBe(200);
+    const body = await on.json();
+    expect(body).toMatchObject({ enabled: true, weekday: 5, hour: 16 });
+    expect(body.timeZone).toContain('UTC');
+    const bad = await t.request('PUT', '/api/v1/projects/web/insights/digest', { as: maintainer, json: { hour: 24 } });
+    expect(bad.status).toBe(422);
+    const sent = await t.request('POST', '/api/v1/projects/web/insights/digest/send', { as: maintainer });
+    expect(await sent.json()).toEqual({ webhooks: 0, mails: 0 });
+
+    const reviewer = await t.userAs('reviewer', 'rev@example.com');
+    expect((await t.request('POST', '/api/v1/projects/web/insights/digest/send', { as: reviewer })).status).toBe(403);
+    const outsider = await t.userAs('reviewer', 'out@example.com', { projects: [] });
+    expect((await t.request('GET', '/api/v1/projects/web/insights/digest', { as: outsider })).status).toBe(404);
+  });
+});

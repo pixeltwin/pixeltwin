@@ -850,3 +850,12 @@ export const InsightsSchema = z
     }),
   })
   .openapi('Insights');
+
+export const DigestSettingsSchema = z
+  .object({
+    enabled: z.boolean().openapi({ description: 'Off by default' }),
+    weekday: z.number().int().openapi({ description: '0 Sunday … 6 Saturday, server time' }),
+    hour: z.number().int().openapi({ description: '0–23, server time' }),
+    timeZone: z.string().openapi({ description: "The server's time zone (TZ), e.g. Europe/Kyiv (UTC+03:00)" }),
+  })
+  .openapi('DigestSettings');

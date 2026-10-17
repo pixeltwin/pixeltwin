@@ -103,6 +103,10 @@ export const NOTICES: Record<string, string> = {
   'webhook-deleted': 'Webhook deleted.',
   'webhook-test-ok': 'Test delivered.',
   'webhook-test-failed': 'The test was not delivered; see Deliveries.',
+  'digest-saved': 'Weekly digest saved.',
+  'digest-sent': 'Weekly digest sent to the webhooks with insights.weekly and the members who get it by mail.',
+  'digest-mail-on': 'You will get the weekly digest by mail.',
+  'digest-mail-off': 'No more weekly digest mails.',
 };
 
 export function noticeOf(c: Context<AppEnv>): string | undefined {
