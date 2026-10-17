@@ -680,8 +680,25 @@ test('Delete all areas asks first, then deletes every area in place', async ({ r
   await page.getByRole('button', { name: 'Delete all 2 areas' }).click();
   const dialog = page.locator('dialog.confirm');
   await expect(dialog).toContainText('Delete all 2 areas of this snapshot?');
+  // Nothing is deleted while it asks; Cancel keeps them all.
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.area-item')).toHaveCount(2);
+  expect((await seeded.ci.call<{ items: unknown[] }>('GET', `/checks/${seeded.changed}/areas`)).items).toHaveLength(2);
+  // Also after the areas were redrawn in place (a new area): it still asks.
+  await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, {
+    kind: 'ignore',
+    x: 80,
+    y: 0,
+    width: 20,
+    height: 20,
+  });
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await page.getByRole('button', { name: 'Delete all 3 areas' }).click();
+  await expect(dialog).toContainText('Delete all 3 areas of this snapshot?');
+  await page.waitForTimeout(300);
+  expect((await seeded.ci.call<{ items: unknown[] }>('GET', `/checks/${seeded.changed}/areas`)).items).toHaveLength(3);
   await dialog.getByRole('button', { name: 'Delete all' }).click();
-  await expect(page.locator('.toast').last()).toContainText('Deleted 2 areas');
+  await expect(page.locator('.toast').last()).toContainText('Deleted 3 areas');
   await expect(page.locator('.area-item')).toHaveCount(0);
   const { items } = await seeded.ci.call<{ items: unknown[] }>('GET', `/checks/${seeded.changed}/areas`);
   expect(items).toEqual([]);

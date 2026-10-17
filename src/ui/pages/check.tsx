@@ -801,8 +801,7 @@ function Areas(props: {
             class="small ghost danger-hover"
             disabled={props.off}
             title={props.off ? 'Back to the comparison with the areas to change them' : undefined}
-            data-confirm={`Delete all ${areas.length} areas of this snapshot? They apply to every check of it, on every branch; it is compared again at once.`}
-            data-confirm-label="Delete all"
+            data-ask={`Delete all ${areas.length} areas of this snapshot? They apply to every check of it, on every branch; it is compared again at once.`}
           >
             {`Delete all ${areas.length} areas`}
           </button>
