@@ -11,6 +11,7 @@ import {
   PROVIDERS,
   REJECT_REASONS,
   REVIEW_ACTIONS,
+  type RejectReason,
   SUGGESTIONS,
   USER_ROLES,
   USER_STATUSES,
@@ -710,3 +711,151 @@ export const PageQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+
+const RejectionCountsSchema = z.object(
+  Object.fromEntries([...REJECT_REASONS, 'uncategorized'].map((code) => [code, z.number().int()])) as Record<
+    RejectReason | 'uncategorized',
+    z.ZodNumber
+  >,
+);
+const NoiseReasonSchema = z.enum(['not_loaded', 'late_asset', 'animation', 'dynamic_data', 'flaky']);
+const ms = (description: string) => z.number().int().nullable().openapi({ description });
+
+export const InsightsSchema = z
+  .object({
+    branch: z.string(),
+    from: z.string().openapi({ description: 'First day, YYYY-MM-DD (UTC)' }),
+    to: z.string().openapi({ description: 'Last day, YYYY-MM-DD (UTC), inclusive' }),
+    days: z.number().int(),
+    timeZone: z.literal('UTC').openapi({
+      description:
+        'Days are UTC days. A build counts on the day it was created; its reviews count with it, whenever made.',
+    }),
+    totals: z.object({
+      builds: z.number().int().openapi({ description: 'Finalized builds' }),
+      checks: z.number().int(),
+      autoPassed: z
+        .number()
+        .int()
+        .openapi({ description: 'Unchanged, or new and approved by the auto-approve setting' }),
+      autoPassRate: z.number().nullable().openapi({ description: 'autoPassed / checks, 0 to 1; null without checks' }),
+      neededReview: z.number().int().openapi({ description: 'Changed or new checks a person or agent had to decide' }),
+      approved: z.number().int(),
+      rejected: z.number().int(),
+      outdated: z.number().int(),
+      pending: z.number().int().openapi({ description: 'Still waiting for review' }),
+      errors: z.number().int(),
+      rejections: z.object({
+        total: z.number().int(),
+        byReason: RejectionCountsSchema,
+        noise: z.number().int().openapi({
+          description: 'not_loaded + late_asset + animation + dynamic_data: the test captured noise, not a regression',
+        }),
+        realBug: z.number().int(),
+        other: z.number().int().openapi({ description: 'environment, other and rejections without a category' }),
+      }),
+      suggestions: z.object({
+        made: z.number().int(),
+        accepted: z.number().int(),
+        dismissed: z.number().int().openapi({ description: 'Dismissed, or decided the other way' }),
+        acceptRate: z.number().nullable(),
+      }),
+      timeToDecision: z.object({
+        decidedBuilds: z.number().int().openapi({ description: 'Builds that needed review and got a decision' }),
+        medianMs: ms('Finalize to the last decision of the build, median (from a histogram, ±a bucket)'),
+        p90Ms: ms('The same, 90th percentile'),
+        meanMs: ms('The same, mean'),
+      }),
+      runTime: z.object({
+        screenshotMs: z.number().int().openapi({ description: 'What the SDK measured, added up over workers' }),
+        uploadMs: z.number().int(),
+        compareMs: z.number().int().openapi({ description: "The server's compare time, added up" }),
+        retakes: z.number().int(),
+        timedChecks: z.number().int(),
+        perBuildMs: ms('Screenshot + upload + compare per build'),
+      }),
+    }),
+    previous: z.object({
+      from: z.string(),
+      to: z.string(),
+      builds: z.number().int(),
+      autoPassRate: z.number().nullable(),
+      medianTimeToDecisionMs: z.number().int().nullable(),
+    }),
+    daily: z.array(
+      z.object({
+        date: z.string(),
+        builds: z.number().int(),
+        checks: z.number().int(),
+        autoPassed: z.number().int(),
+        autoPassRate: z.number().nullable(),
+        approved: z.number().int(),
+        rejected: z.number().int(),
+        rejectedBy: RejectionCountsSchema,
+        outdated: z.number().int(),
+        pending: z.number().int(),
+        decidedBuilds: z.number().int(),
+        medianMs: z.number().int().nullable(),
+        p90Ms: z.number().int().nullable(),
+        screenshotMs: z.number().int(),
+        uploadMs: z.number().int(),
+        compareMs: z.number().int(),
+        flakyScreens: z.number().int().openapi({ description: 'Screens that changed that day and were flaky by then' }),
+      }),
+    ),
+    flakyScreensNow: z.number().int().openapi({ description: 'Screens flaky on the branch now (last 20 runs)' }),
+    noisyScreens: z.array(
+      z.object({
+        snapshotKey: z.string(),
+        name: z.string(),
+        variant: z.record(z.string(), z.string()),
+        checkId: z.string().openapi({ description: "The screen's latest check on the branch" }),
+        flakyScore: z.number().nullable(),
+        flips: z.number().int(),
+        noiseRejections: z.number().int(),
+        byReason: z.record(z.string(), z.number().int()),
+        mainReason: NoiseReasonSchema,
+        action: z.string().openapi({ description: 'What to change in the test' }),
+        lastSeen: z.number().int(),
+      }),
+    ),
+    slowScreens: z.array(
+      z.object({
+        snapshotKey: z.string(),
+        name: z.string(),
+        variant: z.record(z.string(), z.string()),
+        checkId: z.string(),
+        checks: z.number().int(),
+        compareMsAvg: z.number().int(),
+        compareMsMax: z.number().int(),
+      }),
+    ),
+    reviewers: z.array(
+      z.object({
+        kind: z.enum(['user', 'token']).openapi({ description: 'user: a person; token: an agent or CI' }),
+        id: z.string(),
+        name: z.string(),
+        decisions: z.number().int(),
+        approved: z.number().int(),
+        rejected: z.number().int(),
+        medianMs: z.number().int().nullable(),
+        suggestionsAccepted: z.number().int(),
+        suggestionsDismissed: z.number().int(),
+        acceptRate: z.number().nullable(),
+        suggestionsMade: z.number().int(),
+      }),
+    ),
+    retentionDays: z.number().int().openapi({
+      description: 'Builds are kept this long: noisy and slow screens read them; the rest outlives retention',
+    }),
+  })
+  .openapi('Insights');
+
+export const DigestSettingsSchema = z
+  .object({
+    enabled: z.boolean().openapi({ description: 'Off by default' }),
+    weekday: z.number().int().openapi({ description: '0 Sunday … 6 Saturday, server time' }),
+    hour: z.number().int().openapi({ description: '0–23, server time' }),
+    timeZone: z.string().openapi({ description: "The server's time zone (TZ), e.g. Europe/Kyiv (UTC+03:00)" }),
+  })
+  .openapi('DigestSettings');

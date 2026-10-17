@@ -245,7 +245,11 @@ export async function screenHistories(
   return [...screens.values()];
 }
 
-async function ignoreAreasOf(deps: Pick<Deps, 'db'>, projectId: string, keys: string[]): Promise<Map<string, Rect[]>> {
+export async function ignoreAreasOf(
+  deps: Pick<Deps, 'db'>,
+  projectId: string,
+  keys: string[],
+): Promise<Map<string, Rect[]>> {
   const out = new Map<string, Rect[]>();
   for (let at = 0; at < keys.length; at += KEYS_PER_QUERY) {
     const rows = await deps.db

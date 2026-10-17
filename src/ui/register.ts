@@ -6,6 +6,7 @@ import { CLIENT_MODULES, CLIENT_VERSION } from './client-assets';
 import { registerAuthPages } from './pages/auth';
 import { registerBuildPages } from './pages/build';
 import { registerCheckPages } from './pages/check';
+import { registerInsightPages } from './pages/insights';
 import { registerLinkPages } from './pages/links';
 import { registerNoisyPages } from './pages/noisy';
 import { registerProjectPages } from './pages/projects';
@@ -45,6 +46,7 @@ export function registerUi(app: OpenAPIHono<AppEnv>, s: Services): void {
   registerBuildPages(app, s);
   registerCheckPages(app, s);
   registerNoisyPages(app, s);
+  registerInsightPages(app, s);
   registerSettingsPages(app, s);
   registerUserPages(app, s);
 }

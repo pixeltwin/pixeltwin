@@ -347,3 +347,100 @@ export interface ScreenHistory {
     createdAt: number;
   }>;
 }
+
+/** Why a screen is noisy: a rejection category that says noise, or `flaky` (it keeps flipping). */
+export type NoiseReason = 'not_loaded' | 'late_asset' | 'animation' | 'dynamic_data' | 'flaky';
+
+/** GET /projects/{slug}/insights: how healthy a branch's visual tests are over a range of UTC days. */
+export interface Insights {
+  branch: string;
+  from: string;
+  to: string;
+  days: number;
+  timeZone: 'UTC';
+  totals: {
+    builds: number;
+    checks: number;
+    autoPassed: number;
+    autoPassRate: number | null;
+    neededReview: number;
+    approved: number;
+    rejected: number;
+    outdated: number;
+    pending: number;
+    errors: number;
+    rejections: {
+      total: number;
+      byReason: Record<RejectionCategory, number>;
+      noise: number;
+      realBug: number;
+      other: number;
+    };
+    suggestions: { made: number; accepted: number; dismissed: number; acceptRate: number | null };
+    timeToDecision: { decidedBuilds: number; medianMs: number | null; p90Ms: number | null; meanMs: number | null };
+    runTime: {
+      screenshotMs: number;
+      uploadMs: number;
+      compareMs: number;
+      retakes: number;
+      timedChecks: number;
+      perBuildMs: number | null;
+    };
+  };
+  previous: {
+    from: string;
+    to: string;
+    builds: number;
+    autoPassRate: number | null;
+    medianTimeToDecisionMs: number | null;
+  };
+  daily: Array<{
+    date: string;
+    builds: number;
+    checks: number;
+    autoPassed: number;
+    autoPassRate: number | null;
+    approved: number;
+    rejected: number;
+    rejectedBy: Record<RejectionCategory, number>;
+    medianMs: number | null;
+    p90Ms: number | null;
+  }>;
+  flakyScreensNow: number;
+  noisyScreens: Array<{
+    snapshotKey: string;
+    name: string;
+    variant: Variant;
+    checkId: string;
+    flakyScore: number | null;
+    flips: number;
+    noiseRejections: number;
+    byReason: Partial<Record<RejectReason, number>>;
+    mainReason: NoiseReason;
+    action: string;
+    lastSeen: number;
+  }>;
+  slowScreens: Array<{
+    snapshotKey: string;
+    name: string;
+    variant: Variant;
+    checkId: string;
+    checks: number;
+    compareMsAvg: number;
+    compareMsMax: number;
+  }>;
+  reviewers: Array<{
+    kind: 'user' | 'token';
+    id: string;
+    name: string;
+    decisions: number;
+    approved: number;
+    rejected: number;
+    medianMs: number | null;
+    suggestionsAccepted: number;
+    suggestionsDismissed: number;
+    acceptRate: number | null;
+    suggestionsMade: number;
+  }>;
+  retentionDays: number;
+}

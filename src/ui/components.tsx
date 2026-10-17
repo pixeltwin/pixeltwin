@@ -244,7 +244,7 @@ export function Tabs({ label, items }: { label: string; items: Tab[] }) {
   );
 }
 
-export type ProjectSection = 'branches' | 'builds' | 'noisy' | 'settings';
+export type ProjectSection = 'branches' | 'builds' | 'noisy' | 'insights' | 'settings';
 
 /**
  * Branches · All builds · Noisy screens · Settings (UI spec §4.1); Settings only for those who may
@@ -265,6 +265,7 @@ export function ProjectTabs({
     { label: 'Branches', href: ui.url(`/ui/p/${slug}`), current: current === 'branches' },
     { label: 'All builds', href: ui.url(`/ui/p/${slug}/builds`), current: current === 'builds' },
     { label: 'Noisy screens', href: ui.url(`/ui/p/${slug}/noisy`), current: current === 'noisy' },
+    { label: 'Insights', href: ui.url(`/ui/p/${slug}/insights`), current: current === 'insights' },
   ];
   if (canManage) {
     items.push({ label: 'Settings', href: ui.url(`/ui/p/${slug}/settings`), current: current === 'settings' });

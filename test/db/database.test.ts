@@ -129,6 +129,7 @@ describe('openDatabase', () => {
         '0014_project_members',
         '0015_mail_outbox',
         '0016_reject_reasons',
+        '0017_insights',
       ]);
       await handle.close();
     } finally {

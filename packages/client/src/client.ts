@@ -11,6 +11,7 @@ import type {
   CheckResult,
   CheckReview,
   GroupReview,
+  Insights,
   OpenBuildInput,
   Page,
   PageElement,
@@ -248,6 +249,18 @@ export class PixeltwinClient {
     const qs = params.size ? `?${params}` : '';
     const path = `/projects/${encodeURIComponent(project)}/rejections${qs}`;
     return (await this.#request<RejectionPatterns>('GET', path)).data;
+  }
+
+  /**
+   * How healthy a branch's visual tests are over a range of UTC days (default: the last 30 of the
+   * main branch): auto-pass rate, review load, time to decision, noise versus real bugs, and the
+   * screens to fix in the tests with what to do.
+   */
+  async insights(project: string, query: { from?: string; to?: string; branch?: string } = {}): Promise<Insights> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, value);
+    const qs = params.size ? `?${params}` : '';
+    return (await this.#request<Insights>('GET', `/projects/${encodeURIComponent(project)}/insights${qs}`)).data;
   }
 
   /** Why the screens of a build were rejected before (on every branch), each with its check in the build. */

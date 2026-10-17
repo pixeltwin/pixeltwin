@@ -4,6 +4,7 @@ import type { Build } from '../db/schema';
 import { AppError } from '../errors';
 import { newId } from '../ids';
 import type { Deps } from './deps';
+import { markBuilds } from './insight-marks';
 import { type Page, toPage } from './pagination';
 import { getProjectBySlug } from './projects';
 import { AUTO_APPROVER } from './reviews';
@@ -313,7 +314,10 @@ export async function finalizeBuild(
     .where('state', '=', 'open')
     .executeTakeFirst();
   // Only the call that closed it announces it (not a repeated finalize).
-  if (Number(closed.numUpdatedRows) === 1) await deps.events?.buildFinalized(id);
+  if (Number(closed.numUpdatedRows) === 1) {
+    await markBuilds(deps.db, [id]);
+    await deps.events?.buildFinalized(id);
+  }
   return getBuild(deps, id);
 }
 
@@ -334,6 +338,7 @@ export async function addTimings(deps: DbDeps, id: string, input: unknown): Prom
     }))
     .where('id', '=', id)
     .execute();
+  await markBuilds(deps.db, [id]);
   return getBuild(deps, id);
 }
 
@@ -343,14 +348,23 @@ export async function addTimings(deps: DbDeps, id: string, input: unknown): Prom
  */
 export async function removeBuilds(db: Db, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await db.transaction().execute(async (tx) => {
-    await tx
-      .updateTable('baselines')
-      .set({ sourceCheckId: null })
-      .where('sourceCheckId', 'in', tx.selectFrom('checks').select('id').where('buildId', 'in', ids))
-      .execute();
-    await tx.deleteFrom('builds').where('id', 'in', ids).execute();
-  });
+  await db.transaction().execute((tx) => removeBuildsIn(tx, ids));
+}
+
+/**
+ * removeBuilds inside the caller's transaction; returns how many builds it deleted. Their days of
+ * insights are marked: what is left of them is recomputed (retention adds the deleted builds'
+ * numbers to the kept part first, see insights.ts).
+ */
+export async function removeBuildsIn(tx: Db, ids: string[]): Promise<number> {
+  await markBuilds(tx, ids);
+  await tx
+    .updateTable('baselines')
+    .set({ sourceCheckId: null })
+    .where('sourceCheckId', 'in', tx.selectFrom('checks').select('id').where('buildId', 'in', ids))
+    .execute();
+  // Returning, not numDeletedRows: SQLite counts the rows the cascade deleted too.
+  return (await tx.deleteFrom('builds').where('id', 'in', ids).returning('id').execute()).length;
 }
 
 /** Deletes some of a project's builds (all must be the project's); returns how many. */

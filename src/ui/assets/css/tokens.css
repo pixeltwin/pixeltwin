@@ -67,6 +67,14 @@
   --grey-bg: #f4f4f5;
   --grey-border: #e4e4e7;
   --grey-dot: #a1a1aa;
+  /* Chart series (Insights): categorical slots in a fixed order, checked for colour blindness
+     against --surface in both themes (dataviz validator); --viz-muted de-emphasises. */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-muted: #a1a1aa;
 }
 
 [data-theme="dark"] {
@@ -108,6 +116,12 @@
   --grey-bg: rgb(161 161 170 / 0.12);
   --grey-border: rgb(161 161 170 / 0.28);
   --grey-dot: #71717a;
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-muted: #71717a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -150,6 +164,12 @@
     --grey-bg: rgb(161 161 170 / 0.12);
     --grey-border: rgb(161 161 170 / 0.28);
     --grey-dot: #71717a;
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
+    --viz-4: #c98500;
+    --viz-5: #d55181;
+    --viz-muted: #71717a;
   }
 }
 

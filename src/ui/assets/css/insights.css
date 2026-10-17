@@ -1,0 +1,262 @@
+/* Insights: filters, stat tiles, charts (ui/charts.tsx) and the chart tooltip. */
+.insights-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.insights-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.insights-branch select {
+  width: auto;
+  max-width: 16rem;
+}
+.js .insights-apply {
+  display: none;
+}
+.insights-span {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.tile,
+.chart {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.tile-label {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.tile-value {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tile-delta,
+.tile-sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+}
+.tile-delta {
+  font-size: var(--text-sm);
+}
+.up-good {
+  color: var(--green);
+}
+.down-bad {
+  color: var(--red);
+}
+.same {
+  color: var(--text-muted);
+}
+.charts {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.chart-title {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.chart-desc {
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--c);
+}
+.chart-key.key-line,
+.chart-tip-key {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--c);
+}
+.chart-plot {
+  border-radius: var(--radius-sm);
+}
+.chart-plot:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.chart-svg {
+  display: block;
+  overflow: visible;
+}
+.chart-grid,
+.chart-base,
+.chart-cross {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-base,
+.chart-cross {
+  stroke: var(--border-strong);
+}
+.chart-bar {
+  stroke: var(--c);
+  stroke-width: var(--bar);
+}
+.bars-7 {
+  --bar: min(24px, 7vw);
+}
+.bars-13 {
+  --bar: min(24px, 4vw);
+}
+.bars-30 {
+  --bar: min(16px, 1.8vw);
+}
+.chart-line {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart-area {
+  fill: var(--c);
+  opacity: 0.1;
+}
+.chart-dot {
+  fill: var(--c);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.chart-tick {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.chart-tick-alt {
+  display: none;
+}
+@media (min-width: 641px) {
+  .chart-tick-alt {
+    display: inline;
+  }
+}
+.chart-hit {
+  fill: var(--text);
+  opacity: 0;
+}
+.chart-cross {
+  visibility: hidden;
+}
+.chart-kind-line .chart-band:hover .chart-cross,
+.chart-kind-line .chart-band.is-active .chart-cross {
+  visibility: visible;
+}
+.chart-kind-stack .chart-band:hover .chart-hit,
+.chart-kind-stack .chart-band.is-active .chart-hit {
+  opacity: 0.05;
+}
+.chart-tip {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+}
+.chart-tip p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.chart-tip .chart-tip-title {
+  color: var(--text-muted);
+}
+.chart-data {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+.chart-data summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.chart-data table {
+  margin-top: var(--space-2);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.insights-section {
+  margin-bottom: var(--space-6);
+}
+.insights-note {
+  font-size: var(--text-xs);
+}
+.viz-1 {
+  --c: var(--viz-1);
+}
+.viz-2 {
+  --c: var(--viz-2);
+}
+.viz-3 {
+  --c: var(--viz-3);
+}
+.viz-4 {
+  --c: var(--viz-4);
+}
+.viz-5 {
+  --c: var(--viz-5);
+}
+.viz-muted {
+  --c: var(--viz-muted);
+}
+@media (forced-colors: active) {
+  .chart-bar,
+  .chart-line {
+    stroke: CanvasText;
+  }
+  .chart-key,
+  .chart-tip-key {
+    background: CanvasText;
+  }
+}
+.insights-mail {
+  margin: calc(-1 * var(--space-3)) 0 var(--space-5);
+}

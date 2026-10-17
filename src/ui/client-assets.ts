@@ -11,6 +11,8 @@ import boot from './client/boot.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import changes from './client/changes.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import charts from './client/charts.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import copy from './client/copy.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import dialog from './client/dialog.ts' with { type: 'text' };
@@ -64,6 +66,7 @@ const SOURCES: Record<string, string> = {
   areas,
   boot,
   changes,
+  charts,
   copy,
   dialog,
   fit,

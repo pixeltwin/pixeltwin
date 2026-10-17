@@ -1,8 +1,8 @@
 import type { ExpressionBuilder } from 'kysely';
 import type { DB } from '../db/schema';
 import { imageKey } from '../storage/storage';
-import { removeBuilds } from './builds';
 import type { Deps } from './deps';
+import { archiveBuilds, refreshInsights } from './insights';
 import { listProjects } from './projects';
 import { cleanUpSignups } from './signup';
 import { thumbKeys } from './thumbs';
@@ -18,12 +18,15 @@ export interface RetentionResult {
   elementSetsDeleted: number;
   /** Turned-down or never confirmed sign-ups removed (see signup.ts). */
   signupsDeleted: number;
+  /** Days of insights recomputed (insights.ts). */
+  insightDays: number;
 }
 
 /**
  * Deletes builds (with their checks) older than their project's `retentionDays`, whatever their
  * state: a build still open after that long was abandoned. Baselines are kept; their
- * `sourceCheckId` is cleared when it pointed at a deleted check.
+ * `sourceCheckId` is cleared when it pointed at a deleted check. Their numbers stay in the project's
+ * insights (archiveBuilds keeps them in the transaction that deletes them).
  */
 export async function deleteExpiredBuilds(deps: Pick<Deps, 'db'>, now: number): Promise<number> {
   let deleted = 0;
@@ -39,8 +42,7 @@ export async function deleteExpiredBuilds(deps: Pick<Deps, 'db'>, now: number): 
         .execute();
       if (rows.length === 0) break;
       const ids = rows.map((r) => r.id);
-      await removeBuilds(deps.db, ids);
-      deleted += ids.length;
+      deleted += await archiveBuilds(deps, project.id, ids);
     }
   }
   return deleted;
@@ -165,5 +167,7 @@ export async function runRetention(deps: Pick<Deps, 'db' | 'storage'>, now = Dat
   const imagesDeleted = await deleteUnusedImages(deps, now);
   const elementSetsDeleted = await deleteUnusedElementSets(deps, now);
   const signupsDeleted = await cleanUpSignups(deps, now);
-  return { buildsDeleted, imagesDeleted, elementSetsDeleted, signupsDeleted };
+  // Also the days marked by changes no page view has refreshed since (each change marks its day).
+  const insightDays = await refreshInsights(deps);
+  return { buildsDeleted, imagesDeleted, elementSetsDeleted, signupsDeleted, insightDays };
 }

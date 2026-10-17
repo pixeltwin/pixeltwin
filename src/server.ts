@@ -3,6 +3,7 @@ import { migrateToLatest, openDatabase } from './db/database';
 import { DiffPool } from './diff/pool';
 import { SetupState } from './domain/auth/setup';
 import type { Deps } from './domain/deps';
+import { startDigestJob } from './domain/insights-digest';
 import { startRetentionJob } from './domain/retention-job';
 import { SecretBox } from './domain/secrets';
 import { createApp } from './http/app';
@@ -84,6 +85,8 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
       })
     : null;
   const retention = startRetentionJob({ deps, handle, logger });
+  // The weekly Insights digest, on the server's time zone; once per slot across replicas.
+  const digests = startDigestJob({ deps, publicUrl: config.publicUrl, mailer, logger });
   notifier.start();
   mailer?.start();
   const url = server.url.href.replace(/\/$/, '');
@@ -122,6 +125,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
       await server.stop(true);
       await metricsServer?.stop(true);
       await retention.stop();
+      await digests.stop();
       await notifier.stop();
       await mailer?.stop();
       await pool.close();

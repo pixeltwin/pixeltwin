@@ -1,3 +1,5 @@
+import { percentText, pointsText, shortDate, spanText, variantText } from '../domain/insight-text';
+import type { InsightsDigest } from '../domain/insights-digest';
 import type { Mail } from './smtp';
 
 // The mails pixeltwin sends: plain text first, and the same in simple HTML.
@@ -81,4 +83,22 @@ export function newRequestsMail(to: string, count: number, url: string): Mail {
     [`${count === 1 ? 'A new access request waits' : `${count} access requests wait`} for an admin.`],
     { url, label: 'Review access requests' },
   );
+}
+
+/** The weekly digest of Insights for one project. */
+export function digestMail(to: string, project: string, digest: InsightsDigest): Mail {
+  const change = pointsText(digest.autoPassRate, digest.previousAutoPassRate);
+  const lines = [
+    `Last week on ${digest.branch} (${shortDate(digest.from)} – ${shortDate(digest.to)}): ${digest.builds} builds, ${digest.checks} checks.`,
+    `Auto-pass rate ${percentText(digest.autoPassRate)}${change ? ` (${change} vs the week before)` : ''}; median time to decision ${spanText(digest.medianTimeToDecisionMs)}.`,
+    `${digest.rejections.noise} of ${digest.rejections.total} rejections were noise from the tests; ${digest.rejections.realBug} a real bug.`,
+    '',
+    ...(digest.screens.length > 0
+      ? [
+          'Screens to fix in the tests:',
+          ...digest.screens.map((s, i) => `${i + 1}. ${s.name}${variantText(s.variant)}: ${s.action} (${s.url})`),
+        ]
+      : ['No noisy screens last week.']),
+  ];
+  return mail(to, `${project}: weekly visual test insights`, lines, { url: digest.url, label: 'Open Insights' });
 }

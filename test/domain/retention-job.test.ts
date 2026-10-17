@@ -71,6 +71,7 @@ describe('retention job', () => {
       imagesDeleted: 1,
       elementSetsDeleted: 0,
       signupsDeleted: 0,
+      insightDays: 0,
     });
     expect(await deps.storage.exists(imageKey(sha))).toBe(false);
   });
@@ -118,7 +119,13 @@ describe('retention job', () => {
       const first = a.runNow();
       await Bun.sleep(100);
       expect(await b.runNow()).toBeNull();
-      expect(await first).toEqual({ buildsDeleted: 0, imagesDeleted: 1, elementSetsDeleted: 0, signupsDeleted: 0 });
+      expect(await first).toEqual({
+        buildsDeleted: 0,
+        imagesDeleted: 1,
+        elementSetsDeleted: 0,
+        signupsDeleted: 0,
+        insightDays: 0,
+      });
     } finally {
       await a.stop();
       await b.stop();

@@ -19,6 +19,17 @@ and Reject all (<kbd>A</kbd>/<kbd>R</kbd> on the focused card, <kbd>U</kbd> to u
 flipping back and forth (a clock, an ad) are marked flaky and listed under Noisy screens; on the
 check, Ignore noisy area previews the area that keeps changing and ignores it.
 
+**Insights** (a project tab, for everyone who can open the project) shows how healthy the visual
+tests are on a branch over 7, 30 or 90 days: the auto-pass rate (checks that needed no one) and its
+change, the median and p90 time from a build's finalize to its last decision, how many rejections
+were noise from the test (not loaded, late asset, animation, dynamic data) and how many real bugs,
+the visual-check time per run and the screens flaky now; charts of each over time; and the screens
+to fix in the tests (with the main reason and what to change), the slowest screens and the
+reviewers, people and agents. Days are UTC days and a build counts on the day it was created, its
+reviews with it. The numbers are kept per day, so they outlive retention; the two screen tables
+read the builds still kept. The same numbers: `GET /api/v1/projects/{slug}/insights?from&to&branch`
+and the MCP tool `project_insights`.
+
 ![Reviewing a changed check in the slider view, dark theme](docs/screenshots/review-slider-dark.png)
 
 ## Run it
@@ -238,7 +249,7 @@ secret (GitHub's `X-Hub-Signature-256`, GitLab's `X-Gitlab-Token`).
 ### Webhooks
 
 **Settings → Webhooks** (or `POST /api/v1/projects/{slug}/webhooks`) sends `build.finalized`,
-`build.verdict_changed`, `check.reviewed` and `member.added` to a URL. Each delivery is a JSON `POST` with
+`build.verdict_changed`, `check.reviewed`, `member.added` and `insights.weekly` to a URL. Each delivery is a JSON `POST` with
 `X-Pixeltwin-Event`, `X-Pixeltwin-Delivery` (the same id on every retry) and
 `X-Pixeltwin-Signature: sha256=<HMAC-SHA256 of the body with the webhook's secret>`:
 
@@ -269,6 +280,16 @@ timeout, 5xx, 429) is retried with backoff for about five hours, a 4xx is not. D
 the database, so a restart loses none, and with several replicas each is sent once (at least once
 if a replica dies mid-send: dedupe on the delivery id). Each webhook's page shows its last 20
 deliveries and has *Send test*. Webhook URLs must be `http(s)`; redirects are not followed.
+
+`insights.weekly` is the **weekly digest**, off by default: **Settings → Weekly digest** (or
+`PUT /api/v1/projects/{slug}/insights/digest`) picks a weekday and hour **in the server's time zone**
+(the process's `TZ`, e.g. `TZ=Europe/Berlin`; the setting shows the zone it uses).
+It carries `insights`: last week on the main branch (`autoPassRate`, `previousAutoPassRate`,
+`medianTimeToDecisionMs`, `rejections` with `noise` and `realBug`, and `screens`: the five screens to
+fix in the tests, each with `mainReason` and `action`). In Slack it is one compact message. Members
+can also get it by mail (with SMTP) from the Insights tab. It goes out once per week however many
+replicas run, within six hours of its slot (a replica down at the hour sends it when it is back);
+*Send now* sends it at once.
 
 ### Kubernetes
 
@@ -326,7 +347,7 @@ throwaway kind cluster (CI does on every push).
 | `LOG_LEVEL` | `info` |
 | `SMTP_URL` | unset → no mail (links are shown to copy); `smtp://user:pass@host:587` (STARTTLS when offered; credentials only over TLS, except to localhost) or `smtps://…:465` |
 | `SMTP_FROM` | needed with `SMTP_URL`, e.g. `pixeltwin <pixeltwin@example.com>` |
-| `METRICS` | off; `1` serves Prometheus metrics at `GET /metrics` on `METRICS_PORT`, a port of its own so a proxy or Ingress in front of `PORT` never exposes them (no auth): requests by route and status with latency, checks by result, finalized builds by verdict, diff queue depth, and the webhook / code host / mail outbox backlog (read from the database, so the same on every replica) |
+| `METRICS` | off; `1` serves Prometheus metrics at `GET /metrics` on `METRICS_PORT`, a port of its own so a proxy or Ingress in front of `PORT` never exposes them (no auth): requests by route and status with latency, checks by result, finalized builds by verdict, diff queue depth, the webhook / code host / mail outbox backlog and the days of Insights waiting to be recomputed (read from the database, so the same on every replica) |
 | `METRICS_PORT` | `9464` |
 
 ## Post screenshots from your tests: the JavaScript SDK
@@ -390,7 +411,7 @@ tools: `latest_build` (by branch; the checked-out one by default), `list_changes
 checks with their summary and element changes), `get_check`, `get_check_images` (baseline, new
 and diff as images, cropped to a change to save tokens), `approve_check` and `reject_check` (with
 a `reason`, and rejecting a `reasonCode`; the answer says whether it applied or was recorded as a
-suggestion), `review_group`, `rejection_patterns` and `add_ignore_area`. A header changed on 40 screens is one change group: `list_changes` shows it
+suggestion), `review_group`, `rejection_patterns`, `project_insights` (where the project's noise comes from: the screens to fix in the tests) and `add_ignore_area`. A header changed on 40 screens is one change group: `list_changes` shows it
 once, with its members by name and one representative check, and the agent judges it once and
 decides all 40 with `review_group` (what applied, what became a suggestion, what was skipped, and
 the build's new verdict). Checks on flaky screens carry a `flakyScore`, so the agent treats their

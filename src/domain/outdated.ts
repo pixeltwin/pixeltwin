@@ -1,5 +1,6 @@
 import type { Db } from '../db/database';
 import { AppError } from '../errors';
+import { markBuilds } from './insight-marks';
 
 // A check is `outdated` when a newer build of its branch approved the same screen (or a newer
 // branch build was promoted onto it): approving the older screenshot would replace the newer
@@ -56,7 +57,9 @@ export async function outdateOlder(
     })
     .returning('buildId')
     .execute();
-  return [...new Set(rows.map((r) => r.buildId))];
+  const builds = [...new Set(rows.map((r) => r.buildId))];
+  await markBuilds(db, builds);
+  return builds;
 }
 
 /**
@@ -82,7 +85,9 @@ export async function restoreOutdated(db: Db, checkId: string): Promise<string[]
       .where('id', '=', row.id)
       .execute();
   }
-  return [...new Set(rows.map((r) => r.buildId))];
+  const builds = [...new Set(rows.map((r) => r.buildId))];
+  await markBuilds(db, builds);
+  return builds;
 }
 
 /** 409 for a review of an outdated check, naming both builds. */

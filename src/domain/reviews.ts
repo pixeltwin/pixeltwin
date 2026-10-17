@@ -15,6 +15,7 @@ import { appendBaseline, findCurrentBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import { type CheckView, getCheck } from './checks';
 import type { Deps } from './deps';
+import { markChecks } from './insight-marks';
 import { checkOutdated, outdateOlder, restoreOutdated, supersedingCheck } from './outdated';
 import { getProjectById } from './projects';
 import { parseInput, reviewInputSchema } from './schemas';
@@ -118,6 +119,7 @@ async function outdatedGuard(tx: Db, checkId: string): Promise<AppError | null> 
     .where('id', '=', checkId)
     .where('review', '=', 'pending')
     .execute();
+  await markChecks(tx, [checkId]);
   return checkOutdated(checkId, screen.buildNumber, newer);
 }
 
@@ -146,6 +148,8 @@ async function recordReview(
       createdAt: Date.now(),
     })
     .execute();
+  // The build's day of insights is out of date (reviews count where their build was made).
+  await markChecks(tx, [event.checkId]);
 }
 
 /** Who approved, rejected, undid or suggested a review of the check, newest first. */

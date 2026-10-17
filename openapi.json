@@ -2179,6 +2179,641 @@
           "at"
         ]
       },
+      "Insights": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "description": "First day, YYYY-MM-DD (UTC)"
+          },
+          "to": {
+            "type": "string",
+            "description": "Last day, YYYY-MM-DD (UTC), inclusive"
+          },
+          "days": {
+            "type": "integer"
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "UTC"
+            ],
+            "description": "Days are UTC days. A build counts on the day it was created; its reviews count with it, whenever made."
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "builds": {
+                "type": "integer",
+                "description": "Finalized builds"
+              },
+              "checks": {
+                "type": "integer"
+              },
+              "autoPassed": {
+                "type": "integer",
+                "description": "Unchanged, or new and approved by the auto-approve setting"
+              },
+              "autoPassRate": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "autoPassed / checks, 0 to 1; null without checks"
+              },
+              "neededReview": {
+                "type": "integer",
+                "description": "Changed or new checks a person or agent had to decide"
+              },
+              "approved": {
+                "type": "integer"
+              },
+              "rejected": {
+                "type": "integer"
+              },
+              "outdated": {
+                "type": "integer"
+              },
+              "pending": {
+                "type": "integer",
+                "description": "Still waiting for review"
+              },
+              "errors": {
+                "type": "integer"
+              },
+              "rejections": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "integer"
+                  },
+                  "byReason": {
+                    "type": "object",
+                    "properties": {
+                      "not_loaded": {
+                        "type": "integer"
+                      },
+                      "late_asset": {
+                        "type": "integer"
+                      },
+                      "animation": {
+                        "type": "integer"
+                      },
+                      "dynamic_data": {
+                        "type": "integer"
+                      },
+                      "environment": {
+                        "type": "integer"
+                      },
+                      "real_bug": {
+                        "type": "integer"
+                      },
+                      "other": {
+                        "type": "integer"
+                      },
+                      "uncategorized": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "not_loaded",
+                      "late_asset",
+                      "animation",
+                      "dynamic_data",
+                      "environment",
+                      "real_bug",
+                      "other",
+                      "uncategorized"
+                    ]
+                  },
+                  "noise": {
+                    "type": "integer",
+                    "description": "not_loaded + late_asset + animation + dynamic_data: the test captured noise, not a regression"
+                  },
+                  "realBug": {
+                    "type": "integer"
+                  },
+                  "other": {
+                    "type": "integer",
+                    "description": "environment, other and rejections without a category"
+                  }
+                },
+                "required": [
+                  "total",
+                  "byReason",
+                  "noise",
+                  "realBug",
+                  "other"
+                ]
+              },
+              "suggestions": {
+                "type": "object",
+                "properties": {
+                  "made": {
+                    "type": "integer"
+                  },
+                  "accepted": {
+                    "type": "integer"
+                  },
+                  "dismissed": {
+                    "type": "integer",
+                    "description": "Dismissed, or decided the other way"
+                  },
+                  "acceptRate": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "made",
+                  "accepted",
+                  "dismissed",
+                  "acceptRate"
+                ]
+              },
+              "timeToDecision": {
+                "type": "object",
+                "properties": {
+                  "decidedBuilds": {
+                    "type": "integer",
+                    "description": "Builds that needed review and got a decision"
+                  },
+                  "medianMs": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "Finalize to the last decision of the build, median (from a histogram, ±a bucket)"
+                  },
+                  "p90Ms": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "The same, 90th percentile"
+                  },
+                  "meanMs": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "The same, mean"
+                  }
+                },
+                "required": [
+                  "decidedBuilds",
+                  "medianMs",
+                  "p90Ms",
+                  "meanMs"
+                ]
+              },
+              "runTime": {
+                "type": "object",
+                "properties": {
+                  "screenshotMs": {
+                    "type": "integer",
+                    "description": "What the SDK measured, added up over workers"
+                  },
+                  "uploadMs": {
+                    "type": "integer"
+                  },
+                  "compareMs": {
+                    "type": "integer",
+                    "description": "The server's compare time, added up"
+                  },
+                  "retakes": {
+                    "type": "integer"
+                  },
+                  "timedChecks": {
+                    "type": "integer"
+                  },
+                  "perBuildMs": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "Screenshot + upload + compare per build"
+                  }
+                },
+                "required": [
+                  "screenshotMs",
+                  "uploadMs",
+                  "compareMs",
+                  "retakes",
+                  "timedChecks",
+                  "perBuildMs"
+                ]
+              }
+            },
+            "required": [
+              "builds",
+              "checks",
+              "autoPassed",
+              "autoPassRate",
+              "neededReview",
+              "approved",
+              "rejected",
+              "outdated",
+              "pending",
+              "errors",
+              "rejections",
+              "suggestions",
+              "timeToDecision",
+              "runTime"
+            ]
+          },
+          "previous": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "builds": {
+                "type": "integer"
+              },
+              "autoPassRate": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "medianTimeToDecisionMs": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "builds",
+              "autoPassRate",
+              "medianTimeToDecisionMs"
+            ]
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "builds": {
+                  "type": "integer"
+                },
+                "checks": {
+                  "type": "integer"
+                },
+                "autoPassed": {
+                  "type": "integer"
+                },
+                "autoPassRate": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "approved": {
+                  "type": "integer"
+                },
+                "rejected": {
+                  "type": "integer"
+                },
+                "rejectedBy": {
+                  "type": "object",
+                  "properties": {
+                    "not_loaded": {
+                      "type": "integer"
+                    },
+                    "late_asset": {
+                      "type": "integer"
+                    },
+                    "animation": {
+                      "type": "integer"
+                    },
+                    "dynamic_data": {
+                      "type": "integer"
+                    },
+                    "environment": {
+                      "type": "integer"
+                    },
+                    "real_bug": {
+                      "type": "integer"
+                    },
+                    "other": {
+                      "type": "integer"
+                    },
+                    "uncategorized": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "not_loaded",
+                    "late_asset",
+                    "animation",
+                    "dynamic_data",
+                    "environment",
+                    "real_bug",
+                    "other",
+                    "uncategorized"
+                  ]
+                },
+                "outdated": {
+                  "type": "integer"
+                },
+                "pending": {
+                  "type": "integer"
+                },
+                "decidedBuilds": {
+                  "type": "integer"
+                },
+                "medianMs": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "p90Ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "screenshotMs": {
+                  "type": "integer"
+                },
+                "uploadMs": {
+                  "type": "integer"
+                },
+                "compareMs": {
+                  "type": "integer"
+                },
+                "flakyScreens": {
+                  "type": "integer",
+                  "description": "Screens that changed that day and were flaky by then"
+                }
+              },
+              "required": [
+                "date",
+                "builds",
+                "checks",
+                "autoPassed",
+                "autoPassRate",
+                "approved",
+                "rejected",
+                "rejectedBy",
+                "outdated",
+                "pending",
+                "decidedBuilds",
+                "medianMs",
+                "p90Ms",
+                "screenshotMs",
+                "uploadMs",
+                "compareMs",
+                "flakyScreens"
+              ]
+            }
+          },
+          "flakyScreensNow": {
+            "type": "integer",
+            "description": "Screens flaky on the branch now (last 20 runs)"
+          },
+          "noisyScreens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "snapshotKey": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "variant": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "checkId": {
+                  "type": "string",
+                  "description": "The screen's latest check on the branch"
+                },
+                "flakyScore": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "flips": {
+                  "type": "integer"
+                },
+                "noiseRejections": {
+                  "type": "integer"
+                },
+                "byReason": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "mainReason": {
+                  "type": "string",
+                  "enum": [
+                    "not_loaded",
+                    "late_asset",
+                    "animation",
+                    "dynamic_data",
+                    "flaky"
+                  ]
+                },
+                "action": {
+                  "type": "string",
+                  "description": "What to change in the test"
+                },
+                "lastSeen": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshotKey",
+                "name",
+                "variant",
+                "checkId",
+                "flakyScore",
+                "flips",
+                "noiseRejections",
+                "byReason",
+                "mainReason",
+                "action",
+                "lastSeen"
+              ]
+            }
+          },
+          "slowScreens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "snapshotKey": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "variant": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "checkId": {
+                  "type": "string"
+                },
+                "checks": {
+                  "type": "integer"
+                },
+                "compareMsAvg": {
+                  "type": "integer"
+                },
+                "compareMsMax": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshotKey",
+                "name",
+                "variant",
+                "checkId",
+                "checks",
+                "compareMsAvg",
+                "compareMsMax"
+              ]
+            }
+          },
+          "reviewers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "token"
+                  ],
+                  "description": "user: a person; token: an agent or CI"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "decisions": {
+                  "type": "integer"
+                },
+                "approved": {
+                  "type": "integer"
+                },
+                "rejected": {
+                  "type": "integer"
+                },
+                "medianMs": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "suggestionsAccepted": {
+                  "type": "integer"
+                },
+                "suggestionsDismissed": {
+                  "type": "integer"
+                },
+                "acceptRate": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "suggestionsMade": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "name",
+                "decisions",
+                "approved",
+                "rejected",
+                "medianMs",
+                "suggestionsAccepted",
+                "suggestionsDismissed",
+                "acceptRate",
+                "suggestionsMade"
+              ]
+            }
+          },
+          "retentionDays": {
+            "type": "integer",
+            "description": "Builds are kept this long: noisy and slow screens read them; the rest outlives retention"
+          }
+        },
+        "required": [
+          "branch",
+          "from",
+          "to",
+          "days",
+          "timeZone",
+          "totals",
+          "previous",
+          "daily",
+          "flakyScreensNow",
+          "noisyScreens",
+          "slowScreens",
+          "reviewers",
+          "retentionDays"
+        ]
+      },
+      "DigestSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Off by default"
+          },
+          "weekday": {
+            "type": "integer",
+            "description": "0 Sunday … 6 Saturday, server time"
+          },
+          "hour": {
+            "type": "integer",
+            "description": "0–23, server time"
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "The server's time zone (TZ), e.g. Europe/Kyiv (UTC+03:00)"
+          }
+        },
+        "required": [
+          "enabled",
+          "weekday",
+          "hour",
+          "timeZone"
+        ]
+      },
       "BaselinePage": {
         "type": "object",
         "properties": {
@@ -2463,7 +3098,8 @@
                 "build.finalized",
                 "build.verdict_changed",
                 "check.reviewed",
-                "member.added"
+                "member.added",
+                "insights.weekly"
               ]
             }
           },
@@ -8205,6 +8841,378 @@
         }
       }
     },
+    "/api/v1/projects/{slug}/insights": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "How healthy the project's visual tests are on a branch: auto-pass rate, review load and noise",
+        "description": "Daily numbers of the finalized builds of a branch over a range of UTC days (they outlive retention): how many checks passed by themselves, how many a person or agent had to decide and how fast, why rejections were made (not_loaded, late_asset, animation and dynamic_data are noise from the test, real_bug a regression), what agent suggestions became, and run time. Plus the screens to fix in the tests (`noisyScreens`, with the main reason and what to do), the slowest screens to compare and the reviewers. A build counts on the day it was created, its reviews with it. Default: the last 30 days of the main branch; at most 366 days.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "First day (UTC), inclusive; default 29 days before `to`",
+              "example": "2026-10-17"
+            },
+            "required": false,
+            "description": "First day (UTC), inclusive; default 29 days before `to`",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Last day (UTC), inclusive; default today",
+              "example": "2026-10-17"
+            },
+            "required": false,
+            "description": "Last day (UTC), inclusive; default today",
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Default the project's main branch"
+            },
+            "required": false,
+            "description": "Default the project's main branch",
+            "name": "branch",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The insights",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insights"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/insights/digest": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "The weekly digest setting: on or off, and when (server time)",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Turns the weekly digest on or off and sets its weekday and hour (server time)",
+        "description": "Once a week, at `hour` on `weekday` (0 Sunday … 6 Saturday) in the time zone of the server (TZ, answered as `timeZone`), last week on the main branch goes to the webhooks that subscribe to `insights.weekly` (Slack format: a compact message) and by mail to members who asked for it.",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{slug}/insights/digest/send": {
+      "post": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Sends the weekly digest now, whatever the schedule",
+        "x-permission": "project.admin",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "webhooks": {
+                      "type": "integer",
+                      "description": "Webhooks it was queued for"
+                    },
+                    "mails": {
+                      "type": "integer",
+                      "description": "Mails queued (0 without SMTP)"
+                    }
+                  },
+                  "required": [
+                    "webhooks",
+                    "mails"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{slug}/snapshots/{snapshotKey}/baselines": {
       "get": {
         "tags": [
@@ -8948,7 +9956,8 @@
                         "build.finalized",
                         "build.verdict_changed",
                         "check.reviewed",
-                        "member.added"
+                        "member.added",
+                        "insights.weekly"
                       ]
                     },
                     "minItems": 1
@@ -9161,7 +10170,8 @@
                         "build.finalized",
                         "build.verdict_changed",
                         "check.reviewed",
-                        "member.added"
+                        "member.added",
+                        "insights.weekly"
                       ]
                     },
                     "minItems": 1
