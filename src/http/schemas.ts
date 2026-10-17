@@ -7,6 +7,7 @@ import {
   PROJECT_ROLES,
   REVIEW_ACTIONS,
   USER_ROLES,
+  USER_STATUSES,
 } from '../db/schema';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
@@ -33,6 +34,10 @@ export const UserSchema = z
         'Global role. admin: every project and the server. reviewer, viewer: the role in projects visible to ' +
         'everyone and the default when added to a project; other projects need a membership',
     }),
+    status: z.enum(USER_STATUSES).openapi({
+      description: 'pending: signed up, waiting for an admin; rejected: turned down. Neither may use the API',
+    }),
+    name: z.string().nullable(),
     createdAt: z.number().int(),
   })
   .openapi('User');

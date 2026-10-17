@@ -1,9 +1,11 @@
 import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
+import { userPrincipal } from '../domain/auth/policy';
 import { resolveSession } from '../domain/auth/sessions';
 import { AppError } from '../errors';
 import { setSessionCookie } from '../http/cookies';
 import { type AppEnv, SESSION_COOKIE, type Services } from '../http/env';
+import { waitingPage } from './pages/waiting';
 
 /** Spec §7.4: UI responses. Styles and scripts come only from /ui/assets; images from this origin. */
 export const UI_CSP =
@@ -12,6 +14,8 @@ export const UI_CSP =
 const PUBLIC_PAGES = /^\/ui\/(login|setup|assets\/)/;
 /** One-time links: public, never with a session (a link opened in a logged-in browser stays about its own email). */
 const LINK_PAGES = /^\/ui\/(invite|reset|verify)\//;
+/** What a pending (or rejected) user may still do: log out, switch the theme. */
+const PENDING_PAGES = /^\/ui\/(logout|theme|login)$/;
 /** Pages of one project, build or check: each must check the user's access to its project. */
 const PROJECT_PAGES = /^\/ui\/(p|builds|checks)\//;
 
@@ -54,7 +58,7 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
     const user = session?.user ?? null;
     if (cookie && session && user) {
       if (session.refreshed) setSessionCookie(c, s.config.publicUrl, { token: cookie, expiresAt: session.expiresAt });
-      c.set('principal', { kind: 'user', id: user.id, email: user.email, role: user.role });
+      c.set('principal', userPrincipal(user));
       c.set('authVia', 'cookie');
       c.set('sessionToken', cookie);
     }
@@ -65,6 +69,14 @@ export function uiSession(s: Services): MiddlewareHandler<AppEnv> {
     if (!user && !PUBLIC_PAGES.test(c.req.path)) {
       const here = c.req.path + (new URL(c.req.url).search || '');
       return c.redirect(`${base}/ui/login?next=${encodeURIComponent(here)}`, 303);
+    }
+    // A sign-up waiting for an admin (or turned down) sees that, whatever page it asks for.
+    if (user && user.status !== 'active' && !PENDING_PAGES.test(c.req.path)) {
+      const res = await waitingPage(c, s, user.status === 'rejected');
+      res.headers.set('content-security-policy', UI_CSP);
+      res.headers.set('referrer-policy', 'same-origin');
+      res.headers.set('x-frame-options', 'DENY');
+      return res;
     }
 
     await next();

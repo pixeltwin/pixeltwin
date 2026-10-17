@@ -6,10 +6,11 @@ import { createProjectToken } from '../../src/domain/auth/tokens';
 import { inviteToProject } from '../../src/domain/invites';
 import { addMember } from '../../src/domain/members';
 import { createProject } from '../../src/domain/projects';
+import { requestAccess, updateSignupSettings } from '../../src/domain/signup';
 import { openApiDocument } from '../../src/http/docs';
 import { API } from '../../src/http/env';
 import { defineRoute } from '../../src/http/route';
-import { createTestApp, problemOf, type TestApp } from '../helpers/app';
+import { createTestApp, PASSWORD, problemOf, type TestApp } from '../helpers/app';
 import { makePng } from '../helpers/png';
 import { openBuild, submit } from '../helpers/scenario';
 import { postForm } from '../helpers/ui';
@@ -38,6 +39,14 @@ const NOT_PROJECT_SCOPED = new Set([
   'GET /api/v1/invites',
   // One-time links: public, the token is the credential.
   'GET /api/v1/links/:token',
+  // Sign-up: public, and admin (user.admin) for requests and settings.
+  'POST /api/v1/signup',
+  'POST /api/v1/signup/verify/:token',
+  'GET /api/v1/access-requests',
+  'POST /api/v1/access-requests/:id/approve',
+  'POST /api/v1/access-requests/:id/reject',
+  'GET /api/v1/settings/signup',
+  'PUT /api/v1/settings/signup',
   'POST /api/v1/links/:token',
   // Lists only what the caller can see (asserted below).
   'GET /api/v1/projects',
@@ -98,11 +107,14 @@ describe('project access for users', () => {
   let hidden: Record<string, string>;
   let missing: Record<string, string>;
   let permissions: Map<string, RoutePermission>;
+  let hiddenProjectId: string;
+  const usersByEmail = (email: string) =>
+    t.deps.db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirstOrThrow();
 
   beforeAll(async () => {
     t = await createTestApp();
     // The secret project, with everything a route can name: a build, a check, an area, a token, a member.
-    await createProject(t.deps, { slug: 'secret', name: 'Secret launch' });
+    hiddenProjectId = (await createProject(t.deps, { slug: 'secret', name: 'Secret launch' })).id;
     const buildId = await openBuild(t.deps, 'secret');
     const { check } = await submit(t.deps, buildId, makePng(12, 12));
     const { area } = await createArea(t.deps, check.id, 'usr_seed', {
@@ -154,12 +166,12 @@ describe('project access for users', () => {
           : values.token,
   });
 
-  async function send(method: string, path: string, values: Record<string, string>) {
+  async function send(method: string, path: string, values: Record<string, string>, as = outsider) {
     const url = fill(path, idsFor(path, values));
     if (path.startsWith('/ui/')) {
-      return method === 'GET' ? t.request('GET', url, { as: outsider }) : postForm(t, url, {}, outsider);
+      return method === 'GET' ? t.request('GET', url, { as }) : postForm(t, url, {}, as);
     }
-    return t.request(method, url, { as: outsider, json: method === 'GET' ? undefined : {} });
+    return t.request(method, url, { as, json: method === 'GET' ? undefined : {} });
   }
 
   test('every route is either project-scoped or listed as not', () => {
@@ -197,6 +209,45 @@ describe('project access for users', () => {
       for (const [i, value] of ids(hidden).entries()) detail = detail.replaceAll(value ?? '', ids(missing)[i] ?? '');
       expect({ op, code: a.code, detail }).toEqual({ op, code: b.code, detail: b.detail });
     }
+  });
+
+  test('a sign-up waiting for approval learns nothing on any route, even as a member', async () => {
+    await updateSignupSettings(t.deps, { mode: 'approval', domains: '' });
+    await requestAccess(t.deps, { email: 'pending@example.com', password: PASSWORD }, { verify: false });
+    // Even a membership (added behind the admin's back) must not open anything before approval.
+    await t.deps.db
+      .insertInto('projectMembers')
+      .values({
+        projectId: hiddenProjectId,
+        userId: (await usersByEmail('pending@example.com')).id,
+        role: 'maintainer',
+        createdAt: 1,
+      })
+      .execute();
+    const login = await t.request('POST', '/api/v1/auth/login', {
+      json: { email: 'pending@example.com', password: PASSWORD },
+    });
+    expect(login.status).toBe(200);
+    const pending = { cookie: /pt_session=([^;]+)/.exec(login.headers.get('set-cookie') ?? '')?.[1] ?? '', id: '' };
+    for (const { method, path } of routesOf(t)) {
+      const op = `${method} ${path}`;
+      if (NOT_PROJECT_SCOPED.has(op) && !['GET /api/v1/projects', 'GET /ui'].includes(op)) continue;
+      const [seen, absent] = [await send(method, path, hidden, pending), await send(method, path, missing, pending)];
+      expect({ op, status: seen.status }).toEqual({ op, status: 403 });
+      expect({ op, status: absent.status }).toEqual({ op, status: 403 });
+      if (path === '/ui' || path.startsWith('/ui/')) {
+        const text = await seen.text();
+        expect({ op, waiting: text.includes('Waiting for an admin to approve your access') }).toEqual({
+          op,
+          waiting: true,
+        });
+        // The page echoes only the address asked for (in the theme form), never the project.
+        expect({ op, leaks: text.includes('Secret launch') }).toEqual({ op, leaks: false });
+      } else {
+        expect({ op, code: (await problemOf(seen)).code }).toEqual({ op, code: 'account_pending' });
+      }
+    }
+    expect((await t.request('GET', '/api/v1/me', { as: pending })).status).toBe(200);
   });
 
   test('project lists show only what the user can see', async () => {

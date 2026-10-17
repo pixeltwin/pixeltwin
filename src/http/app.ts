@@ -17,6 +17,7 @@ import { registerCheckRoutes } from './routes/checks';
 import { registerImageRoutes } from './routes/images';
 import { registerInviteRoutes } from './routes/invites';
 import { registerProjectRoutes } from './routes/projects';
+import { registerSignupRoutes } from './routes/signup';
 import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
 
@@ -109,6 +110,8 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   });
   for (const kind of ['invite', 'reset', 'verify']) app.use(`/ui/${kind}/*`, linkBody);
   app.use(`${API}/links/*`, linkBody);
+  app.use(`${API}/signup`, linkBody);
+  app.use(`${API}/signup/*`, linkBody);
   // UI forms are small; refuse big bodies before parsing (spec §7.4), including the public login form.
   app.use(
     '/ui/*',
@@ -173,6 +176,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerBaselineRoutes(app, services);
   registerImageRoutes(app, services);
   registerInviteRoutes(app, services);
+  registerSignupRoutes(app, services);
   registerDocRoutes(app, services);
   registerUi(app, services);
   return app;

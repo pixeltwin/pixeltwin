@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Db } from '../../db/database';
 import { isUniqueViolation } from '../../db/database';
-import { USER_ROLES, type UserRole, type UserRow } from '../../db/schema';
+import { USER_ROLES, type UserRole, type UserRow, type UserStatus } from '../../db/schema';
 import { AppError } from '../../errors';
 import { newId } from '../../ids';
 import type { Deps } from '../deps';
@@ -39,11 +39,21 @@ export interface UserView {
   id: string;
   email: string;
   role: UserRole;
+  /** `pending`: signed up, waiting for an admin; `rejected`: turned down. */
+  status: UserStatus;
+  name: string | null;
   createdAt: number;
 }
 
 export function toUserView(user: UserRow): UserView {
-  return { id: user.id, email: user.email, role: user.role, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    name: user.name,
+    createdAt: user.createdAt,
+  };
 }
 
 function emailTaken(email: string): AppError {

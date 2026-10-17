@@ -1,10 +1,10 @@
-import type { Project, ProjectRole, UserRole } from '../../db/schema';
+import type { Project, ProjectRole } from '../../db/schema';
 import type { Deps } from '../deps';
 import { listProjects } from '../projects';
-import { hasPermission, projectRoleOf } from './policy';
+import { hasPermission, type Principal, projectRoleOf } from './policy';
 
 type DbDeps = Pick<Deps, 'db'>;
-type User = { kind: 'user'; id: string; email: string; role: UserRole };
+type User = Extract<Principal, { kind: 'user' }>;
 
 /** The user's role in one project (see `projectRoleOf`); null for admins, who need none. */
 export async function projectRoleFor(deps: DbDeps, user: User, projectId: string): Promise<ProjectRole | null> {

@@ -1,4 +1,4 @@
-import { PROJECT_ROLES, type ProjectRole, type UserRole } from '../../db/schema';
+import { PROJECT_ROLES, type ProjectRole, type UserRole, type UserStatus } from '../../db/schema';
 import { AppError } from '../../errors';
 import type { TokenScope } from './tokens';
 
@@ -30,8 +30,15 @@ export const POLICY: Record<Permission, { roles: UserRole[]; projectRoles: Proje
   'user.admin': { roles: ['admin'], projectRoles: [], scopes: [] },
 };
 
+/** The principal of a logged-in user (session cookie or personal token). */
+export function userPrincipal(user: { id: string; email: string; role: UserRole; status: UserStatus }): Principal & {
+  kind: 'user';
+} {
+  return { kind: 'user', id: user.id, email: user.email, role: user.role, status: user.status };
+}
+
 export type Principal =
-  | { kind: 'user'; id: string; email: string; role: UserRole }
+  | { kind: 'user'; id: string; email: string; role: UserRole; status: UserStatus }
   | { kind: 'token'; id: string; projectId: string; scopes: TokenScope[] };
 
 /**
@@ -45,6 +52,8 @@ export function hasPermission(
 ): boolean {
   const rule = POLICY[permission];
   if (principal.kind === 'token') return principal.scopes.some((scope) => rule.scopes.includes(scope));
+  // A sign-up waiting for an admin (or turned down) may do nothing.
+  if (principal.status !== 'active') return false;
   return rule.roles.includes(principal.role) || (projectRole !== null && rule.projectRoles.includes(projectRole));
 }
 

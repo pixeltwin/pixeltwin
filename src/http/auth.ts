@@ -1,13 +1,15 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
-import { hasPermission, isProjectPermission, type RoutePermission } from '../domain/auth/policy';
+import { hasPermission, isProjectPermission, type RoutePermission, userPrincipal } from '../domain/auth/policy';
 import { resolveSession, USER_TOKEN_PREFIX } from '../domain/auth/sessions';
 import { resolveProjectToken } from '../domain/auth/tokens';
 import { AppError } from '../errors';
 import { setSessionCookie } from './cookies';
-import { type AppEnv, SESSION_COOKIE, type Services } from './env';
+import { API, type AppEnv, SESSION_COOKIE, type Services } from './env';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+/** All a sign-up waiting for approval may call: who am I, and log out. */
+const PENDING_ALLOWED = new Set([`GET ${API}/me`, `POST ${API}/auth/logout`]);
 
 /**
  * Resolves the caller: `Authorization: Bearer pt_…` (project token), `Bearer pu_…` (a user's
@@ -36,7 +38,7 @@ export function authenticate(services: Services): MiddlewareHandler<AppEnv> {
         const session = await resolveSession(services.deps, raw);
         if (!session) throw new AppError('invalid_token', 401, 'The personal token is unknown or has expired.');
         const { user } = session;
-        c.set('principal', { kind: 'user', id: user.id, email: user.email, role: user.role });
+        c.set('principal', userPrincipal(user));
       } else {
         const token = raw ? await resolveProjectToken(services.deps, raw) : null;
         if (!token) throw new AppError('invalid_token', 401, 'The Bearer token is not a valid project token.');
@@ -50,7 +52,7 @@ export function authenticate(services: Services): MiddlewareHandler<AppEnv> {
         const { user } = session;
         if (session.refreshed)
           setSessionCookie(c, services.config.publicUrl, { token: cookie, expiresAt: session.expiresAt });
-        c.set('principal', { kind: 'user', id: user.id, email: user.email, role: user.role });
+        c.set('principal', userPrincipal(user));
         c.set('authVia', 'cookie');
         c.set('sessionToken', cookie);
         if (!SAFE_METHODS.has(c.req.method) && c.req.header('origin') !== allowedOrigin) {
@@ -78,6 +80,15 @@ export function requirePermission(permission: RoutePermission): MiddlewareHandle
     if (permission !== 'public') {
       const principal = c.get('principal');
       if (!principal) throw new AppError('unauthenticated', 401, 'Log in or send a project token.');
+      if (
+        principal.kind === 'user' &&
+        principal.status !== 'active' &&
+        !PENDING_ALLOWED.has(`${c.req.method} ${c.req.path}`)
+      ) {
+        throw principal.status === 'rejected'
+          ? new AppError('account_rejected', 403, 'An admin turned down the access request of this account.')
+          : new AppError('account_pending', 403, 'This account waits for an admin to approve its access.');
+      }
       if (permission === 'session') {
         if (principal.kind !== 'user') throw new AppError('forbidden', 403, 'This endpoint needs a logged-in user.');
       } else if (!hasPermission(principal, permission) && !(scoped && principal.kind === 'user')) {

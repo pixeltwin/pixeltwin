@@ -23,7 +23,13 @@ describe('project members', () => {
   let bob: UserView;
   let webId: string;
 
-  const principal = (u: UserView) => ({ kind: 'user' as const, id: u.id, email: u.email, role: u.role });
+  const principal = (u: UserView) => ({
+    kind: 'user' as const,
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    status: 'active' as const,
+  });
   const make = (email: string, role: UserRole) => createUser(deps, { email, password: PASSWORD, role });
 
   beforeEach(async () => {

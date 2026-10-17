@@ -15,6 +15,7 @@ const user = (role: UserRole): Extract<Principal, { kind: 'user' }> => ({
   id: 'usr_1',
   email: 'a@b.c',
   role,
+  status: 'active',
 });
 const token = (...scopes: Array<'read' | 'write' | 'review'>): Principal => ({
   kind: 'token',

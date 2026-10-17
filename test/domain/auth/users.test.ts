@@ -26,7 +26,14 @@ describe('users', () => {
 
   test('creates a user with a normalized email and no password in the view', async () => {
     const user = await createUser(deps, { email: '  Ada@Example.COM ', password: PASSWORD, role: 'reviewer' });
-    expect(user).toEqual({ id: user.id, email: 'ada@example.com', role: 'reviewer', createdAt: user.createdAt });
+    expect(user).toEqual({
+      id: user.id,
+      email: 'ada@example.com',
+      role: 'reviewer',
+      status: 'active',
+      name: null,
+      createdAt: user.createdAt,
+    });
     expect(user.id).toStartWith('usr_');
     const row = await deps.db.selectFrom('users').selectAll().executeTakeFirstOrThrow();
     expect(row.passwordHash).toStartWith('$argon2id$');
