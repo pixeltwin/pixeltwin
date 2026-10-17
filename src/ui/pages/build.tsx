@@ -1,7 +1,7 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
-import { getCookie } from 'hono/cookie';
+import { getCookie, setCookie } from 'hono/cookie';
 import type { Project } from '../../db/schema';
-import { thumbSize } from '../../diff/thumb';
+import { isTall, THUMB_EDGES, type ThumbEdge, tallView, thumbSize } from '../../diff/thumb';
 import type { DiffData, Rect, Size } from '../../diff/types';
 import { type BuildView, finalizeBuild, getBuild } from '../../domain/builds';
 import {
@@ -31,10 +31,14 @@ import {
   thumbnailSha,
   Variant,
 } from '../components';
-import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
+import { field, noticeOf, safeNext, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
 import {
+  DENSITIES,
+  DENSITY_COOKIE,
+  type Density,
+  densityOf,
   type GridPage,
   PAGE_SIZE_COOKIE,
   pageNumbers,
@@ -47,16 +51,45 @@ import {
 import { RejectMenu, reasonInput } from '../reject-menu';
 
 /** The longer side of a card's thumbnail: sharp at twice the card's size (thumb.ts). */
-const THUMB_EDGE = 640;
+const THUMB_EDGE: Record<Density, ThumbEdge> = { large: 960, compact: 640 };
 
-/** A part of image `sha` (a group card's crop), scaled down to fit THUMB_EDGE. */
-function cropThumbUrl(ui: Ui, sha: string, box: Rect): string {
-  return ui.url(`/api/v1/images/${sha}/thumb?w=${THUMB_EDGE}&crop=${box.x},${box.y},${box.width},${box.height}`);
+/** How wide a card's image is shown (build.css): the browser picks the thumbnail that is sharp at it. */
+const THUMB_SIZES: Record<Density, string> = {
+  large: '(max-width: 840px) 100vw, (max-width: 1240px) 50vw, (max-width: 1640px) 33vw, 400px',
+  compact: '(max-width: 640px) 50vw, 300px',
+};
+
+/**
+ * The part of a full page a card shows (tallView): its top, or the band around its change. It
+ * covers the card's thumbnail (build.css), cut at the bottom, evenly or (`end`: the band ends with
+ * the page, the change may be low in it) at the top, so the change stays in view.
+ */
+type Part = { crop: Rect; top: boolean; end?: boolean };
+
+/** A part of image `sha` (a group card's crop), scaled down to fit `edge`. */
+function cropThumbUrl(ui: Ui, sha: string, box: Rect, edge: number): string {
+  return ui.url(`/api/v1/images/${sha}/thumb?w=${edge}&crop=${box.x},${box.y},${box.width},${box.height}`);
 }
 
-/** A card's image: the thumbnail of `sha` (`diff`: one that keeps a diff's red changes). */
-function thumbUrl(ui: Ui, sha: string, mode: 'plain' | 'diff' = 'plain'): string {
-  return ui.url(`/api/v1/images/${sha}/thumb?w=${THUMB_EDGE}${mode === 'diff' ? '&mode=diff' : ''}`);
+/**
+ * A card's image: the thumbnail of `sha` (`diff`: one that keeps a diff's red changes), or of a
+ * part of it. A full page's top is stored (`fit=top`); a band around a change is a crop.
+ */
+function thumbUrl(ui: Ui, sha: string, edge: number, mode: 'plain' | 'diff' = 'plain', part?: Part): string {
+  const { x, y, width, height } = part?.crop ?? { x: 0, y: 0, width: 0, height: 0 };
+  const shown = !part ? '' : part.top && mode === 'plain' ? '&fit=top' : `&crop=${x}%2C${y}%2C${width}%2C${height}`;
+  return ui.url(`/api/v1/images/${sha}/thumb?w=${edge}${mode === 'diff' ? '&mode=diff' : ''}${shown}`);
+}
+
+/** `srcset` of a card's image: one thumbnail per edge smaller than the image, by its width. */
+function srcsetOf(ui: Ui, sha: string, size: Size, part: Part | undefined): string | undefined {
+  const widths = new Map<number, number>();
+  for (const edge of THUMB_EDGES) {
+    const { width } = thumbSize(size, edge);
+    if (!widths.has(width)) widths.set(width, edge);
+  }
+  if (widths.size < 2) return undefined;
+  return [...widths].map(([width, edge]) => `${thumbUrl(ui, sha, edge, 'plain', part)} ${width}w`).join(', ');
 }
 
 /**
@@ -64,13 +97,52 @@ function thumbUrl(ui: Ui, sha: string, mode: 'plain' | 'diff' = 'plain'): string
  * canvas of the thumbnail's width and height does, so it holds the image's exact box (no layout
  * shift) and shimmers there until the image is loaded and decoded (boot.ts), then the image fades
  * in whole instead of painting top to bottom. The change mask (thumbs island) lies on the same box.
+ * A part of a full page fills the card's thumbnail instead, its top (or its change) in view.
  */
-function ThumbStack(props: { src: string; alt: string; box: Size | undefined }) {
-  const { src, alt, box } = props;
+function ThumbStack(props: {
+  ui: Ui;
+  sha: string;
+  alt: string;
+  size: Size | undefined;
+  density: Density;
+  part?: Part | undefined;
+}) {
+  const { ui, sha, alt, density, part } = props;
+  const size = part?.crop ?? props.size;
+  const edge = THUMB_EDGE[density];
+  const box = size ? thumbSize(size, edge) : undefined;
+  const srcset = size && srcsetOf(ui, sha, size, part);
   return (
-    <span class="thumb-stack">
+    <span class={part ? `thumb-stack part${part.top ? '' : part.end ? ' at-end' : ' at-change'}` : 'thumb-stack'}>
       {box && <canvas class="thumb-box" width={box.width} height={box.height} />}
-      <img src={src} alt={alt} loading="lazy" decoding="async" width={box?.width} height={box?.height} />
+      <img
+        src={thumbUrl(ui, sha, edge, 'plain', part)}
+        srcset={srcset}
+        sizes={srcset ? THUMB_SIZES[density] : undefined}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        width={box?.width}
+        height={box?.height}
+      />
+    </span>
+  );
+}
+
+/** Where a full page's card says it is: at the top, or how far down its change is. */
+function PartHint(props: { part: Part; size: Size }) {
+  const { part, size } = props;
+  const down = Math.round(((part.crop.y + part.crop.height / 2) / size.height) * 100);
+  return part.top ? (
+    <span class="thumb-hint" title="A full-page screenshot: its top. Open the check for all of it.">
+      Full page ↓
+    </span>
+  ) : (
+    <span
+      class="thumb-hint"
+      title="A full-page screenshot: the part with its first change. Open the check for all of it."
+    >
+      {`Change ${down}% down ↓`}
     </span>
   );
 }
@@ -96,13 +168,19 @@ function CheckCard(props: {
   page: number;
   canReview: boolean;
   flaky?: FlakySignal | undefined;
+  density: Density;
 }) {
-  const { ui, check, size, filter } = props;
-  // A changed check shows its new screenshot; the thumbs island paints the diff's changes over it.
-  const diffSrc = check.result === 'changed' && check.diffImageSha ? thumbUrl(ui, check.diffImageSha, 'diff') : null;
+  const { ui, check, size, filter, density } = props;
+  const changed = check.result === 'changed' && check.diffImageSha ? check.diffImageSha : null;
+  // A full page shows its top, or the band around its first change when that lies lower.
+  const view = size && isTall(size) ? tallView(size, changed && isDiff(check.diff) ? check.diff.regions : []) : null;
+  const part = view && size ? { ...view, end: view.crop.y + view.crop.height >= size.height } : undefined;
+  // A changed check shows its new screenshot; the thumbs island paints the diff's changes over it
+  // (of the same part: a crop, as a diff image can be taller than the screenshot).
+  const diffSrc = changed
+    ? thumbUrl(ui, changed, THUMB_EDGE[density], 'diff', part && { crop: part.crop, top: false })
+    : null;
   const sha = diffSrc ? check.imageSha : thumbnailSha(check);
-  // The thumbnail's own size: the skeleton holds exactly the box the image will fill.
-  const box = size ? thumbSize(size, THUMB_EDGE) : undefined;
   const diff = check.diff && 'percent' in check.diff ? check.diff : null;
   const approvable = props.canReview && check.result === 'new' && check.review === 'pending';
   return (
@@ -117,7 +195,8 @@ function CheckCard(props: {
         href={ui.url(`/ui/checks/${check.id}?filter=${filter.key}`)}
       >
         <div class="thumb" data-diff={diffSrc ?? undefined}>
-          <ThumbStack src={thumbUrl(ui, sha)} alt={check.name} box={box} />
+          <ThumbStack ui={ui} sha={sha} alt={check.name} size={size} density={density} part={part} />
+          {part && size && <PartHint part={part} size={size} />}
         </div>
         <div class="check-card-body">
           <span class="check-name" title={check.name}>
@@ -197,17 +276,11 @@ function cropBox(regions: Rect[], size: Size): Rect {
  * A group's thumbnail: the shared change before and after, cropped from the first check's
  * baseline and screenshot (SVG viewBoxes: no image is made, and the CSP allows no inline styles).
  */
-function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined }) {
-  const { ui, check, size } = props;
+function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined; density: Density }) {
+  const { ui, check, size, density } = props;
   const regions = isDiff(check.diff) ? check.diff.regions : [];
   if (!size || !check.baseline || regions.length === 0) {
-    return (
-      <ThumbStack
-        src={thumbUrl(ui, check.imageSha)}
-        alt={check.name}
-        box={size ? thumbSize(size, THUMB_EDGE) : undefined}
-      />
-    );
+    return <ThumbStack ui={ui} sha={check.imageSha} alt={check.name} size={size} density={density} />;
   }
   const box = cropBox(regions, size);
   const shot = (sha: string, label: string, marks: boolean) => (
@@ -220,7 +293,13 @@ function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined }) 
         aria-label={`${label}: ${check.name}`}
       >
         {/* Only the crop, scaled down on the server: the full screenshot can be megabytes. */}
-        <image href={cropThumbUrl(ui, sha, box)} x={box.x} y={box.y} width={box.width} height={box.height} />
+        <image
+          href={cropThumbUrl(ui, sha, box, THUMB_EDGE[density])}
+          x={box.x}
+          y={box.y}
+          width={box.width}
+          height={box.height}
+        />
         {marks &&
           regions.map((r) => (
             <rect
@@ -272,6 +351,7 @@ function GroupCard(props: {
   page: number;
   canReview: boolean;
   flaky: Map<string, FlakySignal>;
+  density: Density;
 }) {
   const { ui, build, members, filter } = props;
   const first = members[0] as CheckView;
@@ -349,7 +429,7 @@ function GroupCard(props: {
     >
       <div class={`check-card group-card card-${status}`}>
         <a class="thumb" href={ui.url(`/ui/checks/${first.id}?filter=${filter.key}`)} title="Open the first screen">
-          <GroupCrop ui={ui} check={first} size={props.sizes.get(first.imageSha)} />
+          <GroupCrop ui={ui} check={first} size={props.sizes.get(first.imageSha)} density={props.density} />
         </a>
         <div class="check-card-body">
           <span class="check-name" title={size > members.length ? `${size} screens in this build` : undefined}>
@@ -608,6 +688,7 @@ function BuildPage(props: {
   /** The card `?focus=` named: the grid island focuses it. */
   focus?: string | undefined;
   notice?: string | undefined;
+  density: Density;
 }) {
   const { ui, project, build, grid, filter, q, picked } = props;
   const narrowed = q !== '' || picked.length > 0;
@@ -726,6 +807,21 @@ function BuildPage(props: {
             picked={picked}
           />
         </div>
+        {/* Large cards (fewer, sharper) or compact ones (more); the grid island switches in place. */}
+        <form class="segmented density-switch" method="post" action={ui.url('/ui/density')}>
+          <input type="hidden" name="next" value={ui.here} />
+          {DENSITIES.map((d) => (
+            <button
+              type="submit"
+              name="density"
+              value={d}
+              aria-pressed={props.density === d ? 'true' : 'false'}
+              title={d === 'large' ? 'Fewer, larger cards' : 'More, smaller cards'}
+            >
+              {d === 'large' ? 'Large' : 'Compact'}
+            </button>
+          ))}
+        </form>
         {/* Newest first; the grid island searches as you type, the form searches without it. */}
         <form class="check-search" method="get" action={ui.url(`/ui/builds/${build.id}`)}>
           <input type="hidden" name="filter" value={filter.key} />
@@ -757,6 +853,7 @@ function BuildPage(props: {
             data-size={grid.size}
             data-offset={grid.offset}
             data-focus={props.focus}
+            data-density={props.density}
           >
             {grid.slots.map((slot) => {
               const members = membersOf(slot);
@@ -773,6 +870,7 @@ function BuildPage(props: {
                   page={grid.page}
                   canReview={props.canReview}
                   flaky={props.flaky}
+                  density={props.density}
                 />
               ) : (
                 <CheckCard
@@ -783,6 +881,7 @@ function BuildPage(props: {
                   page={grid.page}
                   canReview={props.canReview}
                   flaky={props.flaky.get(first.snapshotKey)}
+                  density={props.density}
                 />
               );
             })}
@@ -861,8 +960,23 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         picked={picked}
         focus={focus && grid.slots.some((slot) => slot.key === focus || slot.ids.includes(focus)) ? focus : undefined}
         notice={noticeOf(c)}
+        density={densityOf(getCookie(c, DENSITY_COOKIE))}
       />,
     );
+  });
+
+  // The density switch without JavaScript (with it, the grid island sets the same cookie). Not
+  // HttpOnly, and under the app's path like the page size.
+  app.post('/ui/density', async (c) => {
+    const ui = uiOf(c, s);
+    const form = await c.req.parseBody();
+    setCookie(c, DENSITY_COOKIE, densityOf(field(form, 'density')), {
+      path: ui.url('') || '/',
+      sameSite: 'Lax',
+      maxAge: 365 * 24 * 60 * 60,
+      secure: s.config.publicUrl.startsWith('https:'),
+    });
+    return c.redirect(ui.url(safeNext(field(form, 'next'))), 303);
   });
 
   app.post('/ui/builds/:id/finalize', async (c) => {

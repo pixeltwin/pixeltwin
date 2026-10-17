@@ -71,6 +71,7 @@ const NOT_PROJECT_SCOPED = new Set([
   'GET /ui/setup',
   'POST /ui/setup',
   'POST /ui/theme',
+  'POST /ui/density',
   // Lists only what the caller can see (asserted below).
   'GET /ui',
   'GET /ui/projects/new',

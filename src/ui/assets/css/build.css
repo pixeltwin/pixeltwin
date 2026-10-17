@@ -19,6 +19,9 @@
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--space-4);
 }
+.density-switch {
+  margin-left: auto;
+}
 .check-card {
   display: flex;
   flex-direction: column;
@@ -64,6 +67,7 @@
 .thumb {
   /* The grid island fits the cards to the window by setting --fit-thumb-height. */
   --thumb-height: var(--fit-thumb-height, 170px);
+  position: relative;
   height: var(--thumb-height);
   padding: var(--space-2);
   background: var(--stage-bg);
@@ -103,6 +107,25 @@
 }
 .crop-pane > svg {
   transition: opacity 180ms ease-out;
+}
+/* A full page's top (or the band around its change) fills the thumbnail, sharp, and says so. */
+.thumb-stack.part {
+  width: 100%;
+  height: 100%;
+}
+.part > img,
+.part > canvas {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  object-position: top;
+}
+.part.at-change > * {
+  object-position: center;
+}
+.part.at-end > * {
+  object-position: bottom;
 }
 /* An image that failed to load: a calm grey box that says so, in the image's place. */
 .thumb-stack:has(> img.is-broken) > .thumb-box,
@@ -400,7 +423,8 @@
   stroke: var(--diff);
   stroke-width: 1.5;
 }
-.crop-label {
+.crop-label,
+.thumb-hint {
   position: absolute;
   top: 2px;
   left: 2px;
@@ -410,6 +434,13 @@
   color: #ffffff;
   font-size: 10px;
   line-height: 15px;
+}
+.thumb-hint {
+  top: auto;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  left: auto;
+  pointer-events: none;
 }
 .group-names {
   overflow: hidden;
@@ -657,4 +688,57 @@ main:has([data-live="checks"]) .page-head {
 .card-reason {
   color: var(--red);
   font-size: var(--text-xs);
+}
+/* Large cards (the default): fewer, a screenshot as wide as the card; name and status share a line. */
+.check-grid[data-density="large"] {
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+}
+[data-density="large"] .thumb {
+  --thumb-height: var(--fit-thumb-height, 260px);
+}
+[data-density="large"] .check-card .check-card-body {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+[data-density="large"] .card-status {
+  grid-area: 1 / 2;
+}
+[data-density="large"] .group-members {
+  grid-column: 1 / -1;
+}
+/* A group's Approve all and Reject all on its Screens line, under the list once that is open. */
+[data-density="large"] .group-actions {
+  position: absolute;
+  inset: auto 0 0;
+  min-height: 0;
+  border: 0;
+  background: none;
+  pointer-events: none;
+}
+[data-density="large"] .group-actions > * {
+  pointer-events: auto;
+}
+[data-density="large"] .check-card-body:has(.group-members[open]) + .group-actions {
+  position: static;
+}
+/* Approve at the variants' right, on their line. */
+[data-density="large"] .approvable .check-card-body {
+  padding-bottom: var(--space-3);
+}
+[data-density="large"] .approvable .variant {
+  min-height: 30px;
+  margin-right: 90px;
+}
+[data-density="large"] .card-approve {
+  left: auto;
+  padding: 0;
+  border: 0;
+}
+@media (max-width: 640px) {
+  .check-grid[data-density="large"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-density="large"] .thumb {
+    --thumb-height: 240px;
+  }
 }
