@@ -1,8 +1,8 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Child } from 'hono/jsx';
-import type { Project, ReviewAction } from '../../db/schema';
+import type { ActorKind, Project, ReviewAction } from '../../db/schema';
 import { positionOf } from '../../diff/summary';
-import type { DiffData, DiffErrorData, Rect, Region, Size } from '../../diff/types';
+import type { DiffData, DiffErrorData, ElementChange, Rect, Region, Size } from '../../diff/types';
 import { type Area, aroundChange, createArea, deleteArea, ignoreChanges, listAreas } from '../../domain/areas';
 import { hasPermission } from '../../domain/auth/policy';
 import { baselineHistory } from '../../domain/baselines';
@@ -10,7 +10,15 @@ import { type BuildView, getBuild } from '../../domain/builds';
 import { type CheckView, checkNeighbors, compareWithoutAreas, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
-import { AUTO_APPROVER, approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
+import {
+  AUTO_APPROVER,
+  acceptSuggestion,
+  approveCheck,
+  dismissSuggestion,
+  listReviews,
+  rejectCheck,
+  resetReview,
+} from '../../domain/reviews';
 import { AppError } from '../../errors';
 import type { AppEnv, Services } from '../../http/env';
 import { Ago, CheckStatus, Dot, thumbnailSha, toneOf, Variant } from '../components';
@@ -31,6 +39,65 @@ async function reviewerName(s: Services, id: string): Promise<string> {
   return token ? `token “${token.name}”` : 'a deleted account';
 }
 
+/** A box on a screenshot that lights up with its entry in the list of changes. */
+interface Mark {
+  id: string;
+  rect: Rect;
+  /** Where a moved or resized element was (drawn dashed). */
+  was?: boolean;
+}
+
+/** The list of changes: element changes first (ids `e0`, `e1`…), then the regions none of them explains. */
+interface ListedChanges {
+  elements: Array<{ id: string; change: ElementChange }>;
+  regions: Array<{ id: string; region: Region; n: number }>;
+  marks: Mark[];
+}
+
+function listedChanges(diff: DiffData | null): ListedChanges {
+  if (!diff) return { elements: [], regions: [], marks: [] };
+  const changes = diff.changes ?? [];
+  const explained = new Set(changes.flatMap((c) => c.regions));
+  const elements = changes.map((change, i) => ({ id: `e${i}`, change }));
+  const marks: Mark[] = [];
+  for (const { id, change } of elements) {
+    const now = change.to ?? change.from;
+    if (now) marks.push({ id, rect: now });
+    if (change.to && change.from && (change.kinds.includes('moved') || change.kinds.includes('resized'))) {
+      marks.push({ id, rect: change.from, was: true });
+    }
+  }
+  const regions = diff.regions
+    .map((region, i) => ({ id: String(i), region }))
+    .filter(({ id }) => !explained.has(Number(id)))
+    .map((r, n) => ({ ...r, n: n + 1 }));
+  return { elements, regions, marks };
+}
+
+/** Text with `backticked` selectors shown as code. */
+function Ticks({ text }: { text: string }) {
+  return <>{text.split('`').map((part, i) => (i % 2 === 1 ? <code>{part}</code> : part))}</>;
+}
+
+const KIND_WORD: Record<ElementChange['kind'], string> = {
+  moved: 'Moved',
+  resized: 'Resized',
+  text: 'Text',
+  style: 'Style',
+  added: 'Appeared',
+  removed: 'Disappeared',
+};
+
+/** The smallest rectangle around both boxes of a change. */
+function around(change: ElementChange): Rect {
+  const boxes = [change.from, change.to].filter((r): r is Rect => r !== null);
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+  return { x, y, width: right - x, height: bottom - y };
+}
+
 /** A screenshot with its change regions (boxes that light up from the info strip) and areas. */
 function Shot(props: {
   ui: Ui;
@@ -41,8 +108,11 @@ function Shot(props: {
   areas?: Area[] | undefined;
   /** Ignore regions the test sent with this check (`ignoreRegions` in the API). */
   apiIgnore?: Rect[] | undefined;
+  /** Boxes of element changes: where the element is, and (dashed) where it was. */
+  marks?: Mark[] | undefined;
 }) {
   const { ui, sha, alt, size, regions } = props;
+  const marks = props.marks ?? [];
   return (
     <div class="shot">
       <img
@@ -52,11 +122,21 @@ function Shot(props: {
         height={size?.height}
         draggable="false"
       />
-      {size && regions && regions.length > 0 && (
+      {size && ((regions && regions.length > 0) || marks.length > 0) && (
         // Region boxes as SVG attributes: the CSP forbids inline styles.
         <svg viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-          {regions.map((r, i) => (
+          {(regions ?? []).map((r, i) => (
             <rect x={r.x} y={r.y} width={r.width} height={r.height} data-change={i} />
+          ))}
+          {marks.map((m) => (
+            <rect
+              x={m.rect.x}
+              y={m.rect.y}
+              width={m.rect.width}
+              height={m.rect.height}
+              data-change={m.id}
+              class={m.was ? 'was' : undefined}
+            />
           ))}
         </svg>
       )}
@@ -207,6 +287,7 @@ function Stage(props: {
   const drawingOff = props.areasSwitch !== undefined && !props.areasSwitch.on;
   const baseSize = sizes.get(baseline.imageSha);
   const currentSize = sizes.get(check.imageSha);
+  const { marks } = listedChanges(diff);
   return (
     // `all` is the no-JavaScript view: side by side, then the diff. The island switches modes.
     <section
@@ -294,6 +375,7 @@ function Stage(props: {
             alt="this build"
             size={currentSize}
             regions={diff?.regions}
+            marks={marks}
             areas={areas}
             apiIgnore={check.ignoreRegions}
           />
@@ -306,6 +388,7 @@ function Stage(props: {
               alt="diff"
               size={sizes.get(check.diffImageSha)}
               regions={diff?.regions}
+              marks={marks}
               areas={areas}
               apiIgnore={check.ignoreRegions}
             />
@@ -354,6 +437,7 @@ function areaPlace(region: Rect, size: Size | undefined): string {
 interface HistoryEntry {
   action: ReviewAction;
   who: string;
+  kind: ActorKind;
   comment: string | null;
   at: number;
 }
@@ -370,10 +454,14 @@ const HISTORY_VERB: Record<ReviewAction, string> = {
 async function historyOf(s: Services, checkId: string): Promise<HistoryEntry[]> {
   const events = await listReviews(s.deps, checkId);
   const names = new Map<string, string>();
-  for (const { actor } of events) if (!names.has(actor)) names.set(actor, await reviewerName(s, actor));
+  for (const { actor, actorName } of events) {
+    // A token is named as it was when it acted (it may be deleted or renamed since).
+    if (!names.has(actor)) names.set(actor, actorName ? `token “${actorName}”` : await reviewerName(s, actor));
+  }
   return events.map((e) => ({
     action: e.action,
     who: names.get(e.actor) ?? e.actor,
+    kind: e.actorKind,
     comment: e.comment,
     at: e.createdAt,
   }));
@@ -493,6 +581,11 @@ function History({ check, history }: { check: CheckView; history: HistoryEntry[]
             <span class="event-what">
               <strong>{HISTORY_VERB[entry.action]}</strong>
               {` by ${entry.who}`}
+              {entry.kind === 'token' && (
+                <span class="badge-agent" title="A project token: an agent or CI">
+                  agent
+                </span>
+              )}
             </span>
             <Ago at={entry.at} />
             {entry.comment && <span class="comment">{`“${entry.comment}”`}</span>}
@@ -627,7 +720,8 @@ function IgnoreChange(props: {
   ui: Ui;
   check: CheckView;
   region: Rect;
-  index: number;
+  /** What the button ignores, for its accessible name: "change 2", "button#buy". */
+  label: string;
   size: Size | undefined;
   filter: CheckFilter;
   blocked: boolean;
@@ -646,7 +740,7 @@ function IgnoreChange(props: {
       <button
         type="submit"
         class="small ignore-change"
-        aria-label={`Ignore change ${props.index + 1}`}
+        aria-label={`Ignore ${props.label}`}
         title={
           props.off
             ? 'Back to the comparison with the areas to ignore a change'
@@ -659,6 +753,48 @@ function IgnoreChange(props: {
         Ignore
       </button>
     </form>
+  );
+}
+
+const SUGGESTS: Record<'approve' | 'reject', string> = { approve: 'approving', reject: 'rejecting' };
+
+/**
+ * An agent's open suggestion (agent review policy): what it suggests and why, with one-click
+ * Accept and Dismiss for people who can review.
+ */
+function Suggestion(props: { ui: Ui; check: CheckView; filter: CheckFilter; canReview: boolean }) {
+  const { ui, check, filter } = props;
+  const suggestion = check.suggestion;
+  if (!suggestion) return null;
+  const decidable = check.review === 'pending' || (suggestion.action === 'approve' && check.review === 'rejected');
+  return (
+    <section class={`suggestion suggestion-${suggestion.action}`} aria-label="Agent suggestion" data-suggestion>
+      <p class="suggestion-text">
+        <strong>{`Agent suggests ${SUGGESTS[suggestion.action]}`}</strong>
+        {suggestion.reason ? `: ${suggestion.reason}` : ''}
+      </p>
+      <p class="suggestion-who muted">
+        <span class="badge-agent">agent</span>
+        {` token “${suggestion.by.name ?? suggestion.by.id}” · `}
+        <Ago at={suggestion.at} />
+      </p>
+      {props.canReview && decidable && (
+        <div class="suggestion-actions">
+          <form method="post" action={ui.url(`/ui/checks/${check.id}/suggestion/accept`)}>
+            <input type="hidden" name="filter" value={filter.key} />
+            <button type="submit" class={`small ${suggestion.action === 'approve' ? 'approve' : 'reject'}`}>
+              {suggestion.action === 'approve' ? 'Accept and approve' : 'Accept and reject'}
+            </button>
+          </form>
+          <form method="post" action={ui.url(`/ui/checks/${check.id}/suggestion/dismiss`)}>
+            <input type="hidden" name="filter" value={filter.key} />
+            <button type="submit" class="small ghost">
+              Dismiss
+            </button>
+          </form>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -679,8 +815,10 @@ function Info(props: {
   const diff = isDiffData(check.diff) ? check.diff : null;
   const diffError = check.diff && !isDiffData(check.diff) ? (check.diff as DiffErrorData).error : null;
   const dims = diff?.dimensions;
+  const listed = listedChanges(diff);
   return (
     <aside class="review-info" aria-label="About this check">
+      {check.suggestion && <Suggestion ui={props.ui} check={check} filter={props.filter} canReview={props.canReview} />}
       {diffError && <p class="diff-error">{diffError.message}</p>}
       <dl class="facts">
         {diff && (
@@ -722,29 +860,37 @@ function Info(props: {
       />
       {diff && diff.regions.length > 0 && (
         // A few changes are listed open; a long list starts folded under its count.
-        <details class="changes" open={diff.regions.length <= CHANGES_OPEN ? true : undefined}>
+        <details
+          class="changes"
+          open={listed.elements.length + listed.regions.length <= CHANGES_OPEN ? true : undefined}
+        >
           <summary>
-            Changes <span class="count">{`${diff.regions.length}${diff.regionsTruncated ? '+' : ''}`}</span>
+            Changes{' '}
+            <span class="count">{`${listed.elements.length + listed.regions.length}${diff.regionsTruncated || diff.changesTruncated ? '+' : ''}`}</span>
           </summary>
           <ul class="regions" aria-label="Changes">
-            {diff.regions.map((r, i) => (
+            {listed.elements.map(({ id, change }) => (
               <li>
                 <button
                   type="button"
                   class="small ghost"
-                  data-change={i}
+                  data-change={id}
                   aria-pressed="false"
-                  title="Highlight this change on the screenshots"
+                  title="Highlight this element on the screenshots"
                 >
-                  <span class="region-name">{`Change ${i + 1}`}</span>
-                  <span class="region-place muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+                  <span class="region-name">
+                    <Ticks text={change.description.replace(/^[a-z]/, (c) => c.toUpperCase())} />
+                  </span>
+                  <span class="region-place muted">
+                    {`${KIND_WORD[change.kind]} · ${areaPlace(around(change), size)}${(change.to ?? change.from)?.width ?? 0}×${(change.to ?? change.from)?.height ?? 0} px`}
+                  </span>
                 </button>
                 {props.canReview && (
                   <IgnoreChange
                     ui={props.ui}
                     check={check}
-                    region={r}
-                    index={i}
+                    region={around(change)}
+                    label={change.label.replaceAll('`', '')}
                     size={size}
                     filter={props.filter}
                     blocked={props.areas.some((a) => a.kind === 'compare')}
@@ -753,7 +899,33 @@ function Info(props: {
                 )}
               </li>
             ))}
-            {diff.regionsTruncated && <li class="muted">and more, smaller</li>}
+            {listed.regions.map(({ id, region: r, n }) => (
+              <li>
+                <button
+                  type="button"
+                  class="small ghost"
+                  data-change={id}
+                  aria-pressed="false"
+                  title="Highlight this change on the screenshots"
+                >
+                  <span class="region-name">{`${listed.elements.length > 0 ? 'Other change' : 'Change'} ${n}`}</span>
+                  <span class="region-place muted">{`${areaPlace(r, size)}${r.width}×${r.height} px`}</span>
+                </button>
+                {props.canReview && (
+                  <IgnoreChange
+                    ui={props.ui}
+                    check={check}
+                    region={r}
+                    label={`change ${n}`}
+                    size={size}
+                    filter={props.filter}
+                    blocked={props.areas.some((a) => a.kind === 'compare')}
+                    off={props.areasOff ?? false}
+                  />
+                )}
+              </li>
+            ))}
+            {(diff.regionsTruncated || diff.changesTruncated) && <li class="muted">and more, smaller</li>}
           </ul>
           {props.canReview && diff.regions.length > 1 && (
             <form
@@ -775,7 +947,7 @@ function Info(props: {
                 }
                 disabled={props.areasOff || props.areas.some((a) => a.kind === 'compare')}
               >
-                {`Ignore all ${diff.regions.length} changes`}
+                {listed.elements.length > 0 ? 'Ignore all changes' : `Ignore all ${diff.regions.length} changes`}
               </button>
             </form>
           )}
@@ -1124,6 +1296,38 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       );
     });
   }
+
+  app.post('/ui/checks/:id/suggestion/accept', async (c) => {
+    const ui = uiOf(c, s);
+    const user = userOf(c);
+    if (!hasPermission(user, 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
+    }
+    const form = await c.req.parseBody();
+    const filterKey = field(form, 'filter');
+    const filter = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
+    const check = await acceptSuggestion(s.deps, c.req.param('id'), user.id);
+    const done = check.review === 'rejected' ? 'rejected' : 'approved';
+    const { nextPending } = await checkNeighbors(s.deps, check);
+    return c.redirect(
+      ui.url(
+        nextPending ? `/ui/checks/${nextPending}?${filter}done=${done}` : `/ui/builds/${check.buildId}?done=${done}`,
+      ),
+      303,
+    );
+  });
+
+  app.post('/ui/checks/:id/suggestion/dismiss', async (c) => {
+    const ui = uiOf(c, s);
+    const user = userOf(c);
+    if (!hasPermission(user, 'check.review')) {
+      throw new AppError('forbidden', 403, 'Only admins and reviewers can review checks.');
+    }
+    const form = await c.req.parseBody();
+    const filter = filterFromQuery({ filter: field(form, 'filter') }, 'pending');
+    const check = await dismissSuggestion(s.deps, c.req.param('id'), user.id);
+    return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=suggestion-dismissed`), 303);
+  });
 
   app.post('/ui/checks/:id/areas', async (c) => {
     const ui = uiOf(c, s);
