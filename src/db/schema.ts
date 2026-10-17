@@ -16,6 +16,13 @@ export const AREA_KINDS = ['ignore', 'compare'] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 export type UserRole = (typeof USER_ROLES)[number];
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
+/** `pending`: signed up, waiting for an admin; `rejected`: an admin said no. Neither may use anything. */
+export const USER_STATUSES = ['active', 'pending', 'rejected'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+export const LINK_PURPOSES = ['invite', 'password_reset', 'verify_email'] as const;
+export type LinkPurpose = (typeof LINK_PURPOSES)[number];
+export const REQUEST_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
 // Timestamps are epoch milliseconds. JSON values are stored as text.
 
@@ -118,7 +125,48 @@ export interface UsersTable {
   email: string;
   passwordHash: string;
   role: UserRole;
+  status: Generated<UserStatus>;
+  /** Optional, given when signing up. */
+  name: Generated<string | null>;
   createdAt: number;
+}
+
+/**
+ * A one-time link (spec: invites): an invite, a password reset or an email check. Only the token's
+ * sha256 is stored. An invite may carry a project and role, and the global role of the new user.
+ */
+export interface AuthLinksTable {
+  id: string;
+  purpose: LinkPurpose;
+  tokenHash: string;
+  email: string;
+  userId: string | null;
+  projectId: string | null;
+  projectRole: ProjectRole | null;
+  globalRole: UserRole | null;
+  createdBy: string | null;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+}
+
+/** Someone who signed up and waits for an admin (their user has status `pending`). */
+export interface AccessRequestsTable {
+  id: string;
+  userId: string;
+  note: string | null;
+  /** When they confirmed their email; null without SMTP (admins see "not verified"). */
+  verifiedAt: number | null;
+  status: RequestStatus;
+  decidedBy: string | null;
+  decidedAt: number | null;
+  reason: string | null;
+  createdAt: number;
+}
+
+export interface ServerSettingsTable {
+  key: string;
+  value: string;
 }
 
 /** A non-admin user's access to one project. */
@@ -187,12 +235,16 @@ export interface DB {
   users: UsersTable;
   projectTokens: ProjectTokensTable;
   projectMembers: ProjectMembersTable;
+  authLinks: AuthLinksTable;
+  accessRequests: AccessRequestsTable;
+  serverSettings: ServerSettingsTable;
   sessions: SessionsTable;
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
   storedObjects: StoredObjectsTable;
 }
 
+export type UserRow = Selectable<UsersTable>;
 export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew' | 'visibleToAll'> & {
   autoApproveNew: boolean;
   visibleToAll: boolean;

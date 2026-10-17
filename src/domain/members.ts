@@ -66,12 +66,15 @@ export async function addMember(deps: DbDeps, slug: string, input: unknown): Pro
   const project = await getProjectBySlug(deps, slug);
   const user = await deps.db
     .selectFrom('users')
-    .select(['id', 'email', 'role'])
+    .select(['id', 'email', 'role', 'status'])
     .where('email', '=', email)
     .executeTakeFirst();
-  if (!user) throw new AppError('user_not_found', 404, `No user has the email ${email}. An admin adds users first.`);
+  if (!user) throw new AppError('user_not_found', 404, `No user has the email ${email}. Invite them instead.`);
   if (user.role === 'admin') {
     throw new AppError('user_is_admin', 409, `${email} is an admin and already has access to every project.`);
+  }
+  if (user.status !== 'active') {
+    throw new AppError('account_pending', 409, `${email} has asked for access; an admin approves it under Users.`);
   }
   const member: MemberView = { userId: user.id, email: user.email, role: role ?? user.role, createdAt: Date.now() };
   try {
@@ -152,6 +155,7 @@ export async function memberCandidates(deps: DbDeps, slug: string, q: unknown): 
     .selectFrom('users')
     .select(['id', 'email', 'role'])
     .where('role', '!=', 'admin')
+    .where('status', '=', 'active')
     .where(sql<boolean>`lower(email) like ${pattern} escape '\\'`)
     .where((eb) =>
       eb.not(

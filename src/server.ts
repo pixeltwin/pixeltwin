@@ -7,6 +7,7 @@ import { startRetentionJob } from './domain/retention-job';
 import { createApp } from './http/app';
 import { LoginLimiter } from './http/rate-limit';
 import type { Logger } from './log';
+import { smtpMailer } from './mail/smtp';
 import { DatabaseStorage } from './storage/database';
 import { LocalStorage } from './storage/local';
 
@@ -33,7 +34,8 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     limits: { maxImageBytes: config.maxImageBytes, maxImagePixels: config.maxImagePixels },
   };
   const { state, token } = await SetupState.init(deps, config.setupToken);
-  const app = createApp({ deps, config, logger, setup: state, loginLimiter: new LoginLimiter() });
+  const mailer = config.smtpUrl && config.smtpFrom ? smtpMailer({ url: config.smtpUrl, from: config.smtpFrom }) : null;
+  const app = createApp({ deps, config, logger, setup: state, loginLimiter: new LoginLimiter(), mailer });
 
   const server = Bun.serve({
     port: config.port,

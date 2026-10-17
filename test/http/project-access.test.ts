@@ -3,6 +3,7 @@ import { z } from '@hono/zod-openapi';
 import { createArea } from '../../src/domain/areas';
 import type { RoutePermission } from '../../src/domain/auth/policy';
 import { createProjectToken } from '../../src/domain/auth/tokens';
+import { inviteToProject } from '../../src/domain/invites';
 import { addMember } from '../../src/domain/members';
 import { createProject } from '../../src/domain/projects';
 import { openApiDocument } from '../../src/http/docs';
@@ -31,6 +32,13 @@ const NOT_PROJECT_SCOPED = new Set([
   'PATCH /api/v1/users/:id',
   'DELETE /api/v1/users/:id',
   'GET /api/v1/users/:id/projects',
+  'POST /api/v1/users/:id/reset-link',
+  // Server invites are for admins (user.admin); invites by id are project-scoped below.
+  'POST /api/v1/invites',
+  'GET /api/v1/invites',
+  // One-time links: public, the token is the credential.
+  'GET /api/v1/links/:token',
+  'POST /api/v1/links/:token',
   // Lists only what the caller can see (asserted below).
   'GET /api/v1/projects',
   'POST /api/v1/projects',
@@ -60,7 +68,7 @@ const NOT_PROJECT_SCOPED = new Set([
   'POST /ui/admin/users/:id/delete',
 ]);
 
-const PROJECT_SCOPED = /:slug\b|^\/api\/v1\/(builds|checks|images)\/|^\/ui\/(builds|checks)\//;
+const PROJECT_SCOPED = /:slug\b|^\/api\/v1\/(builds|checks|images|invites)\/|^\/ui\/(builds|checks)\//;
 
 function routesOf(t: TestApp): Array<{ method: string; path: string }> {
   const seen = new Set<string>();
@@ -96,6 +104,8 @@ describe('project access for users', () => {
     });
     const { view: token } = await createProjectToken(t.deps, 'secret', { name: 'ci', scopes: ['read'] });
     const member = await t.userAs('reviewer', 'member@example.com', { projects: ['secret'] });
+    const invite = await inviteToProject(t.deps, 'secret', { email: 'later@example.com' }, member.id);
+    if (invite.kind !== 'invite') throw new Error('expected an invite');
     // The outsider maintains another project: a role elsewhere must not open this one.
     await createProject(t.deps, { slug: 'other', name: 'Other' });
     outsider = await t.userAs('reviewer', 'outsider@example.com', { projects: [] });
@@ -125,7 +135,13 @@ describe('project access for users', () => {
 
   const idsFor = (path: string, values: Record<string, string>) => ({
     ...values,
-    id: /\/(builds)\//.test(path) ? values.build : /\/checks\//.test(path) ? values.check : values.token,
+    id: /\/(builds)\//.test(path)
+      ? values.build
+      : /\/checks\//.test(path)
+        ? values.check
+        : /\/invites\//.test(path)
+          ? values.invite
+          : values.token,
   });
 
   async function send(method: string, path: string, values: Record<string, string>) {
@@ -165,6 +181,7 @@ describe('project access for users', () => {
         values.check,
         values.sha,
         values.token,
+        values.invite,
       ];
       let detail = a.detail;
       for (const [i, value] of ids(hidden).entries()) detail = detail.replaceAll(value ?? '', ids(missing)[i] ?? '');

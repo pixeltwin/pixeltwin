@@ -15,6 +15,7 @@ import { registerBaselineRoutes } from './routes/baselines';
 import { registerBuildRoutes } from './routes/builds';
 import { registerCheckRoutes } from './routes/checks';
 import { registerImageRoutes } from './routes/images';
+import { registerInviteRoutes } from './routes/invites';
 import { registerProjectRoutes } from './routes/projects';
 import { registerSystemRoutes } from './routes/system';
 import { registerUserRoutes } from './routes/users';
@@ -30,6 +31,11 @@ const HTTP_CODES: Record<number, string> = {
 };
 const CHECK_UPLOAD_PATH = new RegExp(`^${API}/builds/[^/]+/checks$`);
 
+/** One-time links carry their token in the path; it never reaches the log. */
+export function redactPath(path: string): string {
+  return path.replace(/\/(invite|reset|verify|links)\/[^/]+/g, '/$1/…');
+}
+
 function requestContext(services: Services): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const requestId = newId('req');
@@ -43,7 +49,7 @@ function requestContext(services: Services): MiddlewareHandler<AppEnv> {
     log('request', {
       requestId,
       method: c.req.method,
-      path: c.req.path,
+      path: redactPath(c.req.path),
       status: c.res.status,
       ms: Math.round(performance.now() - started),
       principal: c.get('principal')?.id ?? null,
@@ -157,6 +163,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerCheckRoutes(app, services);
   registerBaselineRoutes(app, services);
   registerImageRoutes(app, services);
+  registerInviteRoutes(app, services);
   registerDocRoutes(app, services);
   registerUi(app, services);
   return app;

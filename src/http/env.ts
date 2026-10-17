@@ -3,6 +3,7 @@ import type { Principal, RoutePermission } from '../domain/auth/policy';
 import type { SetupState } from '../domain/auth/setup';
 import type { Deps } from '../domain/deps';
 import type { Logger } from '../log';
+import type { Mailer } from '../mail/smtp';
 import type { LoginLimiter } from './rate-limit';
 
 export const API = '/api/v1';
@@ -15,6 +16,8 @@ export interface Services {
   logger: Logger;
   setup: SetupState;
   loginLimiter: LoginLimiter;
+  /** Sends invites, reset links and sign-up mails when SMTP_URL is set. */
+  mailer?: Mailer | null;
 }
 
 export interface AppEnv {

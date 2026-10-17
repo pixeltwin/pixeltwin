@@ -1,4 +1,4 @@
-import type { UsersTable } from '../../db/schema';
+import type { UserRow } from '../../db/schema';
 import { newId } from '../../ids';
 import type { Deps } from '../deps';
 import { randomToken, sha256 } from './random';
@@ -32,7 +32,7 @@ export async function createSession(
 }
 
 export interface ResolvedSession {
-  user: UsersTable;
+  user: UserRow;
   expiresAt: number;
   /** True when this call extended the session; the cookie must then be sent again with `expiresAt`. */
   refreshed: boolean;

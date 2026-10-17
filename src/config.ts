@@ -27,6 +27,8 @@ const envSchema = z.object({
     .min(1024)
     .default(10 * 1024 * 1024),
   MAX_IMAGE_PIXELS: z.coerce.number().int().min(1).default(40_000_000),
+  SMTP_URL: z.url({ protocol: /^smtps?$/ }).optional(),
+  SMTP_FROM: z.string().min(3).optional(),
 });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -53,6 +55,10 @@ export interface Config {
   setupToken: string | null;
   maxImageBytes: number;
   maxImagePixels: number;
+  /** `smtp://user:pass@host:587` (STARTTLS) or `smtps://…:465`; null sends no mail. */
+  smtpUrl: string | null;
+  /** The From of mails, e.g. `pixeltwin <pixeltwin@example.com>`. */
+  smtpFrom: string | null;
 }
 
 /**
@@ -104,6 +110,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new ConfigError(parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`));
   }
   const e = parsed.data;
+  if (e.SMTP_URL && !e.SMTP_FROM) throw new ConfigError(['SMTP_URL needs SMTP_FROM (the From of the mails)']);
   const dataDir = resolve(e.DATA_DIR);
   if (e.STORAGE === 'postgres' && !e.DATABASE_URL) {
     throw new ConfigError(['STORAGE=postgres needs DATABASE_URL=postgres://… (images are kept in that database)']);
@@ -127,5 +134,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     setupToken: e.SETUP_TOKEN ?? null,
     maxImageBytes: e.MAX_IMAGE_BYTES,
     maxImagePixels: e.MAX_IMAGE_PIXELS,
+    smtpUrl: e.SMTP_URL ?? null,
+    smtpFrom: e.SMTP_FROM ?? null,
   };
 }

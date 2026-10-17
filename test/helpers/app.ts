@@ -8,6 +8,7 @@ import { createApp } from '../../src/http/app';
 import type { AppEnv } from '../../src/http/env';
 import { LoginLimiter } from '../../src/http/rate-limit';
 import { type Logger, silentLogger } from '../../src/log';
+import type { Mailer } from '../../src/mail/smtp';
 import { createTestDeps, type TestDeps } from './deps';
 
 export const PUBLIC_URL = 'http://pixeltwin.test';
@@ -47,6 +48,7 @@ export async function createTestApp(
     diffQueueMax?: number;
     logger?: Logger;
     loginLimiter?: LoginLimiter;
+    mailer?: Mailer;
   } = {},
 ): Promise<TestApp> {
   const deps = await createTestDeps();
@@ -62,6 +64,7 @@ export async function createTestApp(
     logger: options.logger ?? silentLogger,
     setup,
     loginLimiter: options.loginLimiter ?? new LoginLimiter(),
+    mailer: options.mailer ?? null,
   });
 
   const request: TestApp['request'] = async (method, path, opts = {}) => {

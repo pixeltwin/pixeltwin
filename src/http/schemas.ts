@@ -50,6 +50,19 @@ export const CandidateSchema = z
   })
   .openapi('MemberCandidate');
 
+export const InviteSchema = z
+  .object({
+    id: z.string(),
+    email: z.string(),
+    project: z.object({ slug: z.string(), name: z.string() }).nullable(),
+    projectRole: z.enum(PROJECT_ROLES).nullable(),
+    role: z.enum(USER_ROLES).nullable().openapi({ description: "The new user's global role; null: viewer" }),
+    invitedBy: z.string().nullable().openapi({ description: 'Email of who invited' }),
+    createdAt: z.number().int(),
+    expiresAt: z.number().int(),
+  })
+  .openapi('Invite');
+
 /** One of a user's memberships. */
 export const MembershipSchema = z
   .object({ slug: z.string(), name: z.string(), role: z.enum(PROJECT_ROLES) })
