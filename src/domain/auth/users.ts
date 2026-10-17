@@ -129,7 +129,13 @@ export async function updateUser(deps: DbDeps, id: string, input: unknown): Prom
     }
   };
   if (changes.role && changes.role !== 'admin' && user.role === 'admin') await guardLastAdmin(deps, user, apply);
-  else await apply(deps.db);
+  else if (changes.role === 'admin' && user.role !== 'admin') {
+    // Admins have access to every project; memberships would only come back if they were demoted.
+    await deps.db.transaction().execute(async (tx) => {
+      await apply(tx);
+      await tx.deleteFrom('projectMembers').where('userId', '=', id).execute();
+    });
+  } else await apply(deps.db);
   return toUserView({ ...user, ...changes });
 }
 

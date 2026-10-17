@@ -40,9 +40,14 @@ export interface BuildView extends Omit<Build, TimingColumns> {
   timing: BuildTiming;
 }
 
+/** Also what a user who may not see the build's project gets. */
+export function buildNotFound(id: string): AppError {
+  return new AppError('build_not_found', 404, `Build ${id} not found.`);
+}
+
 export async function getBuildRow(deps: DbDeps, id: string): Promise<Build> {
   const build = await deps.db.selectFrom('builds').selectAll().where('id', '=', id).executeTakeFirst();
-  if (!build) throw new AppError('build_not_found', 404, `Build ${id} not found.`);
+  if (!build) throw buildNotFound(id);
   return build;
 }
 
@@ -150,7 +155,7 @@ export async function viewsOf(deps: DbDeps, builds: Build[]): Promise<BuildView[
 
 export async function getBuild(deps: DbDeps, id: string): Promise<BuildView> {
   const [view] = await viewsOf(deps, [await getBuildRow(deps, id)]);
-  if (!view) throw new AppError('build_not_found', 404, `Build ${id} not found.`);
+  if (!view) throw buildNotFound(id);
   return view;
 }
 

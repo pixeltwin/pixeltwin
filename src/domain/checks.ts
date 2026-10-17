@@ -205,9 +205,14 @@ function toCheckView(row: CheckWithJoins): CheckView {
   };
 }
 
+/** Also what a user who may not see the check's project gets. */
+export function checkNotFound(id: string): AppError {
+  return new AppError('check_not_found', 404, `Check ${id} not found.`);
+}
+
 export async function getCheck(deps: Pick<Deps, 'db'>, id: string): Promise<CheckView> {
   const row = await checksWithJoins(deps).where('checks.id', '=', id).executeTakeFirst();
-  if (!row) throw new AppError('check_not_found', 404, `Check ${id} not found.`);
+  if (!row) throw checkNotFound(id);
   return toCheckView(row);
 }
 

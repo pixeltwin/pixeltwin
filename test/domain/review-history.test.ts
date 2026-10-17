@@ -103,6 +103,7 @@ describe('review history', () => {
       '0008_parallel_builds',
       '0009_auto_approve_new',
       '0010_timings',
+      '0014_project_members',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([

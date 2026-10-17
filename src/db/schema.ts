@@ -4,6 +4,8 @@ export const BUILD_STATES = ['open', 'finalized'] as const;
 export const CHECK_RESULTS = ['unchanged', 'changed', 'new', 'error'] as const;
 export const CHECK_REVIEWS = ['none', 'pending', 'approved', 'rejected', 'outdated'] as const;
 export const USER_ROLES = ['admin', 'reviewer', 'viewer'] as const;
+/** A user's role in one project (a membership); `admin` is global only. Lowest first. */
+export const PROJECT_ROLES = ['viewer', 'reviewer', 'maintainer'] as const;
 
 export type BuildState = (typeof BUILD_STATES)[number];
 export type CheckResult = (typeof CHECK_RESULTS)[number];
@@ -13,6 +15,7 @@ export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
 export const AREA_KINDS = ['ignore', 'compare'] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 export type UserRole = (typeof USER_ROLES)[number];
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
 // Timestamps are epoch milliseconds. JSON values are stored as text.
 
@@ -26,6 +29,8 @@ export interface ProjectsTable {
   retentionDays: number;
   /** 1: a new screenshot is approved as soon as it arrives. The domain's Project has a boolean. */
   autoApproveNew: Generated<number>;
+  /** 1: every user may open the project with their global role, members or not. */
+  visibleToAll: Generated<number>;
   /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
   buildSeq: Generated<number>;
   createdAt: number;
@@ -116,6 +121,14 @@ export interface UsersTable {
   createdAt: number;
 }
 
+/** A non-admin user's access to one project. */
+export interface ProjectMembersTable {
+  projectId: string;
+  userId: string;
+  role: ProjectRole;
+  createdAt: number;
+}
+
 export interface ProjectTokensTable {
   id: string;
   projectId: string;
@@ -173,13 +186,17 @@ export interface DB {
   baselines: BaselinesTable;
   users: UsersTable;
   projectTokens: ProjectTokensTable;
+  projectMembers: ProjectMembersTable;
   sessions: SessionsTable;
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
   storedObjects: StoredObjectsTable;
 }
 
-export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew'> & { autoApproveNew: boolean };
+export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew' | 'visibleToAll'> & {
+  autoApproveNew: boolean;
+  visibleToAll: boolean;
+};
 export type Build = Selectable<BuildsTable>;
 export type CheckRow = Selectable<ChecksTable>;
 export type Baseline = Selectable<BaselinesTable>;
