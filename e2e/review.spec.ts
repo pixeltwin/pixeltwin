@@ -394,7 +394,7 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   await open(page, `/ui/checks/${seeded.changed}?filter=all`);
   await page.evaluate(() => {
     (window as unknown as { stayed: boolean }).stayed = true;
-    localStorage.setItem('pixeltwin.review.highlight', 'off');
+    sessionStorage.setItem('pixeltwin.review.highlight.session', 'off');
   });
   await expect(page.locator('.areas.is-off')).toHaveCount(0);
   await expect(page.locator('.areas-toggle')).toHaveText('Show diff');
@@ -430,4 +430,23 @@ test('Show diff shows what the areas hide and back, in place', async ({ reviewer
   await expect(page).not.toHaveURL(/areas=off/);
   expect(await where()).toEqual(before);
   expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
+});
+
+test('Changes is on whenever a check is opened anew, and off only for the tab that turned it off', async ({
+  reviewerPage: page,
+  seeded,
+}) => {
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  const toggle = page.locator('[data-highlight]');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('h');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  // The same tab keeps the choice from check to check…
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  // …a new tab starts with the changes highlighted.
+  const other = await page.context().newPage();
+  await open(other, `/ui/checks/${seeded.changed}?filter=all`);
+  await expect(other.locator('[data-highlight]')).toHaveAttribute('aria-pressed', 'true');
+  await other.close();
 });

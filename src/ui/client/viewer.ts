@@ -13,7 +13,7 @@ const MODE_STORAGE = 'pixeltwin.review.mode';
  * (Show diff, an area changed) keeps them, so nothing jumps; another check starts fresh.
  */
 let carried: { checkId: string; fit: boolean; view: View; split: number; onion: string } | null = null;
-const HIGHLIGHT_STORAGE = 'pixeltwin.review.highlight';
+const HIGHLIGHT_STORAGE = 'pixeltwin.review.highlight.session';
 
 function storedMode(): Mode {
   try {
@@ -32,10 +32,13 @@ function storeMode(mode: Mode): void {
   }
 }
 
-/** Changed pixels are highlighted unless the reviewer turned it off. */
+/**
+ * Changed pixels are highlighted unless the reviewer turned it off in this tab: the choice follows
+ * them from check to check, and a new visit starts with the changes highlighted again.
+ */
 function storedHighlight(): boolean {
   try {
-    return localStorage.getItem(HIGHLIGHT_STORAGE) !== 'off';
+    return sessionStorage.getItem(HIGHLIGHT_STORAGE) !== 'off';
   } catch {
     return true;
   }
@@ -43,7 +46,7 @@ function storedHighlight(): boolean {
 
 function storeHighlight(on: boolean): void {
   try {
-    localStorage.setItem(HIGHLIGHT_STORAGE, on ? 'on' : 'off');
+    sessionStorage.setItem(HIGHLIGHT_STORAGE, on ? 'on' : 'off');
   } catch {
     // Private windows may refuse storage; the choice just is not remembered.
   }
