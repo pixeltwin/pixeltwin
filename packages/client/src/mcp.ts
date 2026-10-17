@@ -55,6 +55,16 @@ class ToolError extends Error {}
 const text = (value: string): Content => ({ type: 'text', text: value });
 const json = (value: unknown): Content => text(JSON.stringify(value, null, 2));
 
+/** Groups and flaky screens are newer than the rest of the API: an older server answers 404. */
+async function optional<T>(call: Promise<T>, missing: T): Promise<T> {
+  try {
+    return await call;
+  } catch (err) {
+    if (err instanceof PixeltwinError && err.status === 404) return missing;
+    throw err;
+  }
+}
+
 const rectSchema = {
   type: 'object',
   properties: {
@@ -256,7 +266,10 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
             cursor = page.nextCursor ?? undefined;
           } while (cursor);
         }
-        const [groups, noisy] = await Promise.all([c.listGroups(buildId), c.noisyScreens(project)]);
+        const [groups, noisy] = await Promise.all([
+          optional(c.listGroups(buildId), []),
+          optional(c.noisyScreens(project), []),
+        ]);
         const flakyByScreen = new Map(
           noisy.filter((n) => n.branch === build.branch && n.flaky).map((n) => [n.snapshotKey, n.flaky as Flaky]),
         );
@@ -327,8 +340,8 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
         const check = await c.getCheck(str(args, 'checkId', true));
         const [history, screen, groups] = await Promise.all([
           c.listReviews(check.id),
-          c.checkHistory(check.id),
-          check.groupId ? c.listGroups(check.buildId) : Promise.resolve([]),
+          optional(c.checkHistory(check.id), null),
+          check.groupId ? optional(c.listGroups(check.buildId), []) : Promise.resolve([]),
         ]);
         const group = groups.find((g) => g.id === check.groupId);
         const diff = diffOf(check);
@@ -356,7 +369,7 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
               suggestion: check.suggestion,
               reviewComment: check.reviewComment,
               group: group ? { groupId: group.id, size: group.size } : null,
-              flaky: screen.flaky
+              flaky: screen?.flaky
                 ? { score: screen.flaky.score, flips: screen.flaky.flips, unstableArea: screen.flaky.unstableArea }
                 : null,
               history: history.slice(0, 20).map((e) => ({
@@ -479,7 +492,7 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
           const done = action === 'approve' ? 'approved' : 'rejected';
           const line =
             reviewed.outcome === 'suggested'
-              ? `Recorded as a suggestion to ${action}: this project has a person decide on agents' reviews. The check stays ${reviewed.review} until someone accepts or dismisses it at ${checkUrl(reviewed)}`
+              ? `Recorded as a suggestion to ${action}: this project has a person decide on agents' reviews. The check stays ${reviewed.review} until someone accepts or dismisses it at ${checkUrl(reviewed)}.`
               : `Applied: the check is ${done}. ${checkUrl(reviewed)}`;
           return {
             content: [text(line), json({ checkId: reviewed.id, outcome: reviewed.outcome, review: reviewed.review })],
@@ -527,7 +540,7 @@ export function tools(client: PixeltwinClient | null, project: string, env: Env,
         if (result.suggested.length) {
           const one = result.suggested.length === 1;
           lines.push(
-            `Recorded as a suggestion to ${action} for ${plural(result.suggested.length, 'check')}: this project has a person decide on agents' reviews. ${one ? 'It stays' : 'They stay'} pending until someone accepts or dismisses ${one ? 'it' : 'them'} at ${c.buildUrl(buildId)}`,
+            `Recorded as a suggestion to ${action} for ${plural(result.suggested.length, 'check')}: this project has a person decide on agents' reviews. ${one ? 'It stays' : 'They stay'} pending until someone accepts or dismisses ${one ? 'it' : 'them'} at ${c.buildUrl(buildId)}.`,
           );
         }
         if (!result.changed.length && !result.suggested.length) {
