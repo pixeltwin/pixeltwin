@@ -273,6 +273,14 @@ export function mountViewer(root: HTMLElement): () => void {
     listen(unstable, 'focusin', point(true));
     listen(unstable, 'focusout', point(false));
     listen(unstable, 'toggle', show);
+    // Cancel folds the preview back, with the focus on what unfolded it.
+    const close = unstable.querySelector<HTMLButtonElement>('[data-unstable-close]');
+    if (close) {
+      listen(close, 'click', () => {
+        unstable.open = false;
+        unstable.querySelector('summary')?.focus();
+      });
+    }
     show();
   }
 

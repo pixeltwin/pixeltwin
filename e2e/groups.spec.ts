@@ -128,6 +128,11 @@ test('a flaky screen offers to ignore the area that keeps changing, with a previ
   // The preview, and the same area on the stage while it is unfolded.
   await expect(page.locator('.unstable-preview .unstable-mark rect')).toBeVisible();
   await expect(stageArea).toBeVisible();
+  // Cancel folds the preview back; unfolding it again brings it back.
+  await page.locator('.unstable-actions').getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.unstable-preview')).toBeHidden();
+  await expect(page.locator('.unstable > summary')).toBeFocused();
+  await page.getByText('Ignore noisy area').click();
   await page.getByRole('button', { name: 'Ignore this area' }).click();
   await expect(page.locator('.toast').last()).toContainText('Ignore area added');
   await expect(page.locator('.review-head .status')).toHaveText('passed');
@@ -149,11 +154,11 @@ test('Ignore on the noisy screens asks first, then ignores the area in place', a
     last = (await ci.check(build.id, 'cart', site(90, 180, clock))).id;
   }
   await open(page, `/ui/p/${slug}/noisy`);
-  await page.getByRole('button', { name: 'Ignore the area that keeps changing' }).click();
+  await page.getByRole('button', { name: 'Ignore noisy area' }).click();
   const dialog = page.locator('dialog.confirm');
   await expect(dialog).toContainText('of cart');
   await dialog.getByRole('button', { name: 'Ignore this area' }).click();
-  await expect(page.locator('.toast').last()).toContainText('Ignored the area that keeps changing on cart');
+  await expect(page.locator('.toast').last()).toContainText('Ignored the noisy area of cart');
   const { items } = await ci.call<{ items: Array<{ kind: string }> }>('GET', `/checks/${last}/areas`);
   expect(items.map((a) => a.kind)).toEqual(['ignore']);
   expect((await ci.call<{ items: unknown[] }>('GET', `/projects/${slug}/noisy-screens`)).items).toEqual([]);

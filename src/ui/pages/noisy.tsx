@@ -71,7 +71,7 @@ function NoisyItem(props: {
           action={ui.url(`/ui/checks/${latest.checkId}/areas`)}
           data-inplace={`/checks/${latest.checkId}/areas`}
           data-inplace-body={JSON.stringify({ kind: 'ignore', ...area })}
-          data-inplace-done={`Ignored the area that keeps changing on ${screen.name}`}
+          data-inplace-done={`Ignored the noisy area of ${screen.name}`}
         >
           <input type="hidden" name="back" value="noisy" />
           <input type="hidden" name="kind" value="ignore" />
@@ -81,17 +81,17 @@ function NoisyItem(props: {
           <input type="hidden" name="height" value={String(area.height)} />
           <button
             type="submit"
-            class="small ignore-unstable"
+            class="small ignore-action ignore-unstable"
             disabled={props.blocked}
             title={
               props.blocked
                 ? 'Delete the compare areas of this snapshot first to ignore an area'
-                : 'Add an ignore area over it, for every check of this snapshot'
+                : 'Ignore the area that keeps changing, for every check of this snapshot'
             }
             data-confirm={`Ignore ${area.width}×${area.height} px at the ${where} of ${screen.name} (the box on its screenshot)? It applies to every check of this snapshot, on every branch.`}
             data-confirm-label="Ignore this area"
           >
-            Ignore the area that keeps changing
+            Ignore noisy area
           </button>
         </form>
       )}

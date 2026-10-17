@@ -672,7 +672,7 @@ function IgnoreChange(props: {
       <input type="hidden" name="height" value={String(area.height)} />
       <button
         type="submit"
-        class="small ignore-change"
+        class="small ignore-action"
         aria-label={`Ignore change ${props.index + 1}`}
         title={
           props.off
@@ -771,9 +771,9 @@ function ScreenSection(props: {
       {flaky && area && props.canReview && (
         <details class="unstable" data-unstable-trigger>
           <summary
-            class="button small ignore-change"
+            class="button small ignore-action"
             aria-disabled={blocked || props.off ? 'true' : undefined}
-            title="Ignore the area that keeps changing, for every check of this snapshot"
+            title="Preview the area that keeps changing, then ignore it for every check of this snapshot"
           >
             Ignore noisy area
           </summary>
@@ -800,13 +800,16 @@ function ScreenSection(props: {
             <p class="muted">
               {`${areaPlace(area, size)}${area.width}×${area.height} px. An ignore area applies to every check of this snapshot, on every branch.`}
             </p>
-            <form method="post" action={ui.url(`/ui/checks/${check.id}/areas`)} data-area-add>
+            <form class="unstable-actions" method="post" action={ui.url(`/ui/checks/${check.id}/areas`)} data-area-add>
               <input type="hidden" name="filter" value={props.filter.key} />
               <input type="hidden" name="kind" value="ignore" />
               <input type="hidden" name="x" value={String(area.x)} />
               <input type="hidden" name="y" value={String(area.y)} />
               <input type="hidden" name="width" value={String(area.width)} />
               <input type="hidden" name="height" value={String(area.height)} />
+              <button type="button" class="small ghost" data-unstable-close>
+                Cancel
+              </button>
               <button
                 type="submit"
                 class="small primary"

@@ -389,19 +389,6 @@ body.focus main {
 .region-place {
   font-size: var(--text-xs);
 }
-/* Ignore next to a change carries the ignore colour mark of the toolbar; quiet until pointed at. */
-.ignore-change {
-  gap: var(--space-2);
-  border-color: transparent;
-  background: none;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-.ignore-change:hover:not(:disabled) {
-  border-color: var(--amber-border);
-  background: var(--amber-bg);
-  color: var(--amber);
-}
 .ignore-all {
   margin: var(--space-2) 0 0;
 }
@@ -414,14 +401,6 @@ body.focus main {
 }
 .ignore-all button:hover:not(:disabled) {
   background: var(--amber-bg);
-}
-.ignore-change::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border: 2px dashed var(--amber-dot);
-  border-radius: 2px;
-  background: rgb(245 159 0 / 0.3);
 }
 .review-history {
   margin-top: var(--space-4);
@@ -1076,12 +1055,25 @@ a.baseline-thumb:hover {
   display: none;
 }
 .unstable > summary[aria-disabled="true"] {
-  opacity: 0.55;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .unstable-preview {
   display: grid;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+/* Cancel and Ignore this area, as in the confirm dialog of the noisy screens. */
+.unstable-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin: 0;
+}
+@media (scripting: none) {
+  .unstable-actions [data-unstable-close] {
+    display: none;
+  }
 }
 .unstable-preview p {
   margin: 0;
