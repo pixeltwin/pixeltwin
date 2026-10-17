@@ -11,8 +11,10 @@ Human-readable reference: ${publicUrl}/docs
 
 ## Authentication
 
-Send a project token: \`Authorization: Bearer pt_…\`. An admin creates tokens with scopes
-\`read\`, \`write\` (builds and checks) and \`review\` (approve/reject). A token only sees its own project.
+Send a project token: \`Authorization: Bearer pt_…\`. An admin or a project maintainer creates
+tokens with scopes \`read\`, \`write\` (builds and checks) and \`review\` (approve/reject). A token
+only sees its own project. A user's personal token (POST /auth/token) sees the projects that user
+can open: others answer 404, as if they did not exist.
 
 ## Workflow (five calls)
 

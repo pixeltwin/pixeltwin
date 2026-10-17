@@ -104,7 +104,7 @@ curl -X POST http://localhost:8080/api/v1/setup -H 'content-type: application/js
   -d '{"token":"<setup token>","email":"you@example.com","password":"at least 10 characters"}'
 ```
 
-Admins create projects, users and CI tokens in the UI. Over the API it looks like this (reference at `/docs`):
+Admins create projects, users and CI tokens in the UI (project maintainers manage tokens too). Over the API it looks like this (reference at `/docs`):
 
 ```sh
 curl -c cookies -X POST http://localhost:8080/api/v1/auth/login -H 'content-type: application/json' \
@@ -116,6 +116,22 @@ curl -b cookies -H 'origin: http://localhost:8080' -H 'content-type: application
 ```
 
 The workflow for CI and agents is in `/llms.txt`; the full contract is `/openapi.json`.
+
+### Users, roles and projects
+
+Each user has a server role, and every non-admin user sees only the projects they can open:
+
+- **Admins** manage the server: every project, users, creating and deleting projects.
+- **Members** of a project (Settings → Members, or `POST /api/v1/projects/{slug}/members`) have a
+  role there: `viewer` looks, `reviewer` also approves, rejects and draws areas, `maintainer` also
+  changes the project's settings, tokens and members (but cannot delete the project).
+- A project can be **visible to everyone on this server** (a setting, off for new projects): then
+  every user opens it with their server role, `viewer` or `reviewer`. A membership can give more.
+
+The server role of a non-admin is also their default role when they are added to a project. A user
+outside a project gets 404 for it and everything in it, as if it did not exist. Project tokens are
+unchanged: each one belongs to one project. Upgrading keeps everyone's access: every existing
+non-admin user becomes a member of every existing project with their role.
 
 Other commands: `migrate`, `admin reset-password <email>`, and `healthcheck` (exit 0 when the server
 on `PORT` answers; the Docker image uses it).

@@ -11,7 +11,10 @@ export function openApiDocument(app: OpenAPIHono<AppEnv>) {
       title: 'pixeltwin',
       version: VERSION,
       description:
-        'Self-hosted visual regression testing. Each operation lists its required permission in `x-permission`. Agents: start with /llms.txt.',
+        'Self-hosted visual regression testing. Each operation lists its required permission in `x-permission`. ' +
+        'Admins hold every permission; other users hold the project permissions their role in a project gives ' +
+        '(viewer: project.read; reviewer: also check.review; maintainer: also check.write and project.admin), and ' +
+        'get 404 for projects they cannot open. A project token is bound to its project. Agents: start with /llms.txt.',
     },
   });
 }
