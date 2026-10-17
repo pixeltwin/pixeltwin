@@ -187,8 +187,9 @@ function pick(group: ChangeGroup, checkIds: string[] | undefined): Set<string> {
 /**
  * Approves or rejects every check of the group that waits for review (of those in `checkIds`,
  * when given), in one transaction, each through the same core as a single review: its own review
- * event with the actor kind, token name, reason and (rejecting) the reason's category. Checks already reviewed are left as they are,
- * and so are outdated ones (a newer build of the branch approved their screen): `skipped`.
+ * event with the actor kind, token name, reason and (rejecting) the reason's category. Checks
+ * already reviewed are left as they are, and so are outdated ones (a newer build of the branch
+ * approved their screen): `skipped`.
  *
  * A token goes through the project's agent review policy as a single review does: it must give a
  * reason, and what it may not decide itself becomes a suggestion (`suggested`). After commit the

@@ -206,18 +206,8 @@ async function alreadyReviewed(id: string): Promise<void> {
   await advance();
 }
 
-/** Words for the categories in the toast; the server's labels, lower case. */
-const REASON_WORDS: Record<string, string> = {
-  not_loaded: 'not loaded',
-  late_asset: 'late asset',
-  animation: 'animation',
-  dynamic_data: 'dynamic data',
-  environment: 'environment',
-  real_bug: 'real bug',
-  other: 'other',
-};
-
-async function review(action: Action, body: RejectBody = {}): Promise<void> {
+/** `label`: the picked category's words for the toast (the chip's label). */
+async function review(action: Action, body: RejectBody = {}, label = ''): Promise<void> {
   if (busy) return;
   busy = true;
   const id = currentId();
@@ -231,7 +221,7 @@ async function review(action: Action, body: RejectBody = {}): Promise<void> {
       toast(`Couldn't ${action} ${name}`, {
         tone: 'danger',
         timeout: 0,
-        action: { label: 'Retry', run: () => void review(action, body) },
+        action: { label: 'Retry', run: () => void review(action, body, label) },
       });
       return;
     }
@@ -240,8 +230,7 @@ async function review(action: Action, body: RejectBody = {}): Promise<void> {
     forget(id);
     lastReviewed = id;
     lastGroup = null;
-    const why = body.reasonCode ? ` (${REASON_WORDS[body.reasonCode] ?? body.reasonCode})` : '';
-    toast(`${action === 'approve' ? 'Approved' : 'Rejected'} ${name}${why}`, {
+    toast(`${action === 'approve' ? 'Approved' : 'Rejected'} ${name}${label ? ` (${label.toLowerCase()})` : ''}`, {
       tone: action === 'approve' ? 'success' : 'danger',
       action: { label: 'Undo (U)', run: () => void undo(id) },
     });
@@ -424,8 +413,8 @@ export function init(): void {
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
   // R opens the reject popover (its button's data-key); there Enter rejects with the reason.
-  initRejectMenus((form, body) => {
-    if (root.contains(form)) void review('reject', body);
+  initRejectMenus((form, body, label) => {
+    if (root.contains(form)) void review('reject', body, label);
   });
   onKey({
     key: 'r',

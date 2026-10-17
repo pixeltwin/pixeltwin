@@ -50,7 +50,9 @@ export function openMenu(menu: HTMLDetailsElement): void {
  * Starts the popover behaviour on the page; `onReject` handles a submitted reject form (one posted
  * in place, `data-inplace`, is left to the live island).
  */
-export function initRejectMenus(onReject: (form: HTMLFormElement, body: RejectBody) => void = () => {}): void {
+export function initRejectMenus(
+  onReject: (form: HTMLFormElement, body: RejectBody, label: string) => void = () => {},
+): void {
   if (started) return;
   started = true;
   // toggle does not bubble: listen in the capture phase, also for menus swapped in later.
@@ -133,7 +135,10 @@ export function initRejectMenus(onReject: (form: HTMLFormElement, body: RejectBo
     }
     event.preventDefault();
     const body = bodyOfReject(form);
+    // The picked chip's words, for the page's toast.
+    const label = form.querySelector('input[name="reasonCode"]:checked')?.closest('label')?.querySelector('span');
+    const words = label?.textContent?.trim() ?? '';
     if (menu) closeMenu(menu);
-    onReject(form, body);
+    onReject(form, body, words);
   });
 }

@@ -266,32 +266,23 @@ function GroupCard(props: {
       {hidden}
     </RejectMenu>
   );
-  const action = (kind: 'approve' | 'reject') => (
+  const approve = (
     <form
       class="group-action"
       method="post"
-      action={ui.url(`/ui/builds/${build.id}/groups/${groupId}/${kind}`)}
-      data-inplace={`${api}/${kind}`}
-      data-inplace-done={`${kind === 'approve' ? 'Approved' : 'Rejected'} the same change on {n} screens`}
+      action={ui.url(`/ui/builds/${build.id}/groups/${groupId}/approve`)}
+      data-inplace={`${api}/approve`}
+      data-inplace-done="Approved the same change on {n} screens"
       data-inplace-undo={`${api}/reset`}
-      data-inplace-tone={kind === 'reject' ? 'danger' : undefined}
-      data-group-action={kind}
+      data-group-action="approve"
     >
-      <input type="hidden" name="filter" value={filter.key} />
-      <input type="hidden" name="back" value="build" />
-      {members.map((m) => (
-        <input type="hidden" name="checkIds" value={m.id} />
-      ))}
+      {hidden}
       <button
         type="submit"
-        class={`small ${kind}`}
-        title={
-          kind === 'approve'
-            ? `Approve the ${pending} screens of this group that wait for review (A when the card is focused)`
-            : `Reject the ${pending} screens of this group that wait for review (R when the card is focused)`
-        }
+        class="small approve"
+        title={`Approve the ${pending} screens of this group that wait for review (A when the card is focused)`}
       >
-        {kind === 'approve' ? `Approve all ${pending}` : 'Reject all'}
+        {`Approve all ${pending}`}
       </button>
     </form>
   );
@@ -363,7 +354,7 @@ function GroupCard(props: {
             {pending > 0 ? (
               <>
                 {reject}
-                {action('approve')}
+                {approve}
               </>
             ) : (
               <span class="muted">{status === 'resolved' ? 'All approved' : 'Nothing waits'}</span>
