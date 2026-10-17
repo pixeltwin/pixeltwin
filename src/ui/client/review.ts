@@ -96,8 +96,7 @@ function prefetchNext(): void {
 }
 
 /** Shows another check by swapping in its server-rendered #review; falls back to a page load. */
-async function show(id: string): Promise<void> {
-  const url = checkUrl(id);
+async function show(id: string, url = checkUrl(id)): Promise<void> {
   let doc: Document;
   try {
     doc = await page(url);
@@ -280,7 +279,8 @@ function onClick(event: MouseEvent): void {
   if (!id) return;
   event.preventDefault();
   if (link.hasAttribute('data-skip')) session.skipped++;
-  void show(id);
+  // A link that says more than the check and the filter (the Areas switch) is shown as it is.
+  void show(id, new URL(link.href).searchParams.has('areas') ? link.href : undefined);
 }
 
 function onSubmit(event: SubmitEvent): void {

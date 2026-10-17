@@ -382,3 +382,26 @@ test('Ignore keeps the list of changes as it was; Ignore all clears the rest in 
   await expect(page.locator('details.changes')).toHaveCount(0);
   expect((await seeded.ci.call<{ result: string }>('GET', `/checks/${check.id}`)).result).toBe('unchanged');
 });
+
+test('the Areas switch shows what the areas hide and back, in place', async ({ reviewerPage: page, seeded }) => {
+  await seeded.ci.call('POST', `/checks/${seeded.changed}/areas`, {
+    kind: 'ignore',
+    x: 0,
+    y: 0,
+    width: 480,
+    height: 300,
+  });
+  await open(page, `/ui/checks/${seeded.changed}?filter=all`);
+  await page.evaluate(() => {
+    (window as unknown as { stayed: boolean }).stayed = true;
+  });
+  await expect(page.locator('.areas-off')).toHaveCount(0);
+  await page.locator('.areas-toggle').click();
+  await expect(page.locator('.areas-off')).toBeVisible();
+  await expect(page).toHaveURL(/areas=off/);
+  await expect(page.locator('.pane-diff img')).toHaveCount(1);
+  await page.locator('.areas-toggle').click();
+  await expect(page.locator('.areas-off')).toHaveCount(0);
+  await expect(page).not.toHaveURL(/areas=off/);
+  expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
+});
