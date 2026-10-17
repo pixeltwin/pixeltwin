@@ -430,13 +430,18 @@
               "autoApproved": {
                 "type": "integer",
                 "description": "Approved by the project's auto-approve-new setting (part of review.approved)"
+              },
+              "withAreas": {
+                "type": "integer",
+                "description": "Checks whose snapshot has drawn ignore or compare areas"
               }
             },
             "required": [
               "total",
               "result",
               "review",
-              "autoApproved"
+              "autoApproved",
+              "withAreas"
             ]
           }
         },

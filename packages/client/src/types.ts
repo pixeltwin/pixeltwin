@@ -18,6 +18,8 @@ export interface BuildCounts {
   review: Record<CheckReview, number>;
   /** Approved by the project's auto-approve-new setting (part of `review.approved`). */
   autoApproved: number;
+  /** Checks whose snapshot has drawn ignore or compare areas. */
+  withAreas: number;
 }
 
 /** A branch screen whose baseline differs from main's: what a promotion would change. */

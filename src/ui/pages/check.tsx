@@ -7,7 +7,7 @@ import { type Area, aroundChange, createArea, deleteArea, ignoreChanges, listAre
 import { hasPermission } from '../../domain/auth/policy';
 import { baselineHistory } from '../../domain/baselines';
 import { type BuildView, getBuild } from '../../domain/builds';
-import { type CheckView, checkNeighbors, getCheck, listChecks } from '../../domain/checks';
+import { type CheckView, checkNeighbors, compareWithoutAreas, getCheck, listChecks } from '../../domain/checks';
 import { imageSizes } from '../../domain/images';
 import { getProjectById } from '../../domain/projects';
 import { AUTO_APPROVER, approveCheck, listReviews, rejectCheck, resetReview } from '../../domain/reviews';
@@ -151,7 +151,20 @@ function Pane({ kind, caption, children }: { kind: string; caption: Child; child
   );
 }
 
-function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; areas: Area[]; canReview: boolean }) {
+/** The Areas switch: on shows the check as compared; off links to it compared without any area. */
+interface AreasSwitch {
+  on: boolean;
+  href: string;
+}
+
+function Stage(props: {
+  ui: Ui;
+  check: CheckView;
+  sizes: Map<string, Size>;
+  areas: Area[];
+  canReview: boolean;
+  areasSwitch?: AreasSwitch | undefined;
+}) {
   const { ui, check, sizes, areas } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
   const baseline = check.baseline;
@@ -203,6 +216,20 @@ function Stage(props: { ui: Ui; check: CheckView; sizes: Map<string, Size>; area
           >
             Changes <kbd>H</kbd>
           </button>
+        )}
+        {props.areasSwitch && (
+          <a
+            class="button small areas-toggle"
+            href={props.areasSwitch.href}
+            data-areas={props.areasSwitch.on ? 'on' : 'off'}
+            title={
+              props.areasSwitch.on
+                ? 'Switch the areas off to see what they hide (the check stays as it is)'
+                : 'Switch the areas back on'
+            }
+          >
+            Areas
+          </a>
         )}
         <label class="onion-control" hidden>
           <span class="muted">Opacity</span>
@@ -600,6 +627,8 @@ function Info(props: {
   areas: Area[];
   filter: CheckFilter;
   canReview: boolean;
+  /** Shown compared without any area (the Areas switch is off). */
+  areasOff?: boolean;
 }) {
   const { check, branch, size } = props;
   const diff = isDiffData(check.diff) ? check.diff : null;
@@ -607,6 +636,9 @@ function Info(props: {
   const dims = diff?.dimensions;
   return (
     <aside class="review-info" aria-label="About this check">
+      {props.areasOff && (
+        <p class="areas-off">Areas are off: this is what they hide. The check and its areas stay as they are.</p>
+      )}
       {diffError && <p class="diff-error">{diffError.message}</p>}
       <dl class="facts">
         {diff && (
@@ -835,8 +867,13 @@ function CheckPage(props: {
   areas: Area[];
   decidedBy: DecidedBy | null;
   notice?: string | undefined;
+  areasSwitch?: AreasSwitch | undefined;
+  /** The check compared without any area, while the Areas switch is off. */
+  withoutAreas?: Pick<CheckView, 'result' | 'diff' | 'diffImageSha'> | undefined;
 }) {
   const { ui, project, build, check, filter, strip } = props;
+  const off = props.withoutAreas !== undefined;
+  const shown: CheckView = props.withoutAreas ? { ...check, ...props.withoutAreas, ignoreRegions: [] } : check;
   const at = strip.findIndex((c) => c.id === check.id);
   // When the check is outside the filter (reviewed meanwhile), its neighbours are found by order.
   // The strip is newest first: the previous check is the next newer one, the next is older.
@@ -906,17 +943,26 @@ function CheckPage(props: {
           <span />
         </div>
         <div class="review-body">
-          <Stage ui={ui} check={check} sizes={props.sizes} areas={props.areas} canReview={props.canReview} />
+          {/* Areas off: the comparison without any area, nothing drawn on it, nothing to ignore. */}
+          <Stage
+            ui={ui}
+            check={shown}
+            sizes={props.sizes}
+            areas={off ? [] : props.areas}
+            canReview={props.canReview && !off}
+            areasSwitch={props.areasSwitch}
+          />
           <Info
             ui={ui}
-            check={check}
+            check={shown}
             branch={build.branch}
             history={props.history}
             baselines={props.baselines}
             size={props.sizes.get(check.imageSha)}
-            areas={props.areas}
+            areas={off ? [] : props.areas}
             filter={filter}
-            canReview={props.canReview}
+            canReview={props.canReview && !off}
+            areasOff={off}
           />
         </div>
         <ActionBar
@@ -963,9 +1009,20 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       listAreas(s.deps, check.id),
       check.supersededBy ? decidedByOf(s, check.supersededBy) : Promise.resolve(null),
     ]);
+    // The Areas switch: a check with areas and a baseline can be shown compared without them.
+    const hasAreas = areas.length > 0 || check.ignoreRegions.length > 0;
+    const base = `/ui/checks/${check.id}?filter=${filter.key}`;
+    const wantsOff = c.req.query('areas') === 'off';
+    const withoutAreas = hasAreas && wantsOff ? await compareWithoutAreas(s.deps, check.id) : null;
+    const areasSwitch =
+      hasAreas && check.baseline
+        ? { on: !withoutAreas, href: ui.url(withoutAreas ? base : `${base}&areas=off`) }
+        : undefined;
     const baselines = await baselineHistoryOf(s, project, check);
     const sizes = await imageSizes(s.deps, [
-      ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha].filter((x): x is string => !!x),
+      ...[check.imageSha, check.baseline?.imageSha, check.diffImageSha, withoutAreas?.diffImageSha].filter(
+        (x): x is string => !!x,
+      ),
       ...strip.items.map(thumbnailSha),
     ]);
     return c.html(
@@ -983,6 +1040,8 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         areas={areas}
         decidedBy={decidedBy}
         notice={noticeOf(c)}
+        areasSwitch={areasSwitch}
+        withoutAreas={withoutAreas ?? undefined}
       />,
     );
   });

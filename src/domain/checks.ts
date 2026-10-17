@@ -257,7 +257,7 @@ function tagPattern(key: string, value: string): string {
  * A check's status as its card says it: `passed` is unchanged or approved by the project's
  * auto-approve-new setting, `resolved` is approved by a person.
  */
-export type CheckStatusFilter = 'passed' | 'resolved';
+export type CheckStatusFilter = 'passed' | 'resolved' | 'areas';
 
 export async function listChecks(
   deps: Pick<Deps, 'db'>,
@@ -283,6 +283,16 @@ export async function listChecks(
         eb('checks.result', '=', 'unchanged'),
         eb.and([eb('checks.review', '=', 'approved'), eb('checks.reviewedBy', '=', AUTO_APPROVER)]),
       ]),
+    );
+  }
+  if (status === 'areas') {
+    query = query.where(({ exists, selectFrom }) =>
+      exists(
+        selectFrom('snapshotAreas')
+          .select('snapshotAreas.id')
+          .whereRef('snapshotAreas.projectId', '=', 'checks.projectId')
+          .whereRef('snapshotAreas.snapshotKey', '=', 'checks.snapshotKey'),
+      ),
     );
   }
   if (status === 'resolved') {
@@ -312,6 +322,39 @@ export async function listChecks(
     .execute();
   const pageRows = toPage(rows, page.limit);
   return { items: pageRows.items.map(toCheckView), nextCursor: pageRows.nextCursor };
+}
+
+/**
+ * The check compared with its baseline without any area: no drawn ignore or compare areas and no
+ * ignore regions from the API. Shows what the areas hide; nothing is stored but the diff image.
+ * Null without a baseline to compare with.
+ */
+export async function compareWithoutAreas(
+  deps: Deps,
+  checkId: string,
+): Promise<{ result: CheckResult; diff: DiffData | DiffErrorData | null; diffImageSha: string | null } | null> {
+  const check = await getCheck(deps, checkId);
+  if (!check.baseline) return null;
+  const baseline = await deps.db
+    .selectFrom('baselines')
+    .selectAll()
+    .where('id', '=', check.baseline.id)
+    .executeTakeFirst();
+  const image = await loadImage(deps, check.imageSha);
+  if (!baseline || !image) return null;
+  const outcome = await evaluate(
+    deps,
+    image,
+    check.imageSha,
+    readPngHeader(image, deps.limits),
+    baseline,
+    { ignore: [], compare: [] },
+    check.colorThreshold,
+    check.tolerancePercent,
+  );
+  const diffImageSha =
+    outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
+  return { result: outcome.result, diff: outcome.diff, diffImageSha };
 }
 
 /**

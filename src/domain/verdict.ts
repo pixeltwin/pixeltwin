@@ -8,6 +8,8 @@ export interface BuildCounts {
   review: Record<CheckReview, number>;
   /** Approved by the project's auto-approve-new setting, not by a person (part of review.approved). */
   autoApproved: number;
+  /** Checks whose snapshot has drawn ignore or compare areas. */
+  withAreas: number;
 }
 
 export function emptyCounts(): BuildCounts {
@@ -16,6 +18,7 @@ export function emptyCounts(): BuildCounts {
     result: Object.fromEntries(CHECK_RESULTS.map((r) => [r, 0])) as Record<CheckResult, number>,
     review: Object.fromEntries(CHECK_REVIEWS.map((r) => [r, 0])) as Record<CheckReview, number>,
     autoApproved: 0,
+    withAreas: 0,
   };
 }
 

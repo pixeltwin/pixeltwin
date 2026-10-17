@@ -96,6 +96,7 @@ export const BuildSchema = z
         .number()
         .int()
         .openapi({ description: "Approved by the project's auto-approve-new setting (part of review.approved)" }),
+      withAreas: z.number().int().openapi({ description: 'Checks whose snapshot has drawn ignore or compare areas' }),
     }),
   })
   .openapi('Build');

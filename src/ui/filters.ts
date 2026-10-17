@@ -21,6 +21,7 @@ export const CHECK_FILTERS: CheckFilter[] = [
   { key: 'error', label: 'Errors', result: 'error' },
   { key: 'unchanged', label: 'Passed', status: 'passed' },
   { key: 'rejected', label: 'Rejected', review: 'rejected' },
+  { key: 'areas', label: 'Areas', status: 'areas' },
 ];
 
 const ALL = CHECK_FILTERS.find((f) => f.key === 'all') as CheckFilter;
@@ -42,6 +43,7 @@ export function filterFromQuery(
 export function countFor(filter: CheckFilter, counts: BuildCounts): number {
   if (filter.status === 'passed') return counts.result.unchanged + counts.autoApproved;
   if (filter.status === 'resolved') return counts.review.approved - counts.autoApproved;
+  if (filter.status === 'areas') return counts.withAreas;
   if (filter.result) return counts.result[filter.result];
   if (filter.review) return counts.review[filter.review];
   return counts.total;

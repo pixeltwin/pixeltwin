@@ -70,6 +70,24 @@ export async function countChecks(deps: DbDeps, buildIds: string[]): Promise<Map
     c.review[row.review] += n;
     if (row.review === 'approved') c.autoApproved += Number(row.auto ?? 0);
   }
+  const withAreas = await deps.db
+    .selectFrom('checks')
+    .select(['buildId', (eb) => eb.fn.countAll<number>().as('n')])
+    .where('buildId', 'in', buildIds)
+    .where(({ exists, selectFrom }) =>
+      exists(
+        selectFrom('snapshotAreas')
+          .select('snapshotAreas.id')
+          .whereRef('snapshotAreas.projectId', '=', 'checks.projectId')
+          .whereRef('snapshotAreas.snapshotKey', '=', 'checks.snapshotKey'),
+      ),
+    )
+    .groupBy('buildId')
+    .execute();
+  for (const row of withAreas) {
+    const c = counts.get(row.buildId);
+    if (c) c.withAreas = Number(row.n);
+  }
   return counts;
 }
 

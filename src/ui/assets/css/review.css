@@ -599,6 +599,24 @@ body.focus main {
   border-color: var(--diff);
   color: var(--diff);
 }
+/* The Areas switch: amber like the areas while they apply; plain when they are off. */
+.areas-toggle[data-areas="on"] {
+  border-color: var(--amber-border);
+  color: var(--amber);
+}
+.areas-toggle[data-areas="off"] {
+  text-decoration: line-through;
+}
+/* Areas off: the panel says the comparison is a preview without them. */
+.areas-off {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--amber-border);
+  border-radius: var(--radius-md);
+  background: var(--amber-bg);
+  color: var(--amber);
+  font-size: var(--text-sm);
+}
 /* A change pointed at (or pinned) in the info strip. */
 .shot svg:not(.area-layer) rect.is-hot {
   fill: rgb(229 72 77 / 0.3);

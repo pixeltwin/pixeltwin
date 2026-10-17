@@ -3,7 +3,7 @@ import type { Project } from '../../src/db/schema';
 import { compareImages } from '../../src/diff/compare';
 import { createArea, deleteArea, ignoreChanges, listAreas, updateArea } from '../../src/domain/areas';
 import { getBuild } from '../../src/domain/builds';
-import { getCheck } from '../../src/domain/checks';
+import { compareWithoutAreas, getCheck } from '../../src/domain/checks';
 import { approveCheck } from '../../src/domain/reviews';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
 import { appError } from '../helpers/errors';
@@ -80,6 +80,21 @@ describe('ignore and compare areas', () => {
     }
     const err = await appError(ignoreChanges(deps, next.id, 'usr_1'));
     expect(err.code).toBe('too_many_areas');
+  });
+
+  test('compared without areas: what the areas hide, while the check keeps its result', async () => {
+    const { check } = await changed(both);
+    await createArea(deps, check.id, 'usr_1', { kind: 'ignore', x: 0, y: 0, width: 100, height: 100 });
+    expect((await getCheck(deps, check.id)).result).toBe('unchanged');
+    const raw = await compareWithoutAreas(deps, check.id);
+    expect(raw?.result).toBe('changed');
+    expect(raw?.diffImageSha).toMatch(/^[0-9a-f]{64}$/);
+    const rawDiff = raw?.diff ?? null;
+    expect(isDiff(rawDiff) && rawDiff.regions.length).toBe(2);
+    expect((await getCheck(deps, check.id)).result).toBe('unchanged');
+    // Nothing to compare without a baseline.
+    const fresh = (await submit(deps, await openBuild(deps), both, { name: 'other' })).check;
+    expect(await compareWithoutAreas(deps, fresh.id)).toBeNull();
   });
 
   test('the area applies to every later check of the snapshot, on any branch', async () => {

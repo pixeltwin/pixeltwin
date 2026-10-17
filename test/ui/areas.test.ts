@@ -152,6 +152,42 @@ describe('UI areas', () => {
     expect(await page(`/ui/checks/${check.id}`)).not.toContain('data-ignore-changes');
   });
 
+  test('the build page finds the screenshots that have drawn areas', async () => {
+    const check = await changedCheck();
+    const other = (await submit(t.deps, check.buildId, white, { name: 'footer' })).check;
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', ...overClock });
+    const body = await page(`/ui/builds/${check.buildId}?filter=areas`);
+    expect(body).toMatch(/aria-current="page">Areas <span class="count">1<\/span>/);
+    expect(body).toContain(`id="${check.id}"`);
+    expect(body).not.toContain(`id="${other.id}"`);
+  });
+
+  test('areas can be switched off on the check page to see what they hide; nothing changes', async () => {
+    const check = await changedCheck();
+    await createArea(t.deps, check.id, reviewer.id, { kind: 'ignore', ...overClock });
+    const on = await page(`/ui/checks/${check.id}?filter=all`);
+    expect(on).toContain(
+      `<a class="button small areas-toggle" href="/ui/checks/${check.id}?filter=all&amp;areas=off" data-areas="on"`,
+    );
+    expect(on).not.toContain('class="pane pane-diff"');
+
+    const off = await page(`/ui/checks/${check.id}?filter=all&areas=off`);
+    expect(off).toContain('<p class="areas-off">');
+    expect(off).toContain('Areas are off: this is what they hide. The check and its areas stay as they are.');
+    expect(off).toContain(
+      `<a class="button small areas-toggle" href="/ui/checks/${check.id}?filter=all" data-areas="off"`,
+    );
+    expect(off).toContain('class="pane pane-diff"');
+    expect(off).toContain('<span class="count">1</span>');
+    // No area is drawn while they are off, and none can be drawn.
+    expect(off).not.toContain('class="area area-ignore"');
+    expect(off).not.toContain('data-draw="ignore"');
+    expect((await getCheck(t.deps, check.id)).result).toBe('unchanged');
+    // A check without areas has no switch.
+    const plain = (await submit(t.deps, check.buildId, withClock, { name: 'plain' })).check;
+    expect(await page(`/ui/checks/${plain.id}`)).not.toContain('areas-toggle');
+  });
+
   test('Ignore is disabled on a snapshot that has compare areas', async () => {
     const check = await changedCheck();
     await createArea(t.deps, check.id, reviewer.id, { kind: 'compare', x: 0, y: 0, width: 100, height: 100 });
