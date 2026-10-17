@@ -87,7 +87,12 @@ export async function listReviews(deps: DbDeps, checkId: string): Promise<Review
  */
 type ApproveOutcome = { approved: true } | { approved: false; error: AppError | null };
 
-async function tryApprove(tx: Db, checkId: string, actor: string, comment: string | null): Promise<ApproveOutcome> {
+export async function tryApprove(
+  tx: Db,
+  checkId: string,
+  actor: string,
+  comment: string | null,
+): Promise<ApproveOutcome> {
   const outdated = await outdatedGuard(tx, checkId);
   if (outdated) return { approved: false, error: outdated };
   const now = Date.now();
@@ -147,6 +152,34 @@ export async function approveCheck(
   return getCheck(deps, checkId);
 }
 
+type RejectOutcome = { rejected: true } | { rejected: false; error: AppError | null };
+
+/** Marks a pending check rejected, like tryApprove: false, changing nothing, when it is not pending. */
+export async function tryReject(
+  tx: Db,
+  checkId: string,
+  actor: string,
+  comment: string | null,
+): Promise<RejectOutcome> {
+  const outdated = await outdatedGuard(tx, checkId);
+  if (outdated) return { rejected: false, error: outdated };
+  const now = Date.now();
+  const updated = await tx
+    .updateTable('checks')
+    .set({ review: 'rejected', reviewedBy: actor, reviewedAt: now, reviewComment: comment, updatedAt: now })
+    .where('id', '=', checkId)
+    .where('review', '=', 'pending')
+    .executeTakeFirst();
+  if (Number(updated.numUpdatedRows) === 0) return { rejected: false, error: null };
+  const { projectId } = await tx
+    .selectFrom('checks')
+    .select('projectId')
+    .where('id', '=', checkId)
+    .executeTakeFirstOrThrow();
+  await recordReview(tx, { checkId, projectId, action: 'rejected', actor, comment });
+  return { rejected: true };
+}
+
 export async function rejectCheck(
   deps: DbDeps,
   checkId: string,
@@ -155,22 +188,8 @@ export async function rejectCheck(
 ): Promise<CheckView> {
   const { comment } = parseInput(reviewInputSchema, input);
   await deps.db.transaction().execute(async (tx) => {
-    const outdated = await outdatedGuard(tx, checkId);
-    if (outdated) throw outdated;
-    const now = Date.now();
-    const updated = await tx
-      .updateTable('checks')
-      .set({ review: 'rejected', reviewedBy: actor, reviewedAt: now, reviewComment: comment ?? null, updatedAt: now })
-      .where('id', '=', checkId)
-      .where('review', '=', 'pending')
-      .executeTakeFirst();
-    if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, ['pending']);
-    const { projectId } = await tx
-      .selectFrom('checks')
-      .select('projectId')
-      .where('id', '=', checkId)
-      .executeTakeFirstOrThrow();
-    await recordReview(tx, { checkId, projectId, action: 'rejected', actor, comment: comment ?? null });
+    const outcome = await tryReject(tx, checkId, actor, comment ?? null);
+    if (!outcome.rejected) throw outcome.error ?? (await notReviewable(tx, checkId, ['pending']));
   });
   return getCheck(deps, checkId);
 }
@@ -184,53 +203,56 @@ const RESETTABLE: CheckReview[] = ['approved', 'rejected'];
  * 409 review_not_resettable. Allowed on finalized builds, like approve.
  */
 export async function resetReview(deps: DbDeps, checkId: string, actor: string): Promise<CheckView> {
-  await deps.db.transaction().execute(async (tx) => {
-    const check = await tx
-      .selectFrom('checks')
-      .innerJoin('builds', 'builds.id', 'checks.buildId')
-      .select(['checks.review', 'checks.projectId', 'checks.snapshotKey', 'builds.branch'])
-      .where('checks.id', '=', checkId)
-      .executeTakeFirst();
-    if (!check || !RESETTABLE.includes(check.review)) throw await notReviewable(tx, checkId, RESETTABLE);
-
-    if (check.review === 'approved') {
-      const current = await findCurrentBaseline(tx, check.projectId, check.snapshotKey, check.branch);
-      if (current?.sourceCheckId !== checkId) {
-        throw new AppError(
-          'review_not_resettable',
-          409,
-          `A newer baseline replaced the one check ${checkId} approved, so the approval cannot be undone.`,
-        );
-      }
-      // A later check compared with this baseline would be left pointing at nothing.
-      const comparedLater = await tx
-        .selectFrom('checks')
-        .select('id')
-        .where('baselineId', '=', current.id)
-        .where('id', '!=', checkId)
-        .executeTakeFirst();
-      if (comparedLater) {
-        throw new AppError(
-          'review_not_resettable',
-          409,
-          `Check ${comparedLater.id} was already compared with the baseline check ${checkId} approved, so the approval cannot be undone.`,
-        );
-      }
-      await tx.deleteFrom('baselines').where('id', '=', current.id).execute();
-      // The older checks this approval outdated wait for review again.
-      await restoreOutdated(tx, checkId);
-    }
-    const updated = await tx
-      .updateTable('checks')
-      .set({ review: 'pending', reviewedBy: null, reviewedAt: null, reviewComment: null, updatedAt: Date.now() })
-      .where('id', '=', checkId)
-      .where('review', '=', check.review)
-      .executeTakeFirst();
-    // A concurrent reset or review changed the state since the read above; the transaction rolls back.
-    if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, RESETTABLE);
-    await recordReview(tx, { checkId, projectId: check.projectId, action: 'reset', actor, comment: null });
-  });
+  await deps.db.transaction().execute((tx) => resetIn(tx, checkId, actor));
   return getCheck(deps, checkId);
+}
+
+/** resetReview inside the caller's transaction: throws (and so rolls it back) when it cannot undo. */
+export async function resetIn(tx: Db, checkId: string, actor: string): Promise<void> {
+  const check = await tx
+    .selectFrom('checks')
+    .innerJoin('builds', 'builds.id', 'checks.buildId')
+    .select(['checks.review', 'checks.projectId', 'checks.snapshotKey', 'builds.branch'])
+    .where('checks.id', '=', checkId)
+    .executeTakeFirst();
+  if (!check || !RESETTABLE.includes(check.review)) throw await notReviewable(tx, checkId, RESETTABLE);
+
+  if (check.review === 'approved') {
+    const current = await findCurrentBaseline(tx, check.projectId, check.snapshotKey, check.branch);
+    if (current?.sourceCheckId !== checkId) {
+      throw new AppError(
+        'review_not_resettable',
+        409,
+        `A newer baseline replaced the one check ${checkId} approved, so the approval cannot be undone.`,
+      );
+    }
+    // A later check compared with this baseline would be left pointing at nothing.
+    const comparedLater = await tx
+      .selectFrom('checks')
+      .select('id')
+      .where('baselineId', '=', current.id)
+      .where('id', '!=', checkId)
+      .executeTakeFirst();
+    if (comparedLater) {
+      throw new AppError(
+        'review_not_resettable',
+        409,
+        `Check ${comparedLater.id} was already compared with the baseline check ${checkId} approved, so the approval cannot be undone.`,
+      );
+    }
+    await tx.deleteFrom('baselines').where('id', '=', current.id).execute();
+    // The older checks this approval outdated wait for review again.
+    await restoreOutdated(tx, checkId);
+  }
+  const updated = await tx
+    .updateTable('checks')
+    .set({ review: 'pending', reviewedBy: null, reviewedAt: null, reviewComment: null, updatedAt: Date.now() })
+    .where('id', '=', checkId)
+    .where('review', '=', check.review)
+    .executeTakeFirst();
+  // A concurrent reset or review changed the state since the read above; the transaction rolls back.
+  if (Number(updated.numUpdatedRows) === 0) throw await notReviewable(tx, checkId, RESETTABLE);
+  await recordReview(tx, { checkId, projectId: check.projectId, action: 'reset', actor, comment: null });
 }
 
 /**

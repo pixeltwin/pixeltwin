@@ -133,7 +133,19 @@ export const DiffSchema = z
     colorThreshold: z.number(),
     tolerancePercent: z.number(),
     dimensions: z.object({ baseline: SizeSchema, current: SizeSchema }).nullable(),
-    regions: z.array(RectSchema.extend({ pixels: z.number().int() })),
+    regions: z.array(
+      RectSchema.extend({
+        pixels: z.number().int(),
+        fingerprint: z
+          .string()
+          .optional()
+          .openapi({
+            description:
+              'What changed, wherever it is on the screen: the same change on another screen has the same fingerprint. ' +
+              'Only on changed checks whose screenshot kept its size.',
+          }),
+      }),
+    ),
     regionsTruncated: z.boolean(),
     summary: z.string(),
   })
@@ -197,6 +209,14 @@ export const CheckSchema = z
       .int()
       .nullable()
       .openapi({ description: 'Server time this check took, in ms: baseline, compare and store' }),
+    groupId: z
+      .string()
+      .nullable()
+      .openapi({
+        description:
+          'The change group: other checks of this build with exactly the same changes (GET /builds/{id}/groups). ' +
+          'Review them all at once with POST /builds/{id}/groups/{groupId}/approve.',
+      }),
     supersededBy: z.string().nullable().openapi({
       description:
         'Set when review is "outdated": the check of a newer build of this branch whose approval decided this screen.',
@@ -211,6 +231,47 @@ export const CheckSchema = z
     }),
   })
   .openapi('Check');
+
+const VERDICTS = ['empty', 'error', 'rejected', 'pending', 'outdated', 'passed'] as const;
+
+export const ChangeGroupSchema = z
+  .object({
+    id: z.string().openapi({ description: "The members' change key (the set of their change fingerprints)" }),
+    buildId: z.string(),
+    size: z.number().int().openapi({ description: 'Checks in the group (at least 2)' }),
+    counts: countsBy(['pending', 'approved', 'rejected', 'outdated'] as const).openapi({
+      description: 'Members per review state',
+    }),
+    regions: z
+      .array(RectSchema.extend({ pixels: z.number().int(), fingerprint: z.string().optional() }))
+      .openapi({ description: 'The changes, as found on the first member (other members may show them elsewhere)' }),
+    checks: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          variant: z.record(z.string(), z.string()),
+          review: z.enum(CHECK_REVIEWS),
+          reviewedBy: z.string().nullable(),
+          imageSha: z.string(),
+          diffImageSha: z.string().nullable(),
+          baselineImageSha: z.string().nullable(),
+        }),
+      )
+      .openapi({ description: 'Members, newest first' }),
+  })
+  .openapi('ChangeGroup');
+
+export const GroupReviewSchema = z
+  .object({
+    changed: z.array(z.string()).openapi({ description: 'Checks this call reviewed (or undid)' }),
+    skipped: z
+      .array(z.object({ checkId: z.string(), review: z.enum(CHECK_REVIEWS) }))
+      .openapi({ description: 'Members left as they were (already reviewed, outdated), with their review state' }),
+    group: ChangeGroupSchema,
+    verdict: z.enum(VERDICTS).openapi({ description: "The build's verdict after the call" }),
+  })
+  .openapi('GroupReview');
 
 export const BaselineSchema = z
   .object({

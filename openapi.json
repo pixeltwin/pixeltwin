@@ -683,6 +683,13 @@
             ],
             "description": "Server time this check took, in ms: baseline, compare and store"
           },
+          "groupId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The change group: other checks of this build with exactly the same changes (GET /builds/{id}/groups). Review them all at once with POST /builds/{id}/groups/{groupId}/approve."
+          },
           "supersededBy": {
             "type": [
               "string",
@@ -746,6 +753,7 @@
           "reviewedAt",
           "reviewComment",
           "compareMs",
+          "groupId",
           "supersededBy",
           "createdAt",
           "updatedAt",
@@ -828,6 +836,10 @@
                 },
                 "pixels": {
                   "type": "integer"
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "description": "What changed, wherever it is on the screen: the same change on another screen has the same fingerprint. Only on changed checks whose screenshot kept its size."
                 }
               },
               "required": [
@@ -999,6 +1011,209 @@
           "actor",
           "comment",
           "createdAt"
+        ]
+      },
+      "ChangeGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The members' change key (the set of their change fingerprints)"
+          },
+          "buildId": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "description": "Checks in the group (at least 2)"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer"
+              },
+              "approved": {
+                "type": "integer"
+              },
+              "rejected": {
+                "type": "integer"
+              },
+              "outdated": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "pending",
+              "approved",
+              "rejected",
+              "outdated"
+            ],
+            "description": "Members per review state"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "pixels": {
+                  "type": "integer"
+                },
+                "fingerprint": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height",
+                "pixels"
+              ]
+            },
+            "description": "The changes, as found on the first member (other members may show them elsewhere)"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "variant": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "review": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "outdated"
+                  ]
+                },
+                "reviewedBy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "imageSha": {
+                  "type": "string"
+                },
+                "diffImageSha": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "baselineImageSha": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "variant",
+                "review",
+                "reviewedBy",
+                "imageSha",
+                "diffImageSha",
+                "baselineImageSha"
+              ]
+            },
+            "description": "Members, newest first"
+          }
+        },
+        "required": [
+          "id",
+          "buildId",
+          "size",
+          "counts",
+          "regions",
+          "checks"
+        ]
+      },
+      "GroupReview": {
+        "type": "object",
+        "properties": {
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Checks this call reviewed (or undid)"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "checkId": {
+                  "type": "string"
+                },
+                "review": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "outdated"
+                  ]
+                }
+              },
+              "required": [
+                "checkId",
+                "review"
+              ]
+            },
+            "description": "Members left as they were (already reviewed, outdated), with their review state"
+          },
+          "group": {
+            "$ref": "#/components/schemas/ChangeGroup"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "error",
+              "rejected",
+              "pending",
+              "outdated",
+              "passed"
+            ],
+            "description": "The build's verdict after the call"
+          }
+        },
+        "required": [
+          "changed",
+          "skipped",
+          "group",
+          "verdict"
         ]
       },
       "BaselinePage": {
@@ -4601,6 +4816,417 @@
             }
           },
           "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Change groups of a build: checks with exactly the same changes, to review at once",
+        "description": "A group is two or more checks of the build with the same change key: the same change (a new header) on several screens or variants, wherever it is on each. A check with that change and one more is not in the group. Each check's `groupId` names its group. Biggest first.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The change groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ChangeGroup"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups/{groupId}/approve": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Approve every check of a change group that waits for review",
+        "description": "One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. The response has the build’s new verdict.",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups/{groupId}/reject": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Reject every check of a change group that waits for review",
+        "description": "One transaction; each check gets its own review event, as with a single review. Checks already reviewed and outdated ones (a newer build approved their screen) are left as they are and listed in `skipped`. The response has the build’s new verdict.",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/builds/{id}/groups/{groupId}/reset": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Undo the reviews of a change group's checks: those in checkIds, else all of them",
+        "description": "Send the `changed` list of a group approve or reject as `checkIds` to undo exactly that. All or nothing: when one approval cannot be undone (409 review_not_resettable), none is.",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "checkIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

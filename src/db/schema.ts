@@ -91,6 +91,11 @@ export interface ChecksTable {
   supersededBy: string | null;
   /** Server time this check took: baseline, compare and store (null before timings were kept). */
   compareMs: number | null;
+  /**
+   * The set of this changed check's change fingerprints (diff/fingerprint.ts); checks of a build
+   * with the same key form a change group. Null when unchanged, new, resized or older than groups.
+   */
+  changeKey: string | null;
   createdAt: number;
   updatedAt: number;
 }

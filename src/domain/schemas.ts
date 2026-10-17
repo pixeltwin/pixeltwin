@@ -92,6 +92,11 @@ export const reviewInputSchema = z.strictObject({
   comment: z.string().trim().max(1000).optional(),
 });
 
+/** Undoing a group's reviews: only these checks (what a group review changed), else all of them. */
+export const groupResetSchema = z.strictObject({
+  checkIds: z.array(z.string().min(1).max(64)).max(1000).optional(),
+});
+
 export const pageInputSchema = z.strictObject({
   cursor: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(200).default(50),

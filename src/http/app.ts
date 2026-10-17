@@ -14,6 +14,7 @@ import { registerAuthRoutes } from './routes/auth';
 import { registerBaselineRoutes } from './routes/baselines';
 import { registerBuildRoutes } from './routes/builds';
 import { registerCheckRoutes } from './routes/checks';
+import { registerGroupRoutes } from './routes/groups';
 import { registerImageRoutes } from './routes/images';
 import { registerProjectRoutes } from './routes/projects';
 import { registerSystemRoutes } from './routes/system';
@@ -155,6 +156,7 @@ export function createApp(services: Services): OpenAPIHono<AppEnv> {
   registerProjectRoutes(app, services);
   registerBuildRoutes(app, services);
   registerCheckRoutes(app, services);
+  registerGroupRoutes(app, services);
   registerBaselineRoutes(app, services);
   registerImageRoutes(app, services);
   registerDocRoutes(app, services);
