@@ -220,7 +220,7 @@ function GroupCard(props: {
       method="post"
       action={ui.url(`/ui/builds/${build.id}/groups/${groupId}/${kind}`)}
       data-inplace={`${api}/${kind}`}
-      data-inplace-done={`${kind === 'approve' ? 'Approved' : 'Rejected'} the same change on ${pending} screens`}
+      data-inplace-done={`${kind === 'approve' ? 'Approved' : 'Rejected'} the same change on {n} screens`}
       data-inplace-undo={`${api}/reset`}
       data-inplace-tone={kind === 'reject' ? 'danger' : undefined}
       data-group-action={kind}

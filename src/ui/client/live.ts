@@ -94,12 +94,17 @@ export function init(): void {
             if (card?.id) await refreshCard(card.id, card);
           }
         : null;
-      lastUndo = undo;
-      const tone = form.dataset.inplaceTone === 'danger' ? 'danger' : 'success';
-      toast(
-        form.dataset.inplaceDone ?? 'Done',
-        undo ? { tone, action: { label: 'Undo (U)', run: () => void undo() } } : { tone },
-      );
+      // A group review says how many checks it changed: `{n} screens` in its message.
+      const n = result.changed?.length;
+      if (n === 0) {
+        lastUndo = null;
+        toast('Someone else reviewed these checks already', { tone: 'warning' });
+      } else {
+        lastUndo = undo;
+        const tone = form.dataset.inplaceTone === 'danger' ? 'danger' : 'success';
+        const done = (form.dataset.inplaceDone ?? 'Done').replace('{n} screens', n === 1 ? '1 screen' : `${n} screens`);
+        toast(done, undo ? { tone, action: { label: 'Undo (U)', run: () => void undo() } } : { tone });
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       if (!(err instanceof ApiError && err.status === 409)) {
