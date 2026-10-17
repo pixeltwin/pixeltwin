@@ -67,7 +67,9 @@ describe('submitCheck', () => {
     expect(check.result).toBe('changed');
     expect(check.review).toBe('pending');
     expect(check.baseline).toEqual({ id: baseline.id, branch: 'main', fallback: false, imageSha: baseline.imageSha });
-    expect((check.diff as DiffData).regions).toEqual([{ x: 10, y: 10, width: 10, height: 10, pixels: 100 }]);
+    expect((check.diff as DiffData).regions).toEqual([
+      { x: 10, y: 10, width: 10, height: 10, pixels: 100, fingerprint: expect.any(String) },
+    ]);
     expect(check.diffImageSha).toMatch(/^[0-9a-f]{64}$/);
     expect(await deps.storage.exists(imageKey(check.diffImageSha as string))).toBe(true);
   });

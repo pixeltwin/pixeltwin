@@ -1,5 +1,6 @@
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
+import { changeKeyOf, regionFingerprint } from './fingerprint';
 import { extractRegions } from './regions';
 import { summarize } from './summary';
 import type { DiffJob, DiffJobResult, Rect } from './types';
@@ -178,6 +179,15 @@ export function compareImages(job: DiffJob): DiffJobResult {
       }
     : null;
   const regions = extractRegions(mask, width, height);
+  // Fingerprints need both images' pixels at every place, so a resized screenshot gets none; a
+  // truncated region list would leave changes out of the change key.
+  let changeKey: string | null = null;
+  if (result === 'changed' && !sizeChanged) {
+    for (const r of regions.regions) r.fingerprint = regionFingerprint(r, mask, baseline.data, current.data, width);
+    if (!regions.truncated && regions.regions.length > 0) {
+      changeKey = changeKeyOf(regions.regions.map((r) => r.fingerprint as string));
+    }
+  }
   const summary = summarize({
     regions: regions.regions,
     regionCount: regions.total,
@@ -204,5 +214,6 @@ export function compareImages(job: DiffJob): DiffJobResult {
       summary,
     },
     diffPng: pixels > 0 ? encode(width, height, diffImage) : null,
+    changeKey,
   };
 }

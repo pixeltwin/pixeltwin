@@ -52,7 +52,7 @@ describe('compareImages', () => {
       colorThreshold: 0.1,
       tolerancePercent: 0,
       dimensions: null,
-      regions: [{ x: 10, y: 10, width: 10, height: 10, pixels: 100 }],
+      regions: [{ x: 10, y: 10, width: 10, height: 10, pixels: 100, fingerprint: expect.any(String) }],
       regionsTruncated: false,
       summary: '1 changed region; largest 10×10 at (10,10) in top-left; 1.00% of pixels changed.',
     });

@@ -93,7 +93,9 @@ describe('server end to end', () => {
     const second = await openBuild();
     const changed = await post(second, makePng(64, 64, WHITE, [{ x: 8, y: 8, width: 8, height: 8, color: BLACK }]));
     expect(changed.result).toBe('changed');
-    expect(changed.diff?.regions).toEqual([{ x: 8, y: 8, width: 8, height: 8, pixels: 64 }]);
+    expect(changed.diff?.regions).toEqual([
+      { x: 8, y: 8, width: 8, height: 8, pixels: 64, fingerprint: expect.any(String) },
+    ]);
 
     const finalized = await fetch(`${api}/builds/${second}/finalize`, { method: 'POST', headers: auth });
     expect(await finalized.json()).toMatchObject({ state: 'finalized', verdict: 'pending' });

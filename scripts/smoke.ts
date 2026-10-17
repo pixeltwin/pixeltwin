@@ -97,9 +97,13 @@ export async function smoke(target: SmokeTarget, log: (line: string) => void = c
   const second = await openBuild();
   const changed = await post(second, png(64, 64, { x: 8, y: 8, size: 8 }));
   expectEqual('second check', changed.result, 'changed');
-  expectEqual('regions', (changed.diff as { regions: unknown[] }).regions, [
-    { x: 8, y: 8, width: 8, height: 8, pixels: 64 },
-  ]);
+  // Each region also has a fingerprint of what changed (a hash, not compared here).
+  const regions = (changed.diff as { regions: Array<Record<string, unknown>> }).regions;
+  expectEqual(
+    'regions',
+    regions.map(({ fingerprint: _fingerprint, ...box }) => box),
+    [{ x: 8, y: 8, width: 8, height: 8, pixels: 64 }],
+  );
   expectEqual(
     'second verdict',
     (await call('POST', `/builds/${second}/finalize`, { headers: auth })).body.verdict,
