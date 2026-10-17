@@ -368,6 +368,9 @@ describe('UI projects', () => {
       await approveCheck(t.deps, pendingCheck, admin.id);
       const lanes = await html(await t.request('GET', '/ui/p/web', { as: viewer }));
       expect(statsOf(lanes, cartBuild)).toContain('title="0 automatically · 2 needed review · 1 left"');
+      // Reviewed and still to review apart: "to review" is the same number as the Review button.
+      expect(statsOf(lanes, cartBuild)).toContain('<span class="legend-reviewed">1</span> reviewed');
+      expect(statsOf(lanes, cartBuild)).toContain('<span class="legend-review">1</span> to review');
     });
 
     test('filters by branch from a list of the project branches', async () => {

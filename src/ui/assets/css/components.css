@@ -580,7 +580,8 @@ td select {
   animation: skeleton 1.2s ease-in-out infinite;
 }
 
-/* What a build cost its reviewers (ReviewStats): the automatic and the reviewed counts. */
+/* What a build cost its reviewers (ReviewStats): automatic, already reviewed, and still to review
+   (the same number as the Review N button). */
 .review-stats {
   display: inline-flex;
   align-items: center;
@@ -593,6 +594,7 @@ td select {
   gap: 4px;
 }
 .legend-auto,
+.legend-reviewed,
 .legend-review {
   display: inline-flex;
   align-items: center;
@@ -602,12 +604,16 @@ td select {
   font-weight: 600;
 }
 .legend-auto::before,
+.legend-reviewed::before,
 .legend-review::before {
   content: "";
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--green-dot);
+}
+.legend-reviewed::before {
+  background: var(--text-muted);
 }
 .legend-review::before {
   background: var(--blue-dot);

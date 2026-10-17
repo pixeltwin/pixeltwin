@@ -212,9 +212,16 @@ export function ReviewStats({ counts }: { counts: BuildCounts }) {
       <span class="legend-item">
         <span class="legend-auto">{auto}</span> auto
       </span>
-      <span class="legend-item">
-        <span class="legend-review">{needed}</span> review
-      </span>
+      {needed - pending > 0 && (
+        <span class="legend-item">
+          <span class="legend-reviewed">{needed - pending}</span> reviewed
+        </span>
+      )}
+      {pending > 0 && (
+        <span class="legend-item">
+          <span class="legend-review">{pending}</span> to review
+        </span>
+      )}
     </span>
   );
 }
