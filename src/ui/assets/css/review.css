@@ -715,6 +715,26 @@ body.focus main {
   top: 50%;
   cursor: ew-resize;
 }
+/* Alt (Option) held: a drag on an area copies it. */
+.stage[data-areas-editable][data-copying]:not([data-drawing="ignore"], [data-drawing="compare"]) .area[data-area],
+.stage[data-copying] .area-editor,
+.stage[data-copying] .area-editor .area-handle {
+  cursor: copy;
+}
+/* The copy an Alt+drag pulls out, until it is dropped and saved. */
+.area-ghost {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  border: 2px dashed var(--amber-dot);
+  background: rgb(245 159 0 / 0.3);
+  pointer-events: none;
+}
+.area-ghost-compare {
+  border-style: solid;
+  border-color: var(--blue-dot);
+  background: rgb(28 126 214 / 0.14);
+}
 .area-edit-bar {
   display: inline-flex;
   align-items: center;

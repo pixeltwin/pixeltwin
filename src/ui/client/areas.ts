@@ -1,21 +1,14 @@
 // Ignore and compare areas drawn on the focus-mode stage (Plan 6). Pick a kind in the toolbar
 // (or press I / C), drag over a screenshot, and the area is saved and the check compared again.
 // Click an area (or Edit in the info strip) to move or resize it, then Save. Delete in the info
-// strip removes one. Without JavaScript only Delete works (a plain form).
+// strip removes one. Alt+drag an area, or Cmd/Ctrl+D (Duplicate) on the picked one, adds a copy
+// of the same size. Without JavaScript only Delete works (a plain form).
 import { api } from './api.ts';
+import { hint } from './keys.ts';
+import { copyPlace, dragged, type Handle, MIN_SIZE, type Rect, type Size, same } from './rects.ts';
 import { toast } from './toast.ts';
 
 type Kind = 'ignore' | 'compare';
-
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/** Smaller drags are taken for clicks, not areas; an edited area cannot shrink below it either. */
-const MIN_SIZE = 4;
 
 const ADDED: Record<Kind, string> = { ignore: 'Ignore area added', compare: 'Compare area added' };
 
@@ -23,7 +16,32 @@ const ADDED: Record<Kind, string> = { ignore: 'Ignore area added', compare: 'Com
 const AUTOSAVE_MS = 5_000;
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
-type Handle = (typeof HANDLES)[number] | 'move';
+
+const MAC = navigator.platform.startsWith('Mac');
+const MOD = MAC ? '⌘' : 'Ctrl+';
+const ALT = MAC ? '⌥' : 'Alt';
+
+/** The area to pick once the check is shown again: the duplicate just made. */
+let pick: { checkId: string; id: string } | null = null;
+/**
+ * The last duplicate and the rectangle it was copied from: Cmd+D on it repeats the move it got
+ * (smart duplicate), and Cmd+Z or Undo on its toast deletes it. Any other area change forgets it.
+ */
+let lastCopy: { checkId: string; id: string; from: Rect } | null = null;
+
+/** Deletes the last duplicate, then shows its check again if it is still the one on screen. */
+async function undoCopy(changed: (checkId: string) => Promise<void>): Promise<void> {
+  const copy = lastCopy;
+  if (!copy) return;
+  lastCopy = null;
+  try {
+    await api('DELETE', `/checks/${copy.checkId}/areas/${copy.id}`);
+    toast('Duplicate removed', { timeout: 2000 });
+    if (document.querySelector<HTMLElement>('#review')?.dataset.check === copy.checkId) await changed(copy.checkId);
+  } catch (err) {
+    toast(`Couldn't remove the duplicate: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
+  }
+}
 
 /** The drag from `a` to `b`, in the pixels of `img` (whatever its zoom), clamped to the image. */
 function toImage(img: HTMLImageElement, a: { x: number; y: number }, b: { x: number; y: number }): Rect | null {
@@ -41,32 +59,17 @@ function toImage(img: HTMLImageElement, a: { x: number; y: number }, b: { x: num
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
-/** `from` moved or resized by (dx, dy) image pixels through `handle`, kept inside a w×h image. */
-function dragged(from: Rect, handle: Handle, dx: number, dy: number, w: number, h: number): Rect {
-  if (handle === 'move') {
-    return {
-      ...from,
-      x: Math.min(w - from.width, Math.max(0, from.x + dx)),
-      y: Math.min(h - from.height, Math.max(0, from.y + dy)),
-    };
-  }
-  let left = from.x;
-  let top = from.y;
-  let right = from.x + from.width;
-  let bottom = from.y + from.height;
-  if (handle.includes('w')) left = Math.min(right - MIN_SIZE, Math.max(0, left + dx));
-  if (handle.includes('e')) right = Math.max(left + MIN_SIZE, Math.min(w, right + dx));
-  if (handle.includes('n')) top = Math.min(bottom - MIN_SIZE, Math.max(0, top + dy));
-  if (handle.includes('s')) bottom = Math.max(top + MIN_SIZE, Math.min(h, bottom + dy));
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
 function rectOf(el: SVGElement): Rect {
   const n = (name: string) => Number(el.getAttribute(name));
   return { x: n('x'), y: n('y'), width: n('width'), height: n('height') };
 }
 
-const same = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+const sizeOf = (layer: SVGSVGElement): Size => ({
+  width: layer.viewBox.baseVal.width,
+  height: layer.viewBox.baseVal.height,
+});
+
+const kindOf = (el: Element): Kind => (el.classList.contains('area-compare') ? 'compare' : 'ignore');
 
 /**
  * Wires drawing, editing and deleting into the current #review. `changed` shows the check again
@@ -103,11 +106,12 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   // on; every copy of the area (the other panes) follows live.
   interface Editing {
     id: string;
+    kind: Kind;
     original: Rect;
     rect: Rect;
     box: HTMLElement;
     /** The picked screenshot's pixel size (its area layer's viewBox). */
-    size: { width: number; height: number };
+    size: Size;
     layer: SVGSVGElement;
   }
   let editing: Editing | null = null;
@@ -190,10 +194,14 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     const layer = target.ownerSVGElement;
     const host = layer?.parentElement;
     if (!layer || !host) return;
-    const size = { width: layer.viewBox.baseVal.width, height: layer.viewBox.baseVal.height };
+    const size = sizeOf(layer);
+    const areaKind = kindOf(target);
     const box = document.createElement('div');
-    box.className = `area-editor area-editor-${target.classList.contains('area-compare') ? 'compare' : 'ignore'}`;
+    box.className = `area-editor area-editor-${areaKind}`;
     box.dataset.handle = 'move';
+    box.title =
+      `Drag to move, ${ALT}+drag to duplicate. ${MOD}D duplicates, arrows nudge 1 px ` +
+      '(Shift: 10 px), Delete removes.';
     for (const handle of HANDLES) {
       const grip = document.createElement('span');
       grip.className = `area-handle area-handle-${handle}`;
@@ -202,7 +210,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     }
     host.append(box);
     const original = rectOf(target);
-    editing = { id, original, rect: { ...original }, box, size, layer };
+    editing = { id, kind: areaKind, original, rect: { ...original }, box, size, layer };
     for (const el of rectsOf(id)) el.classList.add('is-editing');
     if (stage) stage.dataset.drawing = 'edit';
     showEditBar(true);
@@ -211,6 +219,11 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     box.addEventListener('pointerdown', (event) => {
       const e = event as PointerEvent;
       if (e.button !== 0 || !editing) return;
+      // Alt (Option) drags out a copy instead, wherever on the box the drag starts.
+      if (e.altKey) {
+        copyDrag(e, box, { id: editing.id, kind: editing.kind, rect: editing.rect }, editing.layer);
+        return;
+      }
       // The viewport would pan; this drag is the area's.
       e.stopPropagation();
       e.preventDefault();
@@ -267,9 +280,128 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     }
   };
 
+  // Duplicating: a new area of the same kind and size, saved like a drawn one, then picked so it
+  // can be dragged or nudged into place.
+  interface Source {
+    id: string;
+    kind: Kind;
+    rect: Rect;
+  }
+  const limit = Number(root.dataset.areaLimit) || Number.POSITIVE_INFINITY;
+  /** Says so and returns true when the snapshot cannot take another area. */
+  const atLimit = () => {
+    if (root.querySelectorAll('[data-area-item]').length < limit) return false;
+    toast(`This snapshot already has ${limit} areas, the most it can have. Delete one to add another.`, {
+      tone: 'danger',
+    });
+    return true;
+  };
+
+  /** Repeats the last duplicate's move when `source` is that duplicate, still of the same size. */
+  const stepFor = (source: Source) => {
+    const copy = lastCopy;
+    if (copy?.checkId !== checkId || copy.id !== source.id) return undefined;
+    if (copy.from.width !== source.rect.width || copy.from.height !== source.rect.height) return undefined;
+    return { dx: source.rect.x - copy.from.x, dy: source.rect.y - copy.from.y };
+  };
+
+  const duplicate = async (source: Source, to: Rect) => {
+    if (saving || atLimit()) return;
+    saving = true;
+    stopCountdown();
+    let patched = false;
+    try {
+      // A move not saved yet is saved first: the check is shown again below, which would drop it.
+      if (editing && !same(editing.rect, editing.original)) {
+        await api('PATCH', `/checks/${checkId}/areas/${editing.id}`, editing.rect);
+        editing.original = editing.rect;
+        patched = true;
+      }
+      const { area } = await api<{ area: { id: string } }>('POST', `/checks/${checkId}/areas`, {
+        kind: source.kind,
+        ...to,
+      });
+      lastCopy = { checkId, id: area.id, from: source.rect };
+      pick = { checkId, id: area.id };
+      toast('Area duplicated', {
+        tone: 'success',
+        timeout: 4000,
+        action: { label: `Undo (${MOD}Z)`, run: () => void undoCopy(changed) },
+      });
+      if (!gone) await changed(checkId);
+    } catch (err) {
+      toast(`Couldn't duplicate the area: ${err instanceof Error ? err.message : String(err)}`, { tone: 'danger' });
+      if (patched && !gone) await changed(checkId);
+    } finally {
+      saving = false;
+    }
+  };
+
+  /** Cmd/Ctrl+D and Duplicate: a copy next to the area (see copyPlace), picked at once. */
+  const duplicateNextTo = (source: Source, size: Size) =>
+    void duplicate(source, copyPlace(source.rect, size, stepFor(source)));
+
+  /** Alt+drag: a copy follows the pointer, the area stays; the copy is added where it is dropped. */
+  const copyDrag = (e: PointerEvent, capture: HTMLElement, source: Source, layer: SVGSVGElement) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const host = layer.parentElement;
+    if (!host || saving || atLimit()) return;
+    const size = sizeOf(layer);
+    const scale = layer.getBoundingClientRect().width / size.width || 1;
+    const start = { x: e.clientX, y: e.clientY };
+    let to = source.rect;
+    const ghost = document.createElement('div');
+    ghost.className = `area-ghost area-ghost-${source.kind}`;
+    const paint = () => {
+      ghost.style.left = `${(to.x / size.width) * 100}%`;
+      ghost.style.top = `${(to.y / size.height) * 100}%`;
+      ghost.style.width = `${(to.width / size.width) * 100}%`;
+      ghost.style.height = `${(to.height / size.height) * 100}%`;
+    };
+    paint();
+    host.append(ghost);
+    capture.setPointerCapture(e.pointerId);
+    const move = (ev: Event) => {
+      const p = ev as PointerEvent;
+      const dx = Math.round((p.clientX - start.x) / scale);
+      const dy = Math.round((p.clientY - start.y) / scale);
+      to = dragged(source.rect, 'move', dx, dy, size.width, size.height);
+      paint();
+    };
+    const finish = (ev: Event | null) => {
+      capture.removeEventListener('pointermove', move);
+      capture.removeEventListener('pointerup', finish);
+      capture.removeEventListener('pointercancel', finish);
+      capture.removeEventListener('lostpointercapture', finish);
+      abandon = null;
+      ghost.remove();
+      // An Alt+click (no move) adds nothing.
+      if (ev?.type === 'pointerup' && !same(to, source.rect)) void duplicate(source, to);
+    };
+    abandon = () => finish(null);
+    capture.addEventListener('pointermove', move);
+    capture.addEventListener('pointerup', finish);
+    capture.addEventListener('pointercancel', finish);
+    capture.addEventListener('lostpointercapture', finish);
+  };
+
+  /** The area as it is now: the picked one with its unsaved move, else its copy on screen. */
+  const sourceOf = (id: string): { source: Source; size: Size } | null => {
+    if (editing?.id === id) {
+      return { source: { id, kind: editing.kind, rect: editing.rect }, size: editing.size };
+    }
+    const rects = rectsOf(id);
+    const el = rects.find((r) => r.getBoundingClientRect().width > 0) ?? rects[0];
+    const layer = el?.ownerSVGElement;
+    if (!el || !layer) return null;
+    return { source: { id, kind: kindOf(el), rect: rectOf(el) }, size: sizeOf(layer) };
+  };
+
   for (const b of buttons) listen(b, 'click', () => setKind(kind === b.dataset.draw ? null : (b.dataset.draw as Kind)));
   // Escape leaves drawing or editing before it can mean "back to the build". While editing,
-  // Enter saves and the arrow keys nudge the area (Shift: 10 px) instead of changing checks.
+  // Enter saves, the arrow keys nudge the area (Shift: 10 px) instead of changing checks, Delete
+  // (or Backspace) deletes it and Cmd/Ctrl+D duplicates it. Cmd/Ctrl+Z deletes the last duplicate.
   listen(
     document,
     'keydown',
@@ -284,9 +416,26 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
         setKind(null);
         return;
       }
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (document.querySelector('dialog[open]')) return;
+      const mod = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
+      const letter = e.key.toLowerCase();
+      if (canEdit && mod && letter === 'z' && lastCopy?.checkId === checkId) {
+        take();
+        if (!e.repeat) void undoCopy(changed);
+        return;
+      }
+      if (editing && mod && letter === 'd') {
+        // Also keeps the browser from bookmarking the page.
+        take();
+        if (!e.repeat) duplicateNextTo({ id: editing.id, kind: editing.kind, rect: editing.rect }, editing.size);
+        return;
+      }
       if (!editing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return;
-      if (e.key === 'Escape') {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        take();
+        root.querySelector<HTMLFormElement>(`form[data-area-delete="${editing.id}"]`)?.requestSubmit();
+      } else if (e.key === 'Escape') {
         take();
         stopEditing(true);
       } else if (e.key === 'Enter') {
@@ -306,8 +455,10 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   );
 
   const save = async (drawn: Kind, rect: Rect) => {
+    if (atLimit()) return;
     try {
       await api('POST', `/checks/${checkId}/areas`, { kind: drawn, ...rect });
+      lastCopy = null;
       toast(ADDED[drawn], { tone: 'success', timeout: 2500 });
       if (!gone) await changed(checkId);
     } catch (err) {
@@ -326,6 +477,12 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
           if (kind || e.button !== 0 || !(e.target instanceof SVGRectElement)) return;
           const target = e.target.closest<SVGRectElement>('rect[data-area]');
           if (!target) return;
+          const layer = target.ownerSVGElement;
+          const found = e.altKey ? sourceOf(target.dataset.area as string) : null;
+          if (found && layer) {
+            copyDrag(e, viewport, found.source, layer);
+            return;
+          }
           e.stopPropagation();
           e.preventDefault();
           startEditing(target);
@@ -390,6 +547,56 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
   const cancelButton = editBar?.querySelector<HTMLButtonElement>('[data-area-cancel]');
   if (saveButton) listen(saveButton, 'click', () => void saveEdit());
   if (cancelButton) listen(cancelButton, 'click', () => stopEditing(true));
+  const duplicateButton = editBar?.querySelector<HTMLButtonElement>('[data-area-duplicate-picked]');
+  if (duplicateButton) {
+    listen(duplicateButton, 'click', () => {
+      if (editing) duplicateNextTo({ id: editing.id, kind: editing.kind, rect: editing.rect }, editing.size);
+    });
+  }
+  for (const button of root.querySelectorAll<HTMLButtonElement>('[data-area-duplicate]')) {
+    button.hidden = false;
+    listen(button, 'click', () => {
+      const found = sourceOf(button.dataset.areaDuplicate as string);
+      if (found) duplicateNextTo(found.source, found.size);
+    });
+  }
+  // The shortcut as this platform writes it, on the buttons and in their tooltips.
+  for (const kbd of root.querySelectorAll<HTMLElement>('[data-mod-key]'))
+    kbd.textContent = `${MOD}${kbd.dataset.modKey}`;
+  for (const el of root.querySelectorAll<HTMLElement>('[data-mod-title]')) {
+    el.title = (el.dataset.modTitle as string).replace('{mod}', MOD);
+  }
+
+  if (canEdit) {
+    for (const rect of root.querySelectorAll<SVGRectElement>('rect[data-area]')) {
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      title.textContent = `Click to move or resize, ${ALT}+drag to duplicate`;
+      rect.append(title);
+    }
+    for (const [key, label] of [
+      ['alt+drag', 'Duplicate an area: drag the copy where it goes'],
+      ['mod+d', 'Duplicate the picked area'],
+      ['arrows', 'Nudge the picked area 1 px'],
+      ['shift+arrows', 'Nudge the picked area 10 px'],
+      ['delete', 'Delete the picked area'],
+      ['mod+z', 'Remove the duplicate just made'],
+    ] as const) {
+      cleanups.push(hint(key, label));
+    }
+    // While Alt (Option) is held, pointing at an area shows the copy cursor.
+    const copying = (on: boolean) => stage?.toggleAttribute('data-copying', on);
+    listen(document, 'keydown', (e) => (e as KeyboardEvent).key === 'Alt' && copying(true));
+    listen(document, 'keyup', (e) => (e as KeyboardEvent).key === 'Alt' && copying(false));
+    if (stage) listen(stage, 'pointermove', (e) => copying((e as PointerEvent).altKey));
+    listen(window, 'blur', () => copying(false));
+  }
+
+  // The duplicate just made comes back picked, ready to be dragged or nudged into place.
+  if (pick?.checkId === checkId && canEdit) {
+    const target = rectsOf(pick.id).find((el) => el.getBoundingClientRect().width > 0) ?? rectsOf(pick.id)[0];
+    if (target) startEditing(target);
+  }
+  pick = null;
 
   // Pointing at (or tabbing into) an area in the list lights it up on every screenshot.
   for (const item of root.querySelectorAll<HTMLElement>('[data-area-item]')) {
@@ -424,6 +631,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
       void (async () => {
         try {
           const { areas } = await api<{ areas: unknown[] }>('POST', `/checks/${checkId}/areas/ignore-changes`);
+          lastCopy = null;
           toast(`Ignored ${areas.length} changes`, { tone: 'success', timeout: 2000 });
           if (!gone) await changed(checkId);
         } catch (err) {
@@ -443,6 +651,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
       void (async () => {
         try {
           await api('DELETE', `/checks/${checkId}/areas/${areaId}`);
+          if (lastCopy?.id === areaId) lastCopy = null;
           toast('Area deleted', { timeout: 2000 });
           if (!gone) await changed(checkId);
         } catch (err) {
@@ -457,6 +666,7 @@ export function mountAreas(root: HTMLElement, changed: (checkId: string) => Prom
     abandon?.();
     stopEditing(true);
     setKind(null);
+    stage?.removeAttribute('data-copying');
     for (const cleanup of cleanups.splice(0)) cleanup();
   };
 }
