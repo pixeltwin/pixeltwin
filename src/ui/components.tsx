@@ -168,14 +168,31 @@ export function durationText(ms: number): string {
 export function BuildTime({ timing }: { timing: BuildView['timing'] }) {
   if (timing.checks === 0) return null;
   const total = timing.screenshotMs + timing.uploadMs + timing.compareMs;
-  const retakes = timing.retakes > 0 ? `, ${timing.retakes} retake${timing.retakes === 1 ? '' : 's'}` : '';
   const each = durationText(Math.round(total / timing.checks));
+  const rows: Array<[string, string]> = [
+    ['Screenshots', durationText(timing.screenshotMs)],
+    ['Upload', durationText(timing.uploadMs)],
+    ['Compare', durationText(timing.compareMs)],
+  ];
+  if (timing.retakes > 0) rows.push(['Retakes', String(timing.retakes)]);
   return (
-    <span
-      class="build-time"
-      title={`Time the tests spent on visual checks, added up over all CI jobs and workers (so it can be longer than the run): taking screenshots ${durationText(timing.screenshotMs)}, uploading ${durationText(timing.uploadMs)}, comparing ${durationText(timing.compareMs)}${retakes}. ${timing.checks} check${timing.checks === 1 ? '' : 's'}, ${each} each.`}
-    >
+    // Pointing at it, or focusing it, unfolds where the time went (CSS).
+    <span class="build-time" tabindex={0} aria-describedby="build-time-pop">
       {`Visual checks took ${durationText(total)}`}
+      <span class="build-time-pop" id="build-time-pop" role="tooltip">
+        {/* Spans only: the header line is a <p>, and a <dl> would end it. */}
+        <span class="build-time-rows">
+          {rows.map(([label, value]) => (
+            <>
+              <span class="build-time-label">{label}</span>
+              <span class="build-time-value">{value}</span>
+            </>
+          ))}
+        </span>
+        <span class="muted">
+          {`${timing.checks} check${timing.checks === 1 ? '' : 's'}, ${each} each. Added up over all CI jobs and workers, so it can be longer than the run.`}
+        </span>
+      </span>
     </span>
   );
 }

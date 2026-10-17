@@ -120,9 +120,13 @@ describe('UI build page', () => {
     expect(before).not.toContain('class="build-time"');
     await addTimings(t.deps, buildId, { checks: 3, screenshotMs: 38_000, uploadMs: 41_000, retakes: 6 });
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
+    expect(page).toContain('Visual checks took 1m 19s');
+    // Where the time went, unfolded on pointing or focus.
+    expect(page).toContain('class="build-time" tabindex="0"');
     expect(page).toMatch(
-      /<span class="build-time" title="Time the tests spent on visual checks, added up over all CI jobs and workers \(so it can be longer than the run\): taking screenshots 38 s, uploading 41 s, comparing [^"]+, 6 retakes\. 3 checks, [^"]+ each\.">Visual checks took 1m 19s<\/span>/,
+      /Screenshots<\/span><span class="build-time-value">38 s<\/span>.*Upload<\/span><span class="build-time-value">41 s<\/span>.*Retakes<\/span><span class="build-time-value">6<\/span>/,
     );
+    expect(page).toContain('3 checks,');
   });
 
   describe('a parallel build', () => {

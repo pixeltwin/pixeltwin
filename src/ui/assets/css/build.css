@@ -455,9 +455,49 @@
   font-weight: 600;
   line-height: 16px;
 }
-/* How long the tests spent on visual checks: the breakdown is in its tooltip. */
+/* How long the tests spent on visual checks; pointing at it (or focusing it) shows where it went. */
 .build-time {
+  position: relative;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
-  cursor: help;
+  cursor: default;
+}
+.build-time-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: none;
+  width: max-content;
+  max-width: 280px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  white-space: normal;
+}
+.build-time:hover .build-time-pop,
+.build-time:focus-visible .build-time-pop {
+  display: block;
+}
+.build-time-rows {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-2);
+}
+.build-time-label {
+  color: var(--text-muted);
+}
+.build-time-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.build-time-pop .muted {
+  display: block;
+  font-size: var(--text-xs);
 }
