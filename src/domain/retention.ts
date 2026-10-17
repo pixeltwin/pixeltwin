@@ -5,6 +5,7 @@ import { removeBuilds } from './builds';
 import type { Deps } from './deps';
 import { listProjects } from './projects';
 import { cleanUpSignups } from './signup';
+import { thumbKeys } from './thumbs';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 /** Images younger than this are never collected: an upload may still be about to reference them. */
@@ -97,6 +98,7 @@ export async function deleteUnusedImages(deps: Pick<Deps, 'db' | 'storage'>, now
           .executeTakeFirst();
         if (Number(result.numDeletedRows) === 0) return false;
         await deps.storage.delete(imageKey(sha));
+        for (const key of thumbKeys(sha)) await deps.storage.delete(key);
         return true;
       });
       if (removed) removedThisBatch += 1;

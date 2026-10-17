@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createProject } from '../../src/domain/projects';
 import { snapshotKey } from '../../src/domain/snapshot-key';
+import { thumbKey } from '../../src/storage/storage';
 import { createTestApp, problemOf, type TestApp } from '../helpers/app';
-import { BLACK, makePng, WHITE } from '../helpers/png';
+import { BLACK, decodePng, makePng, WHITE } from '../helpers/png';
 
 const white = makePng(100, 100);
 const withSquare = makePng(100, 100, WHITE, [{ x: 10, y: 10, width: 10, height: 10, color: BLACK }]);
@@ -192,5 +193,76 @@ describe('review, baseline, promotion and image routes', () => {
     });
     expect((await t.request('GET', `/api/v1/images/${c.imageSha}`)).status).toBe(401);
     expect((await t.request('GET', '/api/v1/images/..%2F..%2Fetc%2Fpasswd', { as: ci })).status).toBe(404);
+  });
+
+  test('thumbnails are made once, cached like images, and only for callers who may see the image', async () => {
+    const tall = makePng(400, 1600, WHITE, [{ x: 0, y: 0, width: 400, height: 40, color: BLACK }]);
+    const { check: c } = await check('main', tall);
+    const path = `/api/v1/images/${c.imageSha}/thumb?w=300`;
+
+    const res = await t.request('GET', path, { as: ci });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+    expect(res.headers.get('etag')).toBe(`"${c.imageSha}-320-plain"`);
+    const thumb = decodePng(new Uint8Array(await res.arrayBuffer()));
+    expect([thumb.width, thumb.height]).toEqual([80, 320]);
+    expect(await t.deps.storage.exists(thumbKey(c.imageSha, 320, 'plain'))).toBe(true);
+
+    // Served from storage the second time: the stored bytes come back as they are.
+    await t.deps.storage.put(thumbKey(c.imageSha, 320, 'plain'), makePng(2, 8));
+    const again = decodePng(new Uint8Array(await (await t.request('GET', path, { as: reviewer })).arrayBuffer()));
+    expect([again.width, again.height]).toEqual([2, 8]);
+
+    // A small image is its own thumbnail and is not stored again.
+    const { check: small } = await check('small', white, 'small');
+    const own = await t.request('GET', `/api/v1/images/${small.imageSha}/thumb`, { as: ci });
+    expect(new Uint8Array(await own.arrayBuffer())).toEqual(white);
+    expect(await t.deps.storage.exists(thumbKey(small.imageSha, 640, 'plain'))).toBe(false);
+
+    await createProject(t.deps, { slug: 'app', name: 'App' });
+    const other = await t.tokenAs('app', ['read']);
+    expect(await problemOf(await t.request('GET', path, { as: other }))).toMatchObject({
+      status: 404,
+      code: 'image_not_found',
+    });
+    expect((await t.request('GET', path)).status).toBe(401);
+    expect((await t.request('GET', `/api/v1/images/${'0'.repeat(64)}/thumb`, { as: ci })).status).toBe(404);
+    expect((await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?mode=sepia`, { as: ci })).status).toBe(422);
+  });
+
+  test('a crop is that part of the image, scaled down, not stored', async () => {
+    const shot = makePng(2000, 1000, WHITE, [{ x: 1000, y: 0, width: 1000, height: 1000, color: BLACK }]);
+    const { check: c } = await check('main', shot);
+    const res = await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?w=640&crop=900,100,1200,300`, { as: ci });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('etag')).toBe(`"${c.imageSha}-640-plain-900,100,1200,300"`);
+    // Clamped to the image: 1100 × 300 from x 900, scaled to 640 wide.
+    const crop = decodePng(new Uint8Array(await res.arrayBuffer()));
+    expect([crop.width, crop.height]).toEqual([640, 175]);
+    expect(crop.data[0]).toBe(255);
+    expect(crop.data[(crop.width - 1) * 4]).toBe(0);
+    expect(await t.deps.storage.exists(thumbKey(c.imageSha, 640, 'plain'))).toBe(false);
+    const outside = await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?crop=5000,5000,10,10`, { as: ci });
+    expect(outside.status).toBe(404);
+    expect((await t.request('GET', `/api/v1/images/${c.imageSha}/thumb?crop=1,2,3`, { as: ci })).status).toBe(422);
+  });
+
+  test('a diff image thumbnail keeps the changed pixels red', async () => {
+    const page = makePng(1280, 640);
+    const dot = makePng(1280, 640, WHITE, [{ x: 600, y: 300, width: 2, height: 2, color: BLACK }]);
+    await check('main', page, 'dot');
+    const builds = await t.request('GET', '/api/v1/projects/web/builds', { as: ci });
+    const { items } = (await builds.json()) as { items: Array<{ id: string }> };
+    await t.request('POST', `/api/v1/builds/${items[0]?.id}/approve`, { as: reviewer });
+    const { check: changed } = await check('main', dot, 'dot');
+    const res = await t.request('GET', `/api/v1/images/${changed.diffImageSha}/thumb?w=320&mode=diff`, { as: ci });
+    const thumb = decodePng(new Uint8Array(await res.arrayBuffer()));
+    expect([thumb.width, thumb.height]).toEqual([320, 160]);
+    let red = 0;
+    for (let i = 0; i < thumb.data.length; i += 4) {
+      if (thumb.data[i] === 255 && thumb.data[i + 1] === 0 && thumb.data[i + 2] === 0) red++;
+    }
+    expect(red).toBeGreaterThan(0);
   });
 });

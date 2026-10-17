@@ -1,7 +1,9 @@
 import { type OpenAPIHono, z } from '@hono/zod-openapi';
+import { THUMB_EDGES, thumbEdge } from '../../diff/thumb';
 import { projectRoleFor } from '../../domain/auth/access';
 import { hasPermission, type Principal } from '../../domain/auth/policy';
 import { loadImage } from '../../domain/images';
+import { loadThumb } from '../../domain/thumbs';
 import { AppError } from '../../errors';
 import { accessFiltered } from '../access';
 import { principalOf } from '../auth';
@@ -68,6 +70,53 @@ export function registerImageRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
       'content-type': 'image/png',
       'cache-control': 'private, max-age=31536000, immutable',
       etag: `"${sha}"`,
+    });
+  });
+
+  // The build page's cards: a scaled-down copy, made once and stored. Same access as the image.
+  const thumb = defineRoute('project.read', {
+    method: 'get',
+    path: `${API}/images/{sha}/thumb`,
+    tags: ['images'],
+    summary: 'Download a thumbnail of an image (PNG)',
+    description: `The image scaled down so its longer side is at most \`w\` pixels (rounded up to one of ${THUMB_EDGES.join(', ')}; the largest by default). An image that fits already comes back as it is. \`mode=diff\` keeps a diff image's changed (red) pixels visible; \`crop\` scales only a part of the image (not stored, an image's crops are made again when asked for). Made on the first request and stored; the same caller access as the image.`,
+    request: {
+      params: z.object({ sha: z.string() }),
+      query: z.object({
+        w: z.coerce.number().int().min(1).max(10_000).optional(),
+        mode: z.enum(['plain', 'diff']).optional(),
+        crop: z
+          .string()
+          .regex(/^\d{1,5},\d{1,5},\d{1,5},\d{1,5}$/)
+          .optional()
+          .openapi({ description: 'Only this part of the image: `x,y,width,height` in image pixels.' }),
+      }),
+    },
+    responses: {
+      200: {
+        description: 'PNG image',
+        content: { 'image/png': { schema: z.any().openapi({ type: 'string', format: 'binary' }) } },
+      },
+      ...problems(401, 403, 404, 422),
+    },
+  });
+  app.openapi(thumb, async (c) => {
+    const { sha } = c.req.valid('param');
+    const { w, mode = 'plain', crop: area } = c.req.valid('query');
+    const [x = 0, y = 0, width = 0, height = 0] = area ? area.split(',').map(Number) : [];
+    const crop = area ? { x, y, width, height } : undefined;
+    const principal = principalOf(c);
+    const notFound = new AppError('image_not_found', 404, `Image ${sha} not found.`);
+    if (!/^[0-9a-f]{64}$/.test(sha)) throw notFound;
+    if (!(await visible(s, sha, principal))) throw notFound;
+    accessFiltered(c);
+    const edge = thumbEdge(w);
+    const bytes = await loadThumb(s.deps, sha, edge, mode, crop);
+    if (!bytes) throw notFound;
+    return c.body(new Uint8Array(bytes).buffer, 200, {
+      'content-type': 'image/png',
+      'cache-control': 'private, max-age=31536000, immutable',
+      etag: `"${sha}-${edge}-${mode}${area ? `-${area}` : ''}"`,
     });
   });
 }

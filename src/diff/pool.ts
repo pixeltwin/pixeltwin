@@ -1,3 +1,4 @@
+import type { ThumbJob, ThumbJobResult } from './thumb';
 import type { DiffJob, DiffJobResult } from './types';
 
 /**
@@ -15,10 +16,13 @@ export interface DiffPoolOptions {
   workerSpecifier?: string;
 }
 
+/** What a worker answers: a diff job's or a thumbnail job's result, or the pool's own error. */
+type AnyResult = DiffJobResult | ThumbJobResult;
+
 interface Job {
   id: number;
-  job: DiffJob;
-  resolve: (result: DiffJobResult) => void;
+  job: DiffJob | ThumbJob;
+  resolve: (result: AnyResult) => void;
 }
 
 interface Slot {
@@ -56,8 +60,13 @@ export class DiffPool {
     return this.#queue.length;
   }
 
-  run = (job: DiffJob): Promise<DiffJobResult> =>
-    new Promise((resolve) => {
+  run = (job: DiffJob): Promise<DiffJobResult> => this.#enqueue(job) as Promise<DiffJobResult>;
+
+  /** Scales a screenshot down for the build page's cards (thumb.ts), on the same workers. */
+  thumb = (job: ThumbJob): Promise<ThumbJobResult> => this.#enqueue(job) as Promise<ThumbJobResult>;
+
+  #enqueue(job: DiffJob | ThumbJob): Promise<AnyResult> {
+    return new Promise((resolve) => {
       if (this.#closed) {
         resolve(CLOSED);
         return;
@@ -65,6 +74,7 @@ export class DiffPool {
       this.#queue.push({ id: this.#nextId++, job, resolve });
       this.#dispatch();
     });
+  }
 
   async close(): Promise<void> {
     this.#closed = true;
@@ -81,7 +91,7 @@ export class DiffPool {
 
   #spawn(slot: Slot): Worker {
     const worker = new Worker(this.#options.workerSpecifier ?? defaultWorkerSpecifier());
-    worker.onmessage = (event: MessageEvent<{ id: number; result: DiffJobResult }>) => {
+    worker.onmessage = (event: MessageEvent<{ id: number; result: AnyResult }>) => {
       if (slot.worker !== worker) return;
       const current = slot.current;
       if (!current || current.id !== event.data.id) return;

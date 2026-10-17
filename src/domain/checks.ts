@@ -356,21 +356,18 @@ function tagPattern(key: string, value: string): string {
  */
 export type CheckStatusFilter = 'passed' | 'resolved' | 'areas';
 
-export async function listChecks(
-  deps: Pick<Deps, 'db'>,
-  buildId: string,
-  options: {
-    result?: CheckResult;
-    review?: CheckReview;
-    status?: CheckStatusFilter;
-    q?: string;
-    tags?: Array<{ key: string; value: string }>;
-    order?: 'asc' | 'desc';
-  } & PageInput = {},
-): Promise<Page<CheckView>> {
-  const { result, review, status, q, tags = [], order = 'asc', ...pageOptions } = options;
-  const page = parseInput(pageInputSchema, pageOptions);
-  await getBuildRow(deps, buildId);
+/** What the build page and the API narrow a build's checks by. */
+export interface CheckFilters {
+  result?: CheckResult;
+  review?: CheckReview;
+  status?: CheckStatusFilter;
+  q?: string;
+  tags?: Array<{ key: string; value: string }>;
+}
+
+/** The build's checks that pass the filters, with their joins (listChecks, listCheckRefs). */
+function filteredChecks(deps: Pick<Deps, 'db'>, buildId: string, filters: CheckFilters) {
+  const { result, review, status, q, tags = [] } = filters;
   let query = checksWithJoins(deps).where('checks.buildId', '=', buildId);
   if (result) query = query.where('checks.result', '=', result);
   if (review) query = query.where('checks.review', '=', review);
@@ -412,6 +409,18 @@ export async function listChecks(
       eb.or(values.map((value) => eb('checks.variant', 'like', sql<string>`${tagPattern(key, value)} escape '\\'`))),
     );
   }
+  return query;
+}
+
+export async function listChecks(
+  deps: Pick<Deps, 'db'>,
+  buildId: string,
+  options: CheckFilters & { order?: 'asc' | 'desc' } & PageInput = {},
+): Promise<Page<CheckView>> {
+  const { result, review, status, q, tags, order = 'asc', ...pageOptions } = options;
+  const page = parseInput(pageInputSchema, pageOptions);
+  await getBuildRow(deps, buildId);
+  let query = filteredChecks(deps, buildId, { result, review, status, q, tags });
   if (page.cursor) query = query.where('checks.id', order === 'asc' ? '>' : '<', page.cursor);
   const rows = await query
     .orderBy('checks.id', order)
@@ -419,6 +428,45 @@ export async function listChecks(
     .execute();
   const pageRows = toPage(rows, page.limit);
   return { items: pageRows.items.map(toCheckView), nextCursor: pageRows.nextCursor };
+}
+
+/**
+ * Every check of the build that passes the filters, newest first, as its id and change group
+ * only: the build page pages through these and loads the checks of one page (checksByIds).
+ */
+export async function listCheckRefs(
+  deps: Pick<Deps, 'db'>,
+  buildId: string,
+  filters: CheckFilters,
+): Promise<Array<{ id: string; groupId: string | null }>> {
+  await getBuildRow(deps, buildId);
+  const rows = await filteredChecks(deps, buildId, filters)
+    .clearSelect()
+    .select([
+      'checks.id',
+      'checks.changeKey',
+      (eb) =>
+        eb
+          .selectFrom('checks as same')
+          .select((s) => s.fn.countAll<number>().as('n'))
+          .whereRef('same.buildId', '=', 'checks.buildId')
+          .whereRef('same.changeKey', '=', 'checks.changeKey')
+          .as('groupSize'),
+    ])
+    .orderBy('checks.id', 'desc')
+    .execute();
+  return rows.map((r) => ({
+    id: r.id,
+    groupId: r.changeKey && Number(r.groupSize ?? 0) >= 2 ? r.changeKey : null,
+  }));
+}
+
+/** The checks with these ids, in the order given; ids not found are left out. */
+export async function checksByIds(deps: Pick<Deps, 'db'>, ids: string[]): Promise<CheckView[]> {
+  if (ids.length === 0) return [];
+  const rows = await checksWithJoins(deps).where('checks.id', 'in', ids).execute();
+  const byId = new Map(rows.map((r) => [r.id, toCheckView(r)]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
 /**

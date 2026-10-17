@@ -196,10 +196,12 @@ test('images show a skeleton while they load, and stop it once loaded', async ({
     await route.continue();
   });
   await page.goto(`/ui/builds/${seeded.buildId}`);
+  // On the build page the skeleton is the thumbnail's box under the image (build-page.spec.ts).
   const thumb = page.locator('.thumb-stack img').first();
+  const box = page.locator('.thumb-stack .thumb-box').first();
   await expect(thumb).not.toHaveClass(/is-loaded/);
-  expect(await thumb.evaluate((img) => getComputedStyle(img).animationName)).toBe('skeleton');
+  expect(await box.evaluate((el) => getComputedStyle(el).animationName)).toBe('skeleton');
   release();
   await expect(thumb).toHaveClass(/is-loaded/);
-  expect(await thumb.evaluate((img) => getComputedStyle(img).animationName)).toBe('none');
+  expect(await box.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
 });

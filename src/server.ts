@@ -33,6 +33,7 @@ export async function startServer(config: Config, logger: Logger): Promise<Runni
     db: handle.db,
     storage: config.storage === 'postgres' ? new DatabaseStorage(handle.db) : new LocalStorage(config.dataDir),
     runDiff: pool.run,
+    runThumb: pool.thumb,
     diffBacklog: () => pool.backlog,
     limits: { maxImageBytes: config.maxImageBytes, maxImagePixels: config.maxImagePixels },
     secrets: new SecretBox(config.secretKey),

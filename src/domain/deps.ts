@@ -1,5 +1,6 @@
 import type { Db } from '../db/database';
 import type { ActorKind, ProjectRole } from '../db/schema';
+import type { ThumbRunner } from '../diff/thumb';
 import type { DiffRunner } from '../diff/types';
 import type { Storage } from '../storage/storage';
 import type { SecretBox } from './secrets';
@@ -53,6 +54,8 @@ export interface Deps {
   storage: Storage;
   runDiff: DiffRunner;
   limits: ImageLimits;
+  /** Makes card thumbnails on the diff workers; without it (tests) they are made in this thread. */
+  runThumb?: ThumbRunner;
   /** Diff jobs waiting for a worker; the upload route refuses new work while it is too long. */
   diffBacklog?: () => number;
   /** Seals the secrets integrations keep (SECRET_KEY); without it they are stored as they are. */

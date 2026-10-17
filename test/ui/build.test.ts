@@ -225,13 +225,13 @@ describe('UI build page', () => {
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
     // The new screenshot, and the diff for the island that paints the changed pixels over it.
     expect(page).toContain(
-      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}"><span class="thumb-stack"><img src="/api/v1/images/${changed.imageSha}"`,
+      `<div class="thumb" data-diff="/api/v1/images/${changed.diffImageSha}/thumb?w=640&amp;mode=diff"><span class="thumb-stack"><canvas class="thumb-box" width="100" height="100"></canvas><img src="/api/v1/images/${changed.imageSha}/thumb?w=640"`,
     );
     expect(page).toContain('<span class="diff-pct" title="Pixels changed">1%</span>');
     // A check waiting for review says "unresolved".
     expect(page).toContain('<span class="card-state">unresolved</span>');
     expect(page).not.toContain('>to review</span>');
-    expect(page).toContain('data-islands="search live thumbs"');
+    expect(page).toContain('data-islands="live thumbs grid"');
   });
 
   test('a rejected change shows no diff percentage on its card', async () => {
@@ -268,10 +268,11 @@ describe('UI build page', () => {
   test('thumbnails open focus mode with the same filter', async () => {
     const { buildId, changed, same } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}?filter=pending`, { as: viewer }));
-    expect(page).toContain('loading="lazy" width="100" height="100"');
+    // The thumbnail's own size, so the card keeps its box while the image loads.
+    expect(page).toContain('loading="lazy" decoding="async" width="100" height="100"');
     expect(page).toContain(`href="/ui/checks/${changed.id}?filter=pending"`);
     const all = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(all).toContain(`src="/api/v1/images/${same.imageSha}"`);
+    expect(all).toContain(`src="/api/v1/images/${same.imageSha}/thumb?w=640"`);
   });
 
   test('Start review opens the newest waiting check; it is gone when nothing waits', async () => {
@@ -307,14 +308,14 @@ describe('UI build page', () => {
     const { finalizeBuild } = await import('../../src/domain/builds');
     await finalizeBuild(t.deps, buildId);
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="search live thumbs"');
+    expect(page).toContain('data-islands="live thumbs grid"');
     expect(page).toContain('data-live="build-head" data-live-watch=""');
   });
 
   test('an open build updates itself while it runs', async () => {
     const { buildId } = await seedBuild();
     const page = await html(await t.request('GET', `/ui/builds/${buildId}`, { as: viewer }));
-    expect(page).toContain('data-islands="search live thumbs"');
+    expect(page).toContain('data-islands="live thumbs grid"');
     expect(page).toContain('data-live="build-head" data-live-open=""');
     expect(page).toContain('data-live="chips"');
     expect(page).toContain('data-live="checks"');
@@ -338,6 +339,97 @@ describe('UI build page', () => {
     // Filter chips keep the search.
     expect(found).toContain(`href="/ui/builds/${buildId}?filter=pending&amp;q=CART"`);
     expect(await page(`/ui/builds/${buildId}?filter=all&q=nothing-like-this`)).toContain('No checks match');
+  });
+
+  describe('pages', () => {
+    /** 30 new checks, s00 oldest … s29 newest, half on a phone. */
+    async function seedMany() {
+      const buildId = await openBuild(t.deps, 'web');
+      const ids: string[] = [];
+      for (let i = 0; i < 30; i++) {
+        const name = `s${String(i).padStart(2, '0')}`;
+        const variant = { device: i % 2 ? 'phone' : 'desktop' };
+        ids.push((await submit(t.deps, buildId, white, { name, variant })).check.id);
+      }
+      return { buildId, ids: ids.reverse() };
+    }
+    const cards = (body: string, ids: string[]) => ids.filter((id) => body.includes(`id="${id}"`));
+
+    test('a page shows `size` cards with a pager whose links keep the filter, tags and search', async () => {
+      const { buildId, ids } = await seedMany();
+      const body = await html(await t.request('GET', `/ui/builds/${buildId}?filter=all&size=12`, { as: viewer }));
+      expect(cards(body, ids)).toEqual(ids.slice(0, 12));
+      expect(body).toContain('data-pager="true" data-page="1" data-pages="3" data-size="12" data-total="30"');
+      expect(body).toContain('<span class="page-range muted">1–12 of 30</span>');
+      expect(body).toContain('<span class="button small" aria-disabled="true">← Previous</span>');
+      expect(body).toContain(
+        `<a class="button small" rel="next" href="/ui/builds/${buildId}?filter=all&amp;page=2&amp;size=12" data-page-link="2" title="Next page (])">Next →</a>`,
+      );
+      expect(body).toContain('aria-current="page" aria-label="Page 1">1</a>');
+      // Filter counts are over the whole build, not the page.
+      expect(body).toMatch(/aria-current="page">All <span class="count">30<\/span>/);
+
+      const third = await html(
+        await t.request('GET', `/ui/builds/${buildId}?filter=all&page=3&size=12`, { as: viewer }),
+      );
+      expect(cards(third, ids)).toEqual(ids.slice(24));
+      expect(third).toContain('25–30 of 30');
+      // Past the end: the last page, never an empty one.
+      expect(
+        cards(await html(await t.request('GET', `/ui/builds/${buildId}?page=7&size=12`, { as: viewer })), ids),
+      ).toEqual(ids.slice(24));
+
+      const narrowed = await html(
+        await t.request('GET', `/ui/builds/${buildId}?filter=all&q=s&tag=device:phone&size=4&page=2`, {
+          as: viewer,
+        }),
+      );
+      expect(narrowed).toContain('5–8 of 15');
+      expect(narrowed).toContain(
+        `href="/ui/builds/${buildId}?filter=all&amp;q=s&amp;tag=device%3Aphone&amp;page=3&amp;size=4"`,
+      );
+    });
+
+    test('the size is clamped and remembered in a cookie; without one, 24', async () => {
+      const { buildId, ids } = await seedMany();
+      const get = async (query: string, cookie = '') =>
+        html(
+          await t.request('GET', `/ui/builds/${buildId}?filter=all${query}`, {
+            as: cookie ? null : viewer,
+            headers: cookie ? { cookie: `pt_session=${viewer.cookie}; ${cookie}` } : {},
+          }),
+        );
+      expect(cards(await get(''), ids)).toHaveLength(24);
+      expect(cards(await get('&size=1'), ids)).toHaveLength(4);
+      expect(cards(await get('&size=500'), ids)).toHaveLength(30);
+      expect(cards(await get('', 'pt_page_size=9'), ids)).toHaveLength(9);
+      expect(cards(await get('&size=6', 'pt_page_size=9'), ids)).toHaveLength(6);
+      // A single page has no pager.
+      expect(await get('&size=60')).not.toContain('data-pager');
+    });
+
+    test('focus opens the page that holds the card, and the check page links back to it', async () => {
+      const { buildId, ids } = await seedMany();
+      const target = ids[17] as string;
+      const body = await html(
+        await t.request('GET', `/ui/builds/${buildId}?filter=all&size=8&focus=${target}`, { as: viewer }),
+      );
+      expect(body).toContain('data-page="3"');
+      expect(body).toContain(`data-grid="true" data-page="3" data-size="8" data-offset="16" data-focus="${target}"`);
+      const check = await html(await t.request('GET', `/ui/checks/${target}?filter=all`, { as: viewer }));
+      expect(check).toContain(`href="/ui/builds/${buildId}?filter=all&amp;focus=${target}"`);
+    });
+
+    test('approving from a card without JavaScript comes back to its page', async () => {
+      const { buildId, ids } = await seedMany();
+      const body = await html(
+        await t.request('GET', `/ui/builds/${buildId}?filter=all&size=8&page=2`, { as: reviewer }),
+      );
+      expect(body).toContain('<input type="hidden" name="page" value="2"/>');
+      const id = ids[9] as string;
+      const res = await postForm(t, `/ui/checks/${id}/approve`, { filter: 'all', back: 'build', page: '2' }, reviewer);
+      expect(location(res)).toBe(`/ui/builds/${buildId}?filter=all&page=2&done=approved#${id}`);
+    });
   });
 
   test('an empty filter names what is missing and offers all checks', async () => {

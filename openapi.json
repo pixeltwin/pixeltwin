@@ -9112,6 +9112,120 @@
         }
       }
     },
+    "/api/v1/images/{sha}/thumb": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "Download a thumbnail of an image (PNG)",
+        "description": "The image scaled down so its longer side is at most `w` pixels (rounded up to one of 320, 640; the largest by default). An image that fits already comes back as it is. `mode=diff` keeps a diff image's changed (red) pixels visible; `crop` scales only a part of the image (not stored, an image's crops are made again when asked for). Made on the first request and stored; the same caller access as the image.",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "sha",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "required": false,
+            "name": "w",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "plain",
+                "diff"
+              ]
+            },
+            "required": false,
+            "name": "mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,5},\\d{1,5},\\d{1,5},\\d{1,5}$",
+              "description": "Only this part of the image: `x,y,width,height` in image pixels."
+            },
+            "required": false,
+            "description": "Only this part of the image: `x,y,width,height` in image pixels.",
+            "name": "crop",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG image",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{slug}/invites": {
       "post": {
         "tags": [

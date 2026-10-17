@@ -15,6 +15,10 @@ import copy from './client/copy.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import dialog from './client/dialog.ts' with { type: 'text' };
 // @ts-expect-error -- see above
+import fit from './client/fit.ts' with { type: 'text' };
+// @ts-expect-error -- see above
+import grid from './client/grid.ts' with { type: 'text' };
+// @ts-expect-error -- see above
 import keymap from './client/keymap.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import keys from './client/keys.ts' with { type: 'text' };
@@ -33,9 +37,9 @@ import rank from './client/rank.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import review from './client/review.ts' with { type: 'text' };
 // @ts-expect-error -- see above
-import search from './client/search.ts' with { type: 'text' };
-// @ts-expect-error -- see above
 import select from './client/select.ts' with { type: 'text' };
+// @ts-expect-error -- see above
+import swap from './client/swap.ts' with { type: 'text' };
 // @ts-expect-error -- see above
 import theme from './client/theme.ts' with { type: 'text' };
 // @ts-expect-error -- see above
@@ -56,6 +60,8 @@ const SOURCES: Record<string, string> = {
   changes,
   copy,
   dialog,
+  fit,
+  grid,
   keymap,
   keys,
   live,
@@ -65,8 +71,8 @@ const SOURCES: Record<string, string> = {
   queue,
   rank,
   review,
-  search,
   select,
+  swap,
   theme,
   thumbs,
   toast,

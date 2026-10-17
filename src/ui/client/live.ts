@@ -5,6 +5,7 @@
 import { ApiError, api, fetchPage } from './api.ts';
 import { onKey } from './keys.ts';
 import { pollDelay } from './rank.ts';
+import { adopt, focusedCard, focusTarget, serverMarkup } from './swap.ts';
 import { toast } from './toast.ts';
 
 /** What a form posts in place: its `data-inplace-body` (JSON), else its checkIds inputs, else nothing. */
@@ -35,6 +36,8 @@ export function init(): void {
     }
     let changed = false;
     for (const current of document.querySelectorAll<HTMLElement>('[data-live]')) {
+      // Cards reviewed in place that left the filter stay until the reviewer changes page.
+      if (current.dataset.live === 'checks' && current.querySelector('[data-gone]')) continue;
       const fresh = doc.querySelector(`[data-live="${CSS.escape(current.dataset.live ?? '')}"]`);
       if (!fresh) {
         // Onboarding disappears when the first build arrives: show the real page.
@@ -44,8 +47,16 @@ export function init(): void {
         }
         continue;
       }
-      if (fresh.outerHTML !== current.outerHTML) {
-        current.replaceWith(document.importNode(fresh, true));
+      // The page adds state to its markup (loaded images, masks): compare what the server sent.
+      if (serverMarkup(fresh) !== serverMarkup(current)) {
+        const copy = document.importNode(fresh, true) as HTMLElement;
+        adopt(copy, current);
+        const focused = current.contains(document.activeElement) ? focusedCard()?.id : undefined;
+        current.replaceWith(copy);
+        // A card that had the focus keeps it, so the keyboard goes on where it was.
+        const card = focused ? document.getElementById(focused) : null;
+        if (card) focusTarget(card)?.focus({ preventScroll: true });
+        if (copy.dataset.live === 'checks') document.dispatchEvent(new CustomEvent('pixeltwin:checks-swapped'));
         changed = true;
       }
     }
@@ -71,6 +82,8 @@ export function init(): void {
     const button = form.querySelector('button');
     if (button?.disabled) return;
     if (button) button.disabled = true;
+    // Pages fetched ahead (grid island) show the cards as they were: they are fetched again.
+    document.dispatchEvent(new CustomEvent('pixeltwin:reviewed'));
     try {
       const result = await api<{ changed?: string[] }>('POST', path, bodyOf(form));
       const undoPath = form.dataset.inplaceUndo;
@@ -91,6 +104,7 @@ export function init(): void {
               return;
             }
             unchanged = 0;
+            document.dispatchEvent(new CustomEvent('pixeltwin:reviewed'));
             if (card?.id) await refreshCard(card.id, card);
           }
         : null;
@@ -134,9 +148,12 @@ export function init(): void {
    * until the next visit, without its form.
    */
   async function refreshCard(id: string | null, known: HTMLElement | null, form?: HTMLFormElement): Promise<void> {
+    // The page that holds the card now (cards move between pages as others leave the filter).
+    const url = new URL(location.href);
+    if (id) url.searchParams.set('focus', id);
     let doc: Document;
     try {
-      doc = await fetchPage(location.href);
+      doc = await fetchPage(url.href);
     } catch {
       schedule();
       return;
@@ -146,25 +163,29 @@ export function init(): void {
     for (const selector of swaps) {
       const current = document.querySelector(selector);
       const fresh = doc.querySelector(selector);
-      if (current && fresh && fresh.outerHTML !== current.outerHTML)
+      if (current && fresh && serverMarkup(fresh) !== serverMarkup(current))
         current.replaceWith(document.importNode(fresh, true));
     }
     if (card) {
       const focused = card.contains(document.activeElement);
       let fresh = doc.getElementById(card.id);
-      // Filtered out now (approved under Unresolved): the card stays until the next visit, showing
-      // what it is now, as the unfiltered page has it.
-      const url = new URL(location.href);
+      let gone = false;
+      // Filtered out now (approved under Unresolved): the card stays until the next visit or
+      // page change, showing what it is now, as the unfiltered page has it.
       if (!fresh && url.searchParams.has('filter') && url.searchParams.get('filter') !== 'all') {
         url.searchParams.set('filter', 'all');
         fresh = await fetchPage(url.href)
           .then((all) => all.getElementById(card.id))
           .catch(() => null);
+        gone = fresh !== null;
       }
       if (fresh) {
         const copy = document.importNode(fresh, true) as HTMLElement;
+        adopt(copy, card);
+        // The grid island counts these: the next page change first fills this page.
+        if (gone) copy.dataset.gone = '';
         card.replaceWith(copy);
-        if (focused) copy.focus({ preventScroll: true });
+        if (focused) focusTarget(copy)?.focus({ preventScroll: true });
       } else form?.remove();
     }
     schedule();
@@ -176,12 +197,15 @@ export function init(): void {
     onKey({ key: 'u', label: 'Undo the last review', run: () => void lastUndo?.() });
   }
   if (document.querySelector('[data-live="checks"]')) {
-    const groupForm = (action: string) =>
-      document.activeElement
-        ?.closest('[data-group-card]')
-        ?.querySelector<HTMLFormElement>(`form[data-group-action="${action}"]`);
-    onKey({ key: 'a', label: 'Approve the focused group', run: () => groupForm('approve')?.requestSubmit() });
-    onKey({ key: 'r', label: 'Reject the focused group', run: () => groupForm('reject')?.requestSubmit() });
+    // A on a focused new screenshot approves it; on a group card A and R review the whole group.
+    const cardForm = (action: string) =>
+      focusedCard()?.querySelector<HTMLFormElement>(
+        action === 'approve'
+          ? 'form[data-group-action="approve"], form.card-approve'
+          : 'form[data-group-action="reject"]',
+      );
+    onKey({ key: 'a', label: 'Approve the focused card', run: () => cardForm('approve')?.requestSubmit() });
+    onKey({ key: 'r', label: 'Reject the focused group', run: () => cardForm('reject')?.requestSubmit() });
   }
 
   document.addEventListener('visibilitychange', () => {

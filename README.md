@@ -8,7 +8,9 @@ Self-hosted visual regression testing with an API built for CI and AI agents.
 
 Review a build with the keyboard: Side, Slider, Onion and Diff views, zoom to a changed region,
 <kbd>A</kbd> approve, <kbd>R</kbd> reject, <kbd>U</kbd> undo, <kbd>→</kbd>/<kbd>←</kbd> (or <kbd>J</kbd>/<kbd>K</kbd>)
-next and previous, <kbd>?</kbd> for every shortcut.
+next and previous, <kbd>?</kbd> for every shortcut. The build page shows a page of cards that fits
+the window (no scrolling on a desktop): <kbd>[</kbd>/<kbd>]</kbd> change the page, <kbd>J</kbd>/<kbd>K</kbd> and the
+arrows move between cards and across pages, and thumbnails are small copies made on the server.
 
 The same change on many screens is reviewed once: checks of a build with exactly the same changes
 (a new header on 40 pages and 3 browsers) form a change group, shown as one card with Approve all

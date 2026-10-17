@@ -48,7 +48,7 @@ describe('UI focus mode', () => {
     expect(body).toContain('data-islands="review"');
     expect(body).toContain('data-build-number="1"');
     expect(body).toContain('data-project-href="/ui/p/web"');
-    expect(body).toContain(`href="/ui/builds/${buildId}?filter=pending"`);
+    expect(body).toContain(`href="/ui/builds/${buildId}?filter=pending&amp;focus=${changed.id}"`);
     expect(body).toContain('<a href="/ui/p/web">Web shop</a>');
     expect(body).toContain('>#1</a>');
     // Newest first: the changed check was posted before the new one, so it comes second.
@@ -123,8 +123,8 @@ describe('UI focus mode', () => {
     const check = (await submit(t.deps, buildId, withSquare, { name: 'home', variant })).check;
     // Values only; the keys are in the tooltip.
     const tags =
-      '<span class="variant-tag" data-key="device">iphone 13 pro max</span>' +
-      '<span class="variant-tag" data-key="os">ios 16.0</span>';
+      '<span class="variant-tag" data-variant-key="device">iphone 13 pro max</span>' +
+      '<span class="variant-tag" data-variant-key="os">ios 16.0</span>';
     const header = await page(`/ui/checks/${check.id}`);
     expect(header).toContain(tags);
     // The exact values stay in the tooltip.

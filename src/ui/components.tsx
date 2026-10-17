@@ -29,7 +29,7 @@ export function Variant({ variant }: { variant: Record<string, string> }) {
   return (
     <span class="variant" title={entries.map(([k, v]) => `${k}: ${v}`).join(' · ')}>
       {entries.map(([k, v]) => (
-        <span class="variant-tag" data-key={k}>
+        <span class="variant-tag" data-variant-key={k}>
           {v.replaceAll('_', ' ')}
         </span>
       ))}
