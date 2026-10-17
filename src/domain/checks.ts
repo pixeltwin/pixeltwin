@@ -1,12 +1,13 @@
 import { sql } from 'kysely';
-import type { Baseline, Build, CheckResult, CheckReview, CheckRow } from '../db/schema';
+import type { Baseline, Build, CheckResult, CheckReview, CheckRow, Suggestion } from '../db/schema';
 import { IDENTICAL_SUMMARY } from '../diff/summary';
-import type { DiffData, DiffErrorData, DiffJobResult, Rect, Size } from '../diff/types';
+import type { DiffData, DiffErrorData, DiffJob, DiffJobResult, Rect, Size, SnapshotElement } from '../diff/types';
 import { AppError } from '../errors';
 import { newId } from '../ids';
 import { resolveBaseline } from './baselines';
 import { getBuildRow } from './builds';
 import type { Deps } from './deps';
+import { comparedElements, loadElements, storeElements } from './elements';
 import { loadImage, type PngSize, readPngHeader, sha256Hex, storeImage } from './images';
 import { supersedingCheck } from './outdated';
 import { type Page, toPage } from './pagination';
@@ -14,6 +15,15 @@ import { getProjectById } from './projects';
 import { AUTO_APPROVE_COMMENT, AUTO_APPROVER, approveCheck } from './reviews';
 import { checkMetaSchema, type PageInput, pageInputSchema, parseInput } from './schemas';
 import { snapshotKey } from './snapshot-key';
+
+/** An agent's open suggestion (agent review policy `suggest`): the check waits for a person. */
+export interface CheckSuggestion {
+  action: Suggestion;
+  reason: string | null;
+  /** The project token that suggested, with its name at the time. */
+  by: { kind: 'token'; id: string; name: string | null };
+  at: number;
+}
 
 export interface CheckView {
   id: string;
@@ -37,6 +47,9 @@ export interface CheckView {
   supersededBy: string | null;
   /** Server time the check took: baseline, compare and store. */
   compareMs: number | null;
+  /** How many page elements the SDK sent with the screenshot; null when it sent none. */
+  elementCount: number | null;
+  suggestion: CheckSuggestion | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -59,6 +72,7 @@ type CheckWithJoins = CheckRow & {
   baselineBranch: string | null;
   baselineImageSha: string | null;
   buildBranch: string;
+  elementCount: number | null;
 };
 
 function initialReview(result: CheckResult): CheckReview {
@@ -113,6 +127,8 @@ async function evaluate(
   regions: SnapshotRegions,
   colorThreshold: number,
   tolerancePercent: number,
+  /** Both screenshots' elements, when both have them. */
+  elements: DiffJob['elements'] = null,
 ): Promise<Outcome> {
   const job = {
     current: image,
@@ -121,6 +137,7 @@ async function evaluate(
     colorThreshold,
     tolerancePercent,
     maxPixels: deps.limits.maxImagePixels,
+    ...(elements ? { elements } : {}),
   };
 
   if (!baseline) {
@@ -142,6 +159,7 @@ async function evaluate(
         regions: [],
         regionsTruncated: false,
         summary: IDENTICAL_SUMMARY,
+        ...(elements ? { changes: [], changesTruncated: false } : {}),
       },
       diffPng: null,
       diffSize: null,
@@ -178,18 +196,46 @@ function checksWithJoins(deps: Pick<Deps, 'db'>) {
     .selectFrom('checks')
     .innerJoin('builds', 'builds.id', 'checks.buildId')
     .leftJoin('baselines', 'baselines.id', 'checks.baselineId')
+    .leftJoin('elementSets', 'elementSets.sha', 'checks.elementsSha')
     .selectAll('checks')
     .select([
       'baselines.branch as baselineBranch',
       'baselines.imageSha as baselineImageSha',
       'builds.branch as buildBranch',
+      'elementSets.count as elementCount',
     ]);
 }
 
 function toCheckView(row: CheckWithJoins): CheckView {
-  const { baselineBranch, baselineImageSha, buildBranch, variant, ignoreRegions, diff, baselineId, ...rest } = row;
+  const {
+    baselineBranch,
+    baselineImageSha,
+    buildBranch,
+    variant,
+    ignoreRegions,
+    diff,
+    baselineId,
+    elementsSha: _elementsSha,
+    elementCount,
+    suggestion,
+    suggestedBy,
+    suggestedByName,
+    suggestionReason,
+    suggestedAt,
+    ...rest
+  } = row;
   return {
     ...rest,
+    elementCount: elementCount === null ? null : Number(elementCount),
+    suggestion:
+      suggestion && suggestedBy
+        ? {
+            action: suggestion,
+            reason: suggestionReason,
+            by: { kind: 'token', id: suggestedBy, name: suggestedByName },
+            at: suggestedAt ?? 0,
+          }
+        : null,
     variant: JSON.parse(variant) as Record<string, string>,
     ignoreRegions: JSON.parse(ignoreRegions) as Rect[],
     diff: diff ? (JSON.parse(diff) as DiffData | DiffErrorData) : null,
@@ -203,6 +249,30 @@ function toCheckView(row: CheckWithJoins): CheckView {
           }
         : null,
   };
+}
+
+async function elementsShaOf(deps: Pick<Deps, 'db'>, checkId: string): Promise<string | null> {
+  const row = await deps.db.selectFrom('checks').select('elementsSha').where('id', '=', checkId).executeTakeFirst();
+  return row?.elementsSha ?? null;
+}
+
+/** The page elements of the check and of the baseline it was compared with (null where none were sent). */
+export async function checkElements(
+  deps: Pick<Deps, 'db'>,
+  checkId: string,
+): Promise<{ current: SnapshotElement[] | null; baseline: SnapshotElement[] | null }> {
+  const row = await deps.db
+    .selectFrom('checks')
+    .leftJoin('baselines', 'baselines.id', 'checks.baselineId')
+    .select(['checks.elementsSha', 'baselines.elementsSha as baselineElementsSha'])
+    .where('checks.id', '=', checkId)
+    .executeTakeFirst();
+  if (!row) throw new AppError('check_not_found', 404, `Check ${checkId} not found.`);
+  const [current, baseline] = await Promise.all([
+    loadElements(deps.db, row.elementsSha),
+    loadElements(deps.db, row.baselineElementsSha),
+  ]);
+  return { current, baseline };
 }
 
 export async function getCheck(deps: Pick<Deps, 'db'>, id: string): Promise<CheckView> {
@@ -351,6 +421,7 @@ export async function compareWithoutAreas(
     { ignore: [], compare: [] },
     check.colorThreshold,
     check.tolerancePercent,
+    await comparedElements(deps.db, baseline.elementsSha, await elementsShaOf(deps, checkId)),
   );
   const diffImageSha =
     outcome.diffPng && outcome.diffSize ? await storeImage(deps, outcome.diffPng, outcome.diffSize) : null;
@@ -379,6 +450,7 @@ export async function submitCheck(
   const tolerancePercent = meta.tolerancePercent ?? project.tolerancePercent;
   const resolved = await resolveBaseline(deps.db, project.id, key, build.branch, build.baseBranch);
   const imageSha = sha256Hex(input.image);
+  const elementsSha = await storeElements(deps.db, meta.elements);
 
   const outcome = await evaluate(
     deps,
@@ -389,6 +461,7 @@ export async function submitCheck(
     await regionsFor(deps.db, project.id, key, meta.ignoreRegions),
     colorThreshold,
     tolerancePercent,
+    await comparedElements(deps.db, resolved?.baseline.elementsSha ?? null, elementsSha),
   );
 
   await storeImage(deps, input.image, header);
@@ -427,6 +500,13 @@ export async function submitCheck(
     reviewedBy: null,
     reviewedAt: null,
     reviewComment: null,
+    elementsSha,
+    // A new screenshot of the screen: a suggestion about the earlier one no longer applies.
+    suggestion: null,
+    suggestedBy: null,
+    suggestedByName: null,
+    suggestionReason: null,
+    suggestedAt: null,
     // Baseline, compare and store; the commit below is not counted.
     compareMs: Math.round(performance.now() - started),
     updatedAt: now,
@@ -488,6 +568,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
   if (!image) return check;
   const header = readPngHeader(image, deps.limits);
   const regions = () => regionsFor(deps.db, check.projectId, check.snapshotKey, check.ignoreRegions);
+  const elements = await comparedElements(deps.db, baseline.elementsSha, await elementsShaOf(deps, checkId));
   // Areas drawn or deleted while the comparison ran mean it is already out of date: compare again,
   // so of two quick edits the comparison that saw both is the one that stays.
   let used = await regions();
@@ -501,6 +582,7 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
       used,
       check.colorThreshold,
       check.tolerancePercent,
+      elements,
     );
     const latest = await regions();
     if (JSON.stringify(latest) !== JSON.stringify(used)) {
@@ -523,6 +605,12 @@ export async function recomputeCheck(deps: Deps, checkId: string): Promise<Check
           .then(eb.ref('review'))
           .else(sql.lit(initial))
           .end(),
+        // The diff an agent judged is gone: its suggestion went with it.
+        suggestion: null,
+        suggestedBy: null,
+        suggestedByName: null,
+        suggestionReason: null,
+        suggestedAt: null,
         updatedAt: Date.now(),
       }))
       .where('id', '=', checkId)

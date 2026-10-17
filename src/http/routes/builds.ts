@@ -10,8 +10,8 @@ import {
   listBuilds,
 } from '../../domain/builds';
 import { getProjectBySlug } from '../../domain/projects';
-import { approveBuild } from '../../domain/reviews';
-import { createBuildSchema, finalizeBuildSchema, timingsSchema } from '../../domain/schemas';
+import { actorFromPrincipal, approveBuild } from '../../domain/reviews';
+import { createBuildSchema, finalizeBuildSchema, reviewInputSchema, timingsSchema } from '../../domain/schemas';
 import { AppError } from '../../errors';
 import { allowProject, principalOf, requirePermission } from '../auth';
 import { API, type AppEnv, type Services } from '../env';
@@ -162,16 +162,27 @@ export function registerBuildRoutes(app: OpenAPIHono<AppEnv>, s: Services): void
     method: 'post',
     path: `${API}/builds/{id}/approve`,
     tags: ['reviews'],
-    summary: 'Approve every pending check in the build',
-    request: { params: idParam },
+    summary:
+      "Approve every pending check in the build. A token's approvals may become suggestions (agent review policy)",
+    request: {
+      params: idParam,
+      body: { required: false, content: { 'application/json': { schema: reviewInputSchema } } },
+    },
     responses: {
-      200: json(z.object({ approved: z.number().int() }), 'Number of checks approved'),
-      ...problems(401, 403, 404),
+      200: json(
+        z.object({
+          approved: z.number().int(),
+          suggested: z.number().int().openapi({ description: 'Recorded as suggestions for a person to accept' }),
+        }),
+        'Number of checks approved, and of suggestions recorded',
+      ),
+      ...problems(401, 403, 404, 422),
     },
   });
   app.openapi(approveAll, async (c) => {
     const { id } = c.req.valid('param');
     allowProject(c, (await getBuildRow(s.deps, id)).projectId);
-    return c.json(await approveBuild(s.deps, id, principalOf(c).id), 200);
+    const input = c.req.header('content-type')?.startsWith('application/json') ? c.req.valid('json') : {};
+    return c.json(await approveBuild(s.deps, id, actorFromPrincipal(principalOf(c)), input), 200);
   });
 }

@@ -18,6 +18,8 @@ const PROJECT_COLUMNS = [
   'tolerancePercent',
   'retentionDays',
   'autoApproveNew',
+  'agentReview',
+  'agentMaxDiffPercent',
   'createdAt',
   'updatedAt',
 ] as const;

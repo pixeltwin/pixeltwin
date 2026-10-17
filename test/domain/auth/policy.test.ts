@@ -12,6 +12,7 @@ const token = (...scopes: Array<'read' | 'write' | 'review'>): Principal => ({
   kind: 'token',
   id: 'tok_1',
   projectId: 'prj_1',
+  name: 'ci',
   scopes,
 });
 

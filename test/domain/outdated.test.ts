@@ -75,7 +75,7 @@ describe('checks outdated by a newer approval', () => {
     const four = await changed(square(30));
     await approveCheck(deps, four.check.id, 'usr_1');
 
-    expect(await approveBuild(deps, buildId, 'usr_2')).toEqual({ approved: 1 });
+    expect(await approveBuild(deps, buildId, 'usr_2')).toEqual({ approved: 1, suggested: 0 });
     expect((await getCheck(deps, old.id)).review).toBe('outdated');
     expect((await getCheck(deps, cart.id)).review).toBe('approved');
     expect((await findCurrentBaseline(deps.db, project.id, HOME, 'main'))?.sourceCheckId).toBe(four.check.id);
@@ -161,6 +161,7 @@ describe('checks outdated by a newer approval', () => {
       '0008_parallel_builds',
       '0009_auto_approve_new',
       '0010_timings',
+      '0012_agent_review',
     ]);
     expect(await getCheck(deps, two.check.id)).toMatchObject({ review: 'outdated', supersededBy: four.check.id });
     // Everything else survived the rebuild, review history included.

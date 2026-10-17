@@ -46,7 +46,8 @@ export function startRetentionJob(options: {
     // Never overlap with ourselves, e.g. a slow pass and the next tick.
     running ??= pass()
       .then((result) => {
-        if (result && (result.buildsDeleted > 0 || result.imagesDeleted > 0)) logger.info('retention', { ...result });
+        if (result && (result.buildsDeleted > 0 || result.imagesDeleted > 0 || result.elementSetsDeleted > 0))
+          logger.info('retention', { ...result });
         return result;
       })
       .catch((err: unknown) => {

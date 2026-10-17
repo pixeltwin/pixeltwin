@@ -38,6 +38,8 @@ export interface TokenView {
 export interface ResolvedToken {
   id: string;
   projectId: string;
+  /** Recorded with its reviews: an agent is named after its token. */
+  name: string;
   scopes: TokenScope[];
 }
 
@@ -111,5 +113,5 @@ export async function resolveProjectToken(deps: DbDeps, raw: string): Promise<Re
   if (row.lastUsedAt === null || now - row.lastUsedAt >= LAST_USED_RESOLUTION_MS) {
     await deps.db.updateTable('projectTokens').set({ lastUsedAt: now }).where('id', '=', row.id).execute();
   }
-  return { id: row.id, projectId: row.projectId, scopes: JSON.parse(row.scopes) as TokenScope[] };
+  return { id: row.id, projectId: row.projectId, name: row.name, scopes: JSON.parse(row.scopes) as TokenScope[] };
 }

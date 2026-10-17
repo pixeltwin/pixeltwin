@@ -171,9 +171,22 @@ export class PixeltwinClient {
     ).data;
   }
 
-  /** Approves every pending check of the build (needs the `review` scope). */
-  async approveBuild(buildId: string): Promise<{ approved: number }> {
-    return (await this.#request<{ approved: number }>('POST', `/builds/${encodeURIComponent(buildId)}/approve`)).data;
+  /**
+   * Approves every pending check of the build (needs the `review` scope). Under the project's agent
+   * review policy some approvals become suggestions (`suggested`), and a reason is required.
+   */
+  async approveBuild(
+    buildId: string,
+    options: { reason?: string } = {},
+  ): Promise<{ approved: number; suggested: number }> {
+    const path = `/builds/${encodeURIComponent(buildId)}/approve`;
+    return (
+      await this.#request<{ approved: number; suggested: number }>(
+        'POST',
+        path,
+        options.reason ? { json: { reason: options.reason } } : undefined,
+      )
+    ).data;
   }
 
   /** Polls the build while its verdict is `pending` (checks waiting for a review), up to `timeoutMs`. */

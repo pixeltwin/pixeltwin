@@ -168,6 +168,19 @@
             "type": "boolean",
             "description": "A new screenshot (no baseline yet) is approved as soon as it arrives"
           },
+          "agentReview": {
+            "type": "string",
+            "enum": [
+              "off",
+              "suggest",
+              "auto-below"
+            ],
+            "description": "What a project token's approve or reject does. off: it applies. suggest: it is recorded as a suggestion and the check stays pending until a person accepts or dismisses it. auto-below: approvals of a diff up to agentMaxDiffPercent apply, others (and new screenshots) become suggestions; rejections apply. Unless off, a token must give a reason."
+          },
+          "agentMaxDiffPercent": {
+            "type": "number",
+            "description": "With agentReview \"auto-below\": the largest diff percent a token may approve itself"
+          },
           "createdAt": {
             "type": "integer"
           },
@@ -184,6 +197,8 @@
           "tolerancePercent",
           "retentionDays",
           "autoApproveNew",
+          "agentReview",
+          "agentMaxDiffPercent",
           "createdAt",
           "updatedAt"
         ]
@@ -434,6 +449,10 @@
               "withAreas": {
                 "type": "integer",
                 "description": "Checks whose snapshot has drawn ignore or compare areas"
+              },
+              "suggested": {
+                "type": "integer",
+                "description": "Checks with an agent's open suggestion, waiting for a person to accept or dismiss it"
               }
             },
             "required": [
@@ -441,7 +460,8 @@
               "result",
               "review",
               "autoApproved",
-              "withAreas"
+              "withAreas",
+              "suggested"
             ]
           }
         },
@@ -676,6 +696,69 @@
               "null"
             ]
           },
+          "elementCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Page elements the SDK sent with the screenshot; null when none"
+          },
+          "suggestion": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "reject"
+                ]
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "by": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "token"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name"
+                ]
+              },
+              "at": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "action",
+              "reason",
+              "by",
+              "at"
+            ],
+            "description": "An agent's open suggestion (agent review policy): the check stays pending until a person accepts or dismisses it"
+          },
           "compareMs": {
             "type": [
               "integer",
@@ -745,6 +828,8 @@
           "reviewedBy",
           "reviewedAt",
           "reviewComment",
+          "elementCount",
+          "suggestion",
           "compareMs",
           "supersededBy",
           "createdAt",
@@ -844,6 +929,16 @@
           },
           "summary": {
             "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ElementChange"
+            },
+            "description": "Element by element (moved, resized, text, style, added, removed), most important first, at most 50. Only when both the baseline and this check came with elements; then the summary names elements too."
+          },
+          "changesTruncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -855,6 +950,196 @@
           "regions",
           "regionsTruncated",
           "summary"
+        ]
+      },
+      "ElementChange": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "moved",
+              "resized",
+              "text",
+              "style",
+              "added",
+              "removed"
+            ],
+            "description": "The most telling aspect: added or removed, else text, style, resized, moved"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "moved",
+                "resized",
+                "text",
+                "style",
+                "added",
+                "removed"
+              ]
+            },
+            "description": "Every aspect that changed"
+          },
+          "key": {
+            "type": "string",
+            "description": "The element: [data-testid=…], #id, role=…[name=\"…\"] or a CSS path (the baseline key for removed)",
+            "example": "[data-testid=submit]"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "How the summary names the element"
+          },
+          "from": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "description": "Box in the baseline, screenshot pixels; null when added"
+          },
+          "to": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "description": "Box in the new screenshot; null when removed"
+          },
+          "dx": {
+            "type": "integer"
+          },
+          "dy": {
+            "type": "integer",
+            "description": "Moved down by this many pixels (negative: up)"
+          },
+          "dw": {
+            "type": "integer"
+          },
+          "dh": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "to": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ]
+          },
+          "style": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "to": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ]
+            },
+            "description": "color, background, fontSize"
+          },
+          "inside": {
+            "type": "integer",
+            "description": "Elements inside it that changed the same way (not listed on their own)"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Indexes into diff.regions that this change explains"
+          },
+          "description": {
+            "type": "string",
+            "example": "`button[data-testid=submit]` moved 4 px down"
+          }
+        },
+        "required": [
+          "kind",
+          "kinds",
+          "key",
+          "tag",
+          "role",
+          "label",
+          "from",
+          "to",
+          "regions",
+          "description"
         ]
       },
       "DiffError": {
@@ -903,6 +1188,86 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "ReviewedCheck": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Check"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "applied",
+                  "suggested"
+                ],
+                "description": "applied: the check is approved or rejected. suggested: the project's agent review policy recorded a token's review as a suggestion; the check stays pending until a person accepts or dismisses it"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        ]
+      },
+      "SnapshotElement": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "style": {
+            "type": "object",
+            "properties": {
+              "color": {
+                "type": "string"
+              },
+              "background": {
+                "type": "string"
+              },
+              "fontSize": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "key",
+          "tag",
+          "x",
+          "y",
+          "width",
+          "height"
         ]
       },
       "Area": {
@@ -974,18 +1339,38 @@
             "enum": [
               "approved",
               "rejected",
-              "reset"
+              "reset",
+              "suggested_approval",
+              "suggested_rejection",
+              "suggestion_dismissed"
             ]
           },
           "actor": {
             "type": "string",
             "description": "The user or project token that acted (an id, like reviewedBy)."
           },
+          "actorKind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "token",
+              "auto"
+            ],
+            "description": "user: a person; token: a project token (an agent or CI); auto: auto-approve-new"
+          },
+          "actorName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The token's name when it acted; null for people"
+          },
           "comment": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The reason given"
           },
           "createdAt": {
             "type": "integer"
@@ -997,6 +1382,8 @@
           "projectId",
           "action",
           "actor",
+          "actorKind",
+          "actorName",
           "comment",
           "createdAt"
         ]
@@ -1980,6 +2367,21 @@
                   "autoApproveNew": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "agentReview": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "suggest",
+                      "auto-below"
+                    ],
+                    "default": "off"
+                  },
+                  "agentMaxDiffPercent": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "default": 1
                   }
                 },
                 "required": [
@@ -2170,6 +2572,19 @@
                   },
                   "autoApproveNew": {
                     "type": "boolean"
+                  },
+                  "agentReview": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "suggest",
+                      "auto-below"
+                    ]
+                  },
+                  "agentMaxDiffPercent": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
                   }
                 },
                 "additionalProperties": false
@@ -3193,7 +3608,7 @@
         "tags": [
           "reviews"
         ],
-        "summary": "Approve every pending check in the build",
+        "summary": "Approve every pending check in the build. A token's approvals may become suggestions (agent review policy)",
         "x-permission": "check.review",
         "security": [
           {
@@ -3213,9 +3628,30 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Number of checks approved",
+            "description": "Number of checks approved, and of suggestions recorded",
             "content": {
               "application/json": {
                 "schema": {
@@ -3223,10 +3659,15 @@
                   "properties": {
                     "approved": {
                       "type": "integer"
+                    },
+                    "suggested": {
+                      "type": "integer",
+                      "description": "Recorded as suggestions for a person to accept"
                     }
                   },
                   "required": [
-                    "approved"
+                    "approved",
+                    "suggested"
                   ]
                 }
               }
@@ -3253,6 +3694,16 @@
             }
           },
           "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "Problem",
             "content": {
               "application/problem+json": {
@@ -3375,6 +3826,86 @@
                     "type": "number",
                     "minimum": 0,
                     "maximum": 100
+                  },
+                  "elements": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 300
+                        },
+                        "path": {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        "tag": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "role": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "text": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "x": {
+                          "type": "integer",
+                          "maximum": 2147483647,
+                          "minimum": 0
+                        },
+                        "y": {
+                          "type": "integer",
+                          "maximum": 2147483647,
+                          "minimum": 0
+                        },
+                        "width": {
+                          "type": "integer",
+                          "maximum": 2147483647,
+                          "minimum": 1
+                        },
+                        "height": {
+                          "type": "integer",
+                          "maximum": 2147483647,
+                          "minimum": 1
+                        },
+                        "style": {
+                          "type": "object",
+                          "properties": {
+                            "color": {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            "background": {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            "fontSize": {
+                              "type": "string",
+                              "maxLength": 20
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "tag",
+                        "x",
+                        "y",
+                        "width",
+                        "height"
+                      ]
+                    },
+                    "maxItems": 300
                   },
                   "imageBase64": {
                     "type": "string",
@@ -3704,7 +4235,7 @@
         "tags": [
           "reviews"
         ],
-        "summary": "Approve a check; its image becomes the baseline",
+        "summary": "Approve a check; its image becomes the baseline. A token's approval may be recorded as a suggestion (see outcome)",
         "x-permission": "check.review",
         "security": [
           {
@@ -3731,6 +4262,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
@@ -3743,11 +4278,11 @@
         },
         "responses": {
           "200": {
-            "description": "The reviewed check",
+            "description": "The check, and whether the review applied or became a suggestion",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Check"
+                  "$ref": "#/components/schemas/ReviewedCheck"
                 }
               }
             }
@@ -3810,7 +4345,7 @@
         "tags": [
           "reviews"
         ],
-        "summary": "Reject a check",
+        "summary": "Reject a check. A token's rejection may be recorded as a suggestion (see outcome)",
         "x-permission": "check.review",
         "security": [
           {
@@ -3837,6 +4372,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
                   "comment": {
                     "type": "string",
                     "maxLength": 1000
@@ -3847,6 +4386,95 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "The check, and whether the review applied or became a suggestion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewedCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/suggestion/accept": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Accept an agent's suggestion: approve or reject as it suggested, with its reason (people only)",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The reviewed check",
@@ -3897,8 +4525,201 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/suggestion/dismiss": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Dismiss an agent's suggestion; the check keeps waiting for a review",
+        "x-permission": "check.review",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The check, without the suggestion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Check"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           },
           "422": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{id}/elements": {
+      "get": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "The page elements sent with the check and with the baseline it was compared with",
+        "x-permission": "project.read",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Elements (boxes in screenshot pixels); null where the SDK sent none",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "current": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/components/schemas/SnapshotElement"
+                      }
+                    },
+                    "baseline": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/components/schemas/SnapshotElement"
+                      }
+                    }
+                  },
+                  "required": [
+                    "current",
+                    "baseline"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
             "description": "Problem",
             "content": {
               "application/problem+json": {

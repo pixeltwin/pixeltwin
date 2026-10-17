@@ -1,5 +1,16 @@
 import { z } from '@hono/zod-openapi';
-import { AREA_KINDS, BUILD_STATES, CHECK_RESULTS, CHECK_REVIEWS, REVIEW_ACTIONS, USER_ROLES } from '../db/schema';
+import {
+  ACTOR_KINDS,
+  AGENT_REVIEW_POLICIES,
+  AREA_KINDS,
+  BUILD_STATES,
+  CHECK_RESULTS,
+  CHECK_REVIEWS,
+  REVIEW_ACTIONS,
+  SUGGESTIONS,
+  USER_ROLES,
+} from '../db/schema';
+import { CHANGE_KINDS } from '../diff/types';
 import { TOKEN_SCOPES } from '../domain/auth/tokens';
 
 // Response schemas. They document the API in openapi.json and type-check every handler's output.
@@ -32,6 +43,16 @@ export const ProjectSchema = z
     autoApproveNew: z
       .boolean()
       .openapi({ description: 'A new screenshot (no baseline yet) is approved as soon as it arrives' }),
+    agentReview: z.enum(AGENT_REVIEW_POLICIES).openapi({
+      description:
+        "What a project token's approve or reject does. off: it applies. suggest: it is recorded as a suggestion " +
+        'and the check stays pending until a person accepts or dismisses it. auto-below: approvals of a diff up to ' +
+        'agentMaxDiffPercent apply, others (and new screenshots) become suggestions; rejections apply. ' +
+        'Unless off, a token must give a reason.',
+    }),
+    agentMaxDiffPercent: z
+      .number()
+      .openapi({ description: 'With agentReview "auto-below": the largest diff percent a token may approve itself' }),
     createdAt: z.number().int(),
     updatedAt: z.number().int(),
   })
@@ -97,6 +118,9 @@ export const BuildSchema = z
         .int()
         .openapi({ description: "Approved by the project's auto-approve-new setting (part of review.approved)" }),
       withAreas: z.number().int().openapi({ description: 'Checks whose snapshot has drawn ignore or compare areas' }),
+      suggested: z.number().int().openapi({
+        description: "Checks with an agent's open suggestion, waiting for a person to accept or dismiss it",
+      }),
     }),
   })
   .openapi('Build');
@@ -125,6 +149,56 @@ const RectSchema = z.object({
   height: z.number().int(),
 });
 const SizeSchema = z.object({ width: z.number().int(), height: z.number().int() });
+const FromTo = z.object({ from: z.string().nullable(), to: z.string().nullable() });
+
+export const ElementChangeSchema = z
+  .object({
+    kind: z.enum(CHANGE_KINDS).openapi({
+      description: 'The most telling aspect: added or removed, else text, style, resized, moved',
+    }),
+    kinds: z.array(z.enum(CHANGE_KINDS)).openapi({ description: 'Every aspect that changed' }),
+    key: z.string().openapi({
+      description: 'The element: [data-testid=…], #id, role=…[name="…"] or a CSS path (the baseline key for removed)',
+      example: '[data-testid=submit]',
+    }),
+    tag: z.string(),
+    role: z.string().nullable(),
+    label: z.string().openapi({ description: 'How the summary names the element' }),
+    from: RectSchema.nullable().openapi({ description: 'Box in the baseline, screenshot pixels; null when added' }),
+    to: RectSchema.nullable().openapi({ description: 'Box in the new screenshot; null when removed' }),
+    dx: z.number().int().optional(),
+    dy: z.number().int().optional().openapi({ description: 'Moved down by this many pixels (negative: up)' }),
+    dw: z.number().int().optional(),
+    dh: z.number().int().optional(),
+    text: FromTo.optional(),
+    style: z.record(z.string(), FromTo).optional().openapi({ description: 'color, background, fontSize' }),
+    inside: z
+      .number()
+      .int()
+      .optional()
+      .openapi({ description: 'Elements inside it that changed the same way (not listed on their own)' }),
+    regions: z.array(z.number().int()).openapi({ description: 'Indexes into diff.regions that this change explains' }),
+    description: z.string().openapi({ example: '`button[data-testid=submit]` moved 4 px down' }),
+  })
+  .openapi('ElementChange');
+
+export const SnapshotElementSchema = z
+  .object({
+    key: z.string(),
+    path: z.string().optional(),
+    tag: z.string(),
+    role: z.string().optional(),
+    name: z.string().optional(),
+    text: z.string().optional(),
+    x: z.number().int(),
+    y: z.number().int(),
+    width: z.number().int(),
+    height: z.number().int(),
+    style: z
+      .object({ color: z.string().optional(), background: z.string().optional(), fontSize: z.string().optional() })
+      .optional(),
+  })
+  .openapi('SnapshotElement');
 
 export const DiffSchema = z
   .object({
@@ -136,6 +210,15 @@ export const DiffSchema = z
     regions: z.array(RectSchema.extend({ pixels: z.number().int() })),
     regionsTruncated: z.boolean(),
     summary: z.string(),
+    changes: z
+      .array(ElementChangeSchema)
+      .optional()
+      .openapi({
+        description:
+          'Element by element (moved, resized, text, style, added, removed), most important first, at most 50. ' +
+          'Only when both the baseline and this check came with elements; then the summary names elements too.',
+      }),
+    changesTruncated: z.boolean().optional(),
   })
   .openapi('Diff');
 
@@ -167,7 +250,11 @@ export const ReviewEventSchema = z
     projectId: z.string(),
     action: z.enum(REVIEW_ACTIONS),
     actor: z.string().openapi({ description: 'The user or project token that acted (an id, like reviewedBy).' }),
-    comment: z.string().nullable(),
+    actorKind: z
+      .enum(ACTOR_KINDS)
+      .openapi({ description: 'user: a person; token: a project token (an agent or CI); auto: auto-approve-new' }),
+    actorName: z.string().nullable().openapi({ description: "The token's name when it acted; null for people" }),
+    comment: z.string().nullable().openapi({ description: 'The reason given' }),
     createdAt: z.number().int(),
   })
   .openapi('ReviewEvent');
@@ -192,6 +279,23 @@ export const CheckSchema = z
     reviewedBy: z.string().nullable(),
     reviewedAt: z.number().int().nullable(),
     reviewComment: z.string().nullable(),
+    elementCount: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'Page elements the SDK sent with the screenshot; null when none' }),
+    suggestion: z
+      .object({
+        action: z.enum(SUGGESTIONS),
+        reason: z.string().nullable(),
+        by: z.object({ kind: z.literal('token'), id: z.string(), name: z.string().nullable() }),
+        at: z.number().int(),
+      })
+      .nullable()
+      .openapi({
+        description:
+          "An agent's open suggestion (agent review policy): the check stays pending until a person accepts or dismisses it",
+      }),
     compareMs: z
       .number()
       .int()

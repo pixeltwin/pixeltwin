@@ -3,6 +3,7 @@ import { Migrator } from 'kysely/migration';
 import { migrateToLatest } from '../../src/db/database';
 import { migrationProvider } from '../../src/db/migrations';
 import type { Project } from '../../src/db/schema';
+import { createProjectToken } from '../../src/domain/auth/tokens';
 import { approveBuild, approveCheck, listReviews, rejectCheck, resetReview } from '../../src/domain/reviews';
 import { createTestDeps, type TestDeps } from '../helpers/deps';
 import { appError } from '../helpers/errors';
@@ -57,7 +58,7 @@ describe('review history', () => {
     const cart = (await submit(deps, buildId, withSquare, { name: 'cart' })).check;
     await approveCheck(deps, cart.id, 'usr_2');
 
-    expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 1 });
+    expect(await approveBuild(deps, buildId, 'usr_1')).toEqual({ approved: 1, suggested: 0 });
     expect((await listReviews(deps, home.id)).map((e) => [e.action, e.actor])).toEqual([['approved', 'usr_1']]);
     expect((await listReviews(deps, cart.id)).map((e) => [e.action, e.actor])).toEqual([['approved', 'usr_2']]);
   });
@@ -103,6 +104,7 @@ describe('review history', () => {
       '0008_parallel_builds',
       '0009_auto_approve_new',
       '0010_timings',
+      '0012_agent_review',
     ]);
 
     expect(await listReviews(deps, check.id)).toEqual([
@@ -112,10 +114,32 @@ describe('review history', () => {
         projectId: project.id,
         action: 'rejected',
         actor: 'usr_1',
+        actorKind: 'user',
+        actorName: null,
         comment: 'broken',
         createdAt: reviewedAt ?? 0,
       },
     ]);
     expect(await listReviews(deps, pending.id)).toEqual([]);
+  });
+
+  test('the agent review migration names who acted in earlier reviews: a token, auto-approve or a user', async () => {
+    const { token, view } = await createProjectToken(deps, project.slug, { name: 'claude', scopes: ['review'] });
+    expect(token).toBeString();
+    const one = (await changedCheck('one')).check;
+    const two = (await changedCheck('two')).check;
+    const three = (await changedCheck('three')).check;
+    await approveCheck(deps, one.id, { kind: 'token', id: view.id, name: 'claude' });
+    await approveCheck(deps, two.id, 'auto');
+    await approveCheck(deps, three.id, 'usr_1');
+
+    const migrator = new Migrator({ db: deps.db, provider: migrationProvider });
+    expect((await migrator.migrateTo('0010_timings')).error).toBeUndefined();
+    expect(await migrateToLatest(deps.db)).toEqual(['0012_agent_review']);
+
+    const kind = async (id: string) => (await listReviews(deps, id)).map((e) => [e.actorKind, e.actorName]);
+    expect(await kind(one.id)).toEqual([['token', 'claude']]);
+    expect(await kind(two.id)).toEqual([['auto', null]]);
+    expect(await kind(three.id)).toEqual([['user', null]]);
   });
 });

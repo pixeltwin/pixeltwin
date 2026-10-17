@@ -19,7 +19,7 @@ export const POLICY: Record<Permission, { roles: UserRole[]; scopes: TokenScope[
 
 export type Principal =
   | { kind: 'user'; id: string; email: string; role: UserRole }
-  | { kind: 'token'; id: string; projectId: string; scopes: TokenScope[] };
+  | { kind: 'token'; id: string; projectId: string; name: string; scopes: TokenScope[] };
 
 export function hasPermission(principal: Principal, permission: Permission): boolean {
   const rule = POLICY[permission];

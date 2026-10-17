@@ -358,7 +358,14 @@ interface HistoryEntry {
   at: number;
 }
 
-const HISTORY_VERB: Record<ReviewAction, string> = { approved: 'Approved', rejected: 'Rejected', reset: 'Undone' };
+const HISTORY_VERB: Record<ReviewAction, string> = {
+  approved: 'Approved',
+  rejected: 'Rejected',
+  reset: 'Undone',
+  suggested_approval: 'Suggested approving',
+  suggested_rejection: 'Suggested rejecting',
+  suggestion_dismissed: 'Dismissed the suggestion',
+};
 
 async function historyOf(s: Services, checkId: string): Promise<HistoryEntry[]> {
   const events = await listReviews(s.deps, checkId);

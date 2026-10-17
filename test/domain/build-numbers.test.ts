@@ -79,6 +79,7 @@ describe('build numbers', () => {
         '0008_parallel_builds',
         '0009_auto_approve_new',
         '0010_timings',
+        '0012_agent_review',
       ]);
     }
     const numbers = await deps.db.selectFrom('builds').select(['id', 'number']).orderBy('id').execute();

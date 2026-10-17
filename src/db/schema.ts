@@ -8,8 +8,23 @@ export const USER_ROLES = ['admin', 'reviewer', 'viewer'] as const;
 export type BuildState = (typeof BUILD_STATES)[number];
 export type CheckResult = (typeof CHECK_RESULTS)[number];
 export type CheckReview = (typeof CHECK_REVIEWS)[number];
-export const REVIEW_ACTIONS = ['approved', 'rejected', 'reset'] as const;
+export const REVIEW_ACTIONS = [
+  'approved',
+  'rejected',
+  'reset',
+  'suggested_approval',
+  'suggested_rejection',
+  'suggestion_dismissed',
+] as const;
 export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
+/** Who reviewed: a person, a project token (an agent or CI) or the auto-approve-new setting. */
+export const ACTOR_KINDS = ['user', 'token', 'auto'] as const;
+export type ActorKind = (typeof ACTOR_KINDS)[number];
+/** What a token's approve or reject does (project setting). */
+export const AGENT_REVIEW_POLICIES = ['off', 'suggest', 'auto-below'] as const;
+export type AgentReviewPolicy = (typeof AGENT_REVIEW_POLICIES)[number];
+export const SUGGESTIONS = ['approve', 'reject'] as const;
+export type Suggestion = (typeof SUGGESTIONS)[number];
 export const AREA_KINDS = ['ignore', 'compare'] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 export type UserRole = (typeof USER_ROLES)[number];
@@ -26,6 +41,10 @@ export interface ProjectsTable {
   retentionDays: number;
   /** 1: a new screenshot is approved as soon as it arrives. The domain's Project has a boolean. */
   autoApproveNew: Generated<number>;
+  /** What a project token's approve or reject does: apply it, or record it as a suggestion. */
+  agentReview: Generated<AgentReviewPolicy>;
+  /** With `auto-below`: token approvals of a diff up to this percent apply; larger ones are suggestions. */
+  agentMaxDiffPercent: Generated<number>;
   /** The last build number handed out (UI spec §3.5); internal, never sent to clients. */
   buildSeq: Generated<number>;
   createdAt: number;
@@ -91,6 +110,15 @@ export interface ChecksTable {
   supersededBy: string | null;
   /** Server time this check took: baseline, compare and store (null before timings were kept). */
   compareMs: number | null;
+  /** The page elements the SDK measured with the screenshot (`element_sets.sha`); null without. */
+  elementsSha: Generated<string | null>;
+  /** An agent's open suggestion under the `suggest` policy: the check stays pending until a person decides. */
+  suggestion: Generated<Suggestion | null>;
+  /** The token that suggested, and its name when it suggested. */
+  suggestedBy: Generated<string | null>;
+  suggestedByName: Generated<string | null>;
+  suggestionReason: Generated<string | null>;
+  suggestedAt: Generated<number | null>;
   createdAt: number;
   updatedAt: number;
 }
@@ -105,6 +133,8 @@ export interface BaselinesTable {
   imageSha: string;
   sourceCheckId: string | null;
   approvedBy: string;
+  /** The elements of the check it was approved from: kept when retention deletes that check. */
+  elementsSha: Generated<string | null>;
   createdAt: number;
 }
 
@@ -143,7 +173,19 @@ export interface ReviewEventsTable {
   action: ReviewAction;
   /** The user or project token that acted, like `checks.reviewed_by`. */
   actor: string;
+  actorKind: Generated<ActorKind>;
+  /** A token's name when it acted (tokens can be deleted later); null for users. */
+  actorName: Generated<string | null>;
+  /** The reason given (`reason`, or `comment` in older clients). */
   comment: string | null;
+  createdAt: number;
+}
+
+/** Page elements measured with a screenshot (JSON), once per content hash. */
+export interface ElementSetsTable {
+  sha: string;
+  data: string;
+  count: number;
   createdAt: number;
 }
 
@@ -177,6 +219,7 @@ export interface DB {
   reviewEvents: ReviewEventsTable;
   snapshotAreas: SnapshotAreasTable;
   storedObjects: StoredObjectsTable;
+  elementSets: ElementSetsTable;
 }
 
 export type Project = Omit<Selectable<ProjectsTable>, 'buildSeq' | 'autoApproveNew'> & { autoApproveNew: boolean };
