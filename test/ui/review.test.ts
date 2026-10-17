@@ -48,7 +48,7 @@ describe('UI focus mode', () => {
     expect(body).toContain('data-islands="review"');
     expect(body).toContain('data-build-number="1"');
     expect(body).toContain('data-project-href="/ui/p/web"');
-    expect(body).toContain(`href="/ui/builds/${buildId}?filter=pending"`);
+    expect(body).toContain(`href="/ui/builds/${buildId}?filter=pending&amp;focus=${changed.id}"`);
     expect(body).toContain('<a href="/ui/p/web">Web shop</a>');
     expect(body).toContain('>#1</a>');
     // Newest first: the changed check was posted before the new one, so it comes second.

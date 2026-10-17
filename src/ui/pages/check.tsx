@@ -1295,7 +1295,8 @@ function CheckPage(props: {
   const href = (c: CheckView | undefined) => (c ? ui.url(`/ui/checks/${c.id}?filter=${filter.key}`) : null);
   const prev = href(prevCheck);
   const next = href(nextCheck);
-  const buildHref = ui.url(`/ui/builds/${build.id}?filter=${filter.key}`);
+  // Back on the build page, the page of cards that holds this check, with its card focused.
+  const buildHref = ui.url(`/ui/builds/${build.id}?filter=${filter.key}&focus=${check.id}`);
   return (
     <Layout
       ui={ui}
@@ -1489,7 +1490,8 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       // From a card on the build page: back to that page and card.
       if (field(form, 'back') === 'build') {
         const at = filterKey ? `filter=${filterFromQuery({ filter: filterKey }).key}&` : '';
-        return c.redirect(ui.url(`/ui/builds/${check.buildId}?${at}done=${done}#${check.id}`), 303);
+        const page = /^\d{1,5}$/.test(field(form, 'page') ?? '') ? `page=${field(form, 'page')}&` : '';
+        return c.redirect(ui.url(`/ui/builds/${check.buildId}?${at}${page}done=${done}#${check.id}`), 303);
       }
       // Keep the reviewer moving: the next check awaiting review, else back to the build.
       const { nextPending } = await checkNeighbors(s.deps, check);

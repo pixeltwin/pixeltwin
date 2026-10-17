@@ -1,9 +1,18 @@
 import type { OpenAPIHono } from '@hono/zod-openapi';
+import { getCookie } from 'hono/cookie';
 import type { Project } from '../../db/schema';
+import { thumbSize } from '../../diff/thumb';
 import type { DiffData, Rect, Size } from '../../diff/types';
 import { hasPermission } from '../../domain/auth/policy';
 import { type BuildView, finalizeBuild, getBuild, getBuildRow } from '../../domain/builds';
-import { type CheckView, firstPendingCheckId, listChecks, type VariantTag, variantTags } from '../../domain/checks';
+import {
+  type CheckView,
+  checksByIds,
+  firstPendingCheckId,
+  listCheckRefs,
+  type VariantTag,
+  variantTags,
+} from '../../domain/checks';
 import { type FlakySignal, screenHistories } from '../../domain/flaky';
 import { type ChangeGroup, listGroups, reviewGroup } from '../../domain/groups';
 import { imageSizes } from '../../domain/images';
@@ -25,6 +34,24 @@ import {
 import { field, noticeOf, type Ui, uiOf, userOf } from '../context';
 import { CHECK_FILTERS, type CheckFilter, countFor, filterFromQuery } from '../filters';
 import { Layout } from '../layout';
+import {
+  type GridPage,
+  PAGE_SIZE_COOKIE,
+  pageNumbers,
+  pageOf,
+  pageSizeOf,
+  rangeText,
+  type Slot,
+  slotsOf,
+} from '../paging';
+
+/** The longer side of a card's thumbnail: sharp at twice the card's size (thumb.ts). */
+const THUMB_EDGE = 640;
+
+/** A card's image: the thumbnail of `sha` (`diff`: one that keeps a diff's red changes). */
+function thumbUrl(ui: Ui, sha: string, mode: 'plain' | 'diff' = 'plain'): string {
+  return ui.url(`/api/v1/images/${sha}/thumb?w=${THUMB_EDGE}${mode === 'diff' ? '&mode=diff' : ''}`);
+}
 
 /**
  * One check: a link to it, and for reviewers an Approve button on a new screenshot waiting for
@@ -35,14 +62,17 @@ function CheckCard(props: {
   check: CheckView;
   size?: Size | undefined;
   filter: CheckFilter;
+  /** The grid page the card is on: a review without JavaScript comes back to it. */
+  page: number;
   canReview: boolean;
   flaky?: FlakySignal | undefined;
 }) {
   const { ui, check, size, filter } = props;
   // A changed check shows its new screenshot; the thumbs island paints the diff's changes over it.
-  const diffSrc =
-    check.result === 'changed' && check.diffImageSha ? ui.url(`/api/v1/images/${check.diffImageSha}`) : null;
+  const diffSrc = check.result === 'changed' && check.diffImageSha ? thumbUrl(ui, check.diffImageSha, 'diff') : null;
   const sha = diffSrc ? check.imageSha : thumbnailSha(check);
+  // The thumbnail's own size: the skeleton holds exactly the box the image will fill.
+  const box = size ? thumbSize(size, THUMB_EDGE) : undefined;
   const diff = check.diff && 'percent' in check.diff ? check.diff : null;
   const approvable = props.canReview && check.result === 'new' && check.review === 'pending';
   return (
@@ -58,13 +88,7 @@ function CheckCard(props: {
       >
         <div class="thumb" data-diff={diffSrc ?? undefined}>
           <span class="thumb-stack">
-            <img
-              src={ui.url(`/api/v1/images/${sha}`)}
-              alt={check.name}
-              loading="lazy"
-              width={size?.width}
-              height={size?.height}
-            />
+            <img src={thumbUrl(ui, sha)} alt={check.name} decoding="async" width={box?.width} height={box?.height} />
           </span>
         </div>
         <div class="check-card-body">
@@ -100,6 +124,7 @@ function CheckCard(props: {
         >
           <input type="hidden" name="filter" value={filter.key} />
           <input type="hidden" name="back" value="build" />
+          <input type="hidden" name="page" value={String(props.page)} />
           <button type="submit" class="small approve" title="Approve this new screenshot: it becomes the baseline">
             Approve
           </button>
@@ -145,7 +170,13 @@ function GroupCrop(props: { ui: Ui; check: CheckView; size: Size | undefined }) 
   if (!size || !check.baseline || regions.length === 0) {
     return (
       <span class="thumb-stack">
-        <img src={ui.url(`/api/v1/images/${check.imageSha}`)} alt={check.name} loading="lazy" />
+        <img
+          src={thumbUrl(ui, check.imageSha)}
+          alt={check.name}
+          decoding="async"
+          width={size ? thumbSize(size, THUMB_EDGE).width : undefined}
+          height={size ? thumbSize(size, THUMB_EDGE).height : undefined}
+        />
       </span>
     );
   }
@@ -208,6 +239,7 @@ function GroupCard(props: {
   members: CheckView[];
   sizes: Map<string, Size>;
   filter: CheckFilter;
+  page: number;
   canReview: boolean;
   flaky: Map<string, FlakySignal>;
 }) {
@@ -237,6 +269,7 @@ function GroupCard(props: {
     >
       <input type="hidden" name="filter" value={filter.key} />
       <input type="hidden" name="back" value="build" />
+      <input type="hidden" name="page" value={String(props.page)} />
       {members.map((m) => (
         <input type="hidden" name="checkIds" value={m.id} />
       ))}
@@ -331,24 +364,6 @@ function GroupCard(props: {
       </div>
     </article>
   );
-}
-
-type GridItem = { kind: 'check'; check: CheckView } | { kind: 'group'; members: CheckView[] };
-
-/**
- * The grid in the page's order (newest first): checks of one change group that this page shows
- * (two or more, after filters and tags) become one card where the newest of them is.
- */
-function gridItems(checks: CheckView[]): GridItem[] {
-  const listed = new Map<string, CheckView[]>();
-  for (const c of checks) if (c.groupId) listed.set(c.groupId, [...(listed.get(c.groupId) ?? []), c]);
-  const items: GridItem[] = [];
-  for (const check of checks) {
-    const members = check.groupId ? listed.get(check.groupId) : undefined;
-    if (!members || members.length < 2) items.push({ kind: 'check', check });
-    else if (members[0] === check) items.push({ kind: 'group', members });
-  }
-  return items;
 }
 
 /** A tag picked in `?tag=key:value` (repeatable). */
@@ -463,11 +478,72 @@ function EmptyChecks(props: { ui: Ui; build: BuildView; filter: CheckFilter }) {
   );
 }
 
+/**
+ * Pages of the grid: Previous and Next, page numbers with gaps, and `13–24 of 87`. Links, so
+ * paging works without JavaScript; the grid island turns them into in-place page changes and
+ * adds [ and ] (UI spec §4.2).
+ */
+function Pager(props: { grid: GridPage; href: (page: number) => string }) {
+  const { grid, href } = props;
+  if (grid.pages <= 1) return null;
+  const step = (page: number, rel: 'prev' | 'next') => {
+    const label = rel === 'prev' ? '← Previous' : 'Next →';
+    const title = rel === 'prev' ? 'Previous page ([)' : 'Next page (])';
+    const inRange = page >= 1 && page <= grid.pages;
+    return inRange ? (
+      <a class="button small" rel={rel} href={href(page)} data-page-link={page} title={title}>
+        {label}
+      </a>
+    ) : (
+      <span class="button small" aria-disabled="true">
+        {label}
+      </span>
+    );
+  };
+  return (
+    <nav
+      class="grid-pager"
+      aria-label="Pages"
+      data-pager
+      data-page={grid.page}
+      data-pages={grid.pages}
+      data-size={grid.size}
+      data-total={grid.total}
+    >
+      {step(grid.page - 1, 'prev')}
+      <ol class="page-numbers">
+        {pageNumbers(grid.page, grid.pages).map((n) =>
+          n === 'gap' ? (
+            <li class="page-gap" aria-hidden="true">
+              …
+            </li>
+          ) : (
+            <li>
+              <a
+                href={href(n)}
+                data-page-link={n}
+                aria-current={n === grid.page ? 'page' : undefined}
+                aria-label={`Page ${n}`}
+              >
+                {n}
+              </a>
+            </li>
+          ),
+        )}
+      </ol>
+      {step(grid.page + 1, 'next')}
+      <span class="page-range muted">{rangeText(grid)}</span>
+    </nav>
+  );
+}
+
 function BuildPage(props: {
   ui: Ui;
   project: Project;
   build: BuildView;
-  checks: CheckView[];
+  /** The page of the grid this request shows, and the checks of its slots by id. */
+  grid: GridPage;
+  checks: Map<string, CheckView>;
   groups: Map<string, ChangeGroup>;
   flaky: Map<string, FlakySignal>;
   sizes: Map<string, Size>;
@@ -480,12 +556,16 @@ function BuildPage(props: {
   /** The build's variant tags, and those picked in the address. */
   tags: VariantTag[];
   picked: PickedTag[];
-  older?: string | undefined;
+  /** The card `?focus=` named: the grid island focuses it. */
+  focus?: string | undefined;
   notice?: string | undefined;
 }) {
-  const { ui, project, build, checks, filter, q, picked } = props;
+  const { ui, project, build, grid, filter, q, picked } = props;
   const narrowed = q !== '' || picked.length > 0;
   const search = (q ? `&q=${encodeURIComponent(q)}` : '') + tagQuery(picked);
+  const pageHref = (page: number) =>
+    ui.url(`/ui/builds/${build.id}?filter=${filter.key}${search}&page=${page}&size=${grid.size}`);
+  const membersOf = (slot: Slot) => slot.ids.flatMap((id) => props.checks.get(id) ?? []);
   const pending = build.counts.review.pending;
   // An open build still receives checks; the live island refreshes the header, chips and grid.
   const open = build.state === 'open';
@@ -611,47 +691,45 @@ function BuildPage(props: {
         picked={picked}
       />
       <div data-live="checks">
-        {/* The search island shows this when typing hides every card. */}
-        <div class="empty" data-search-empty hidden={!(narrowed && checks.length === 0)}>
+        {/* Shown when a search finds nothing. */}
+        <div class="empty" data-search-empty hidden={!(narrowed && grid.total === 0)}>
           <h3>No checks match this search.</h3>
         </div>
-        {checks.length === 0 && !narrowed && <EmptyChecks ui={ui} build={build} filter={filter} />}
-        {checks.length > 0 && (
-          <div class="check-grid">
-            {gridItems(checks).map((item) =>
-              item.kind === 'group' ? (
+        {grid.total === 0 && !narrowed && <EmptyChecks ui={ui} build={build} filter={filter} />}
+        {grid.total > 0 && (
+          <div class="check-grid" data-grid data-focus={props.focus}>
+            {grid.slots.map((slot) => {
+              const members = membersOf(slot);
+              const first = members[0];
+              if (!first) return null;
+              return slot.groupId ? (
                 <GroupCard
                   ui={ui}
                   build={build}
-                  group={props.groups.get(item.members[0]?.groupId ?? '')}
-                  members={item.members}
+                  group={props.groups.get(slot.groupId)}
+                  members={members}
                   sizes={props.sizes}
                   filter={filter}
+                  page={grid.page}
                   canReview={props.canReview}
                   flaky={props.flaky}
                 />
               ) : (
                 <CheckCard
                   ui={ui}
-                  check={item.check}
-                  size={props.sizes.get(
-                    item.check.result === 'changed' ? item.check.imageSha : thumbnailSha(item.check),
-                  )}
+                  check={first}
+                  size={props.sizes.get(first.result === 'changed' ? first.imageSha : thumbnailSha(first))}
                   filter={filter}
+                  page={grid.page}
                   canReview={props.canReview}
-                  flaky={props.flaky.get(item.check.snapshotKey)}
+                  flaky={props.flaky.get(first.snapshotKey)}
                 />
-              ),
-            )}
+              );
+            })}
           </div>
         )}
+        <Pager grid={grid} href={pageHref} />
       </div>
-      {props.older && (
-        <div class="pager">
-          <span />
-          <a href={props.older}>More checks →</a>
-        </div>
-      )}
     </Layout>
   );
 }
@@ -667,45 +745,49 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       result: c.req.query('result'),
       review: c.req.query('review'),
     });
-    const cursor = c.req.query('cursor') || undefined;
     const q = (c.req.query('q') ?? '').trim().slice(0, 200);
     const picked = tagsFromQuery(c.req.queries('tag'));
-    const [page, firstPending, tags, groups] = await Promise.all([
-      listChecks(s.deps, id, {
+    const [refs, firstPending, tags, groups] = await Promise.all([
+      listCheckRefs(s.deps, id, {
         result: filter.result,
         review: filter.review,
         status: filter.status,
         q,
         tags: picked,
-        order: 'desc',
-        cursor,
-        limit: 200,
       }),
       firstPendingCheckId(s.deps, id),
       variantTags(s.deps, id),
       listGroups(s.deps, id),
     ]);
+    // Pages of cards (a change group is one card); only the page's checks are loaded.
+    const focus = c.req.query('focus') || undefined;
+    const grid = pageOf(slotsOf(refs), {
+      page: c.req.query('page'),
+      size: pageSizeOf(c.req.query('size'), getCookie(c, PAGE_SIZE_COOKIE)),
+      focus,
+    });
+    const checks = await checksByIds(
+      s.deps,
+      grid.slots.flatMap((slot) => slot.ids),
+    );
     const histories = await screenHistories(
       s.deps,
       build.projectId,
-      page.items.map((c) => c.snapshotKey),
+      checks.map((c) => c.snapshotKey),
       build.branch,
     );
     const flaky = new Map(histories.flatMap((h) => (h.flaky ? [[h.snapshotKey, h.flaky] as const] : [])));
     const sizes = await imageSizes(
       s.deps,
-      page.items.flatMap((c) => [thumbnailSha(c), c.imageSha]),
+      checks.flatMap((c) => [thumbnailSha(c), c.imageSha]),
     );
-    const search = (q ? `&q=${encodeURIComponent(q)}` : '') + tagQuery(picked);
-    const older = page.nextCursor
-      ? ui.url(`/ui/builds/${id}?filter=${filter.key}${search}&cursor=${encodeURIComponent(page.nextCursor)}`)
-      : undefined;
     return c.html(
       <BuildPage
         ui={ui}
         project={project}
         build={build}
-        checks={page.items}
+        grid={grid}
+        checks={new Map(checks.map((check) => [check.id, check]))}
         groups={new Map(groups.map((g) => [g.id, g]))}
         flaky={flaky}
         sizes={sizes}
@@ -716,7 +798,7 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
         q={q}
         tags={tags}
         picked={picked}
-        older={older}
+        focus={focus && grid.slots.some((slot) => slot.key === focus || slot.ids.includes(focus)) ? focus : undefined}
         notice={noticeOf(c)}
       />,
     );
@@ -756,7 +838,8 @@ export function registerBuildPages(app: OpenAPIHono<AppEnv>, s: Services): void 
           303,
         );
       }
-      return c.redirect(ui.url(`/ui/builds/${id}?filter=${filter.key}&done=${done}#group-${groupId}`), 303);
+      const page = /^\d{1,5}$/.test(field(form, 'page') ?? '') ? `&page=${field(form, 'page')}` : '';
+      return c.redirect(ui.url(`/ui/builds/${id}?filter=${filter.key}${page}&done=${done}#group-${groupId}`), 303);
     });
   }
 

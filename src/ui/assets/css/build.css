@@ -455,3 +455,66 @@
   font-weight: 600;
   line-height: 16px;
 }
+
+/* Pages of the grid: Previous, the numbers, Next, and which cards of how many at the right. */
+.grid-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+}
+.grid-pager .button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+.grid-pager .button[aria-disabled="true"]:hover {
+  background: var(--surface);
+}
+.page-numbers {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.page-numbers a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.page-numbers a:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  text-decoration: none;
+}
+.page-numbers a[aria-current="page"] {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.page-gap {
+  min-width: 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.page-range {
+  margin-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  .page-numbers {
+    display: none;
+  }
+  .page-range {
+    margin-left: 0;
+  }
+}
