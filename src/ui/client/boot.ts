@@ -10,6 +10,25 @@ import { initToasts } from './toast.ts';
 const version = new URL(import.meta.url).search;
 
 document.documentElement.classList.add('js');
+
+// Skeletons: an image shimmers until it has loaded (CSS); mark it then, also when it arrives later in
+// swapped markup (load does not bubble, so listen in the capture phase), and the ones already here.
+const loaded = (img: HTMLImageElement) => img.classList.add('is-loaded');
+document.addEventListener(
+  'load',
+  (event) => {
+    if (event.target instanceof HTMLImageElement) loaded(event.target);
+  },
+  true,
+);
+document.addEventListener(
+  'error',
+  (event) => {
+    if (event.target instanceof HTMLImageElement) loaded(event.target);
+  },
+  true,
+);
+for (const img of document.images) if (img.complete) loaded(img);
 initToasts();
 initKeys();
 initDialogs();

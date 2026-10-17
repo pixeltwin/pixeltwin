@@ -184,3 +184,22 @@ test.describe('on a phone', () => {
     await expect(page).toHaveURL(new RegExp(`/ui/checks/${seeded.changed}`));
   });
 });
+
+test('images show a skeleton while they load, and stop it once loaded', async ({ reviewerPage: page, seeded }) => {
+  // Hold every screenshot until the test lets them through.
+  let release: () => void = () => {};
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route('**/api/v1/images/**', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto(`/ui/builds/${seeded.buildId}`);
+  const thumb = page.locator('.thumb-stack img').first();
+  await expect(thumb).not.toHaveClass(/is-loaded/);
+  expect(await thumb.evaluate((img) => getComputedStyle(img).animationName)).toBe('skeleton');
+  release();
+  await expect(thumb).toHaveClass(/is-loaded/);
+  expect(await thumb.evaluate((img) => getComputedStyle(img).animationName)).toBe('none');
+});
