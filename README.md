@@ -13,8 +13,8 @@ next and previous, <kbd>?</kbd> for every shortcut.
 The same change on many screens is reviewed once: checks of a build with exactly the same changes
 (a new header on 40 pages and 3 browsers) form a change group, shown as one card with Approve all
 and Reject all (<kbd>A</kbd>/<kbd>R</kbd> on the focused card, <kbd>U</kbd> to undo). Screens that keep
-flipping back and forth (a clock, an ad) are marked flaky, listed under Noisy screens, and one
-click ignores the area that keeps changing.
+flipping back and forth (a clock, an ad) are marked flaky and listed under Noisy screens; on the
+check, Ignore noisy area previews the area that keeps changing and ignores it.
 
 ![Reviewing a changed check in the slider view, dark theme](docs/screenshots/review-slider-dark.png)
 

@@ -142,24 +142,3 @@ test('a flaky screen offers to ignore the area that keeps changing, with a previ
   await open(page, `/ui/p/${slug}/noisy`);
   await expect(page.getByRole('heading', { name: 'No noisy screens' })).toBeVisible();
 });
-
-test('Ignore on the noisy screens asks first, then ignores the area in place', async ({
-  reviewerPage: page,
-  admin,
-}) => {
-  const { slug, ci } = await seedGroup(admin);
-  let last = '';
-  for (const clock of [1, 0, 1, 0]) {
-    const build = await ci.call<{ id: string }>('POST', `/projects/${slug}/builds`, { branch: 'main' });
-    last = (await ci.check(build.id, 'cart', site(90, 180, clock))).id;
-  }
-  await open(page, `/ui/p/${slug}/noisy`);
-  await page.getByRole('button', { name: 'Ignore noisy area' }).click();
-  const dialog = page.locator('dialog.confirm');
-  await expect(dialog).toContainText('of cart');
-  await dialog.getByRole('button', { name: 'Ignore this area' }).click();
-  await expect(page.locator('.toast').last()).toContainText('Ignored the noisy area of cart');
-  const { items } = await ci.call<{ items: Array<{ kind: string }> }>('GET', `/checks/${last}/areas`);
-  expect(items.map((a) => a.kind)).toEqual(['ignore']);
-  expect((await ci.call<{ items: unknown[] }>('GET', `/projects/${slug}/noisy-screens`)).items).toEqual([]);
-});

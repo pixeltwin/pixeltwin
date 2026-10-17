@@ -107,14 +107,14 @@ describe('UI change groups and flaky screens', () => {
 
     const noisy = await html(await t.request('GET', '/ui/p/web/noisy', { as: reviewer }));
     expect(noisy).toContain(`id="noisy-${last}"`);
-    expect(noisy).toContain('data-confirm-label="Ignore this area"');
-    const res = await postForm(
+    // Ignoring happens on the check, after its preview; the list only links there.
+    expect(noisy).not.toContain('Ignore noisy area');
+    await postForm(
       t,
       `/ui/checks/${last}/areas`,
-      { back: 'noisy', kind: 'ignore', x: '96', y: '46', width: '68', height: '28' },
+      { kind: 'ignore', x: '96', y: '46', width: '68', height: '28' },
       reviewer,
     );
-    expect(location(res)).toBe('/ui/p/web/noisy?done=area-added');
     const after = await html(await t.request('GET', '/ui/p/web/noisy', { as: reviewer }));
     expect(after).toContain('No noisy screens');
   });

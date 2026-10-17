@@ -1339,11 +1339,6 @@ export function registerCheckPages(app: OpenAPIHono<AppEnv>, s: Services): void 
       width: number('width'),
       height: number('height'),
     });
-    // From the noisy screens of the project: back there.
-    if (field(form, 'back') === 'noisy') {
-      const project = await getProjectById(s.deps, check.projectId);
-      return c.redirect(ui.url(`/ui/p/${project.slug}/noisy?done=area-added`), 303);
-    }
     return c.redirect(ui.url(`/ui/checks/${check.id}?filter=${filter.key}&done=area-added`), 303);
   });
 
